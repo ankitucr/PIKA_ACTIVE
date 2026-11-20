@@ -78,3 +78,25 @@ python -m core.evolution.cli candidate-stage-native --root . \
 ```
 
 The controller verifies that the proposal's old source text still matches the live baseline before it stages candidates into the Phase 37 experiment engine. The proposal is not executed at discovery or staging time. Candidate experiments remain local diagnostics and are never added to trusted learning memory or promoted automatically.
+
+
+## Automatic capture from the PIKA Brain
+
+When a failed Brain attempt returns a valid `phase33_generation` result from the native repair generator, `ExecutionObserver.finish()` now captures the inert proposal automatically under:
+
+```
+PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/<event_id>_<proposal_id>.json
+```
+
+The directory is created with owner-only permissions and proposal files are written with mode 0600. Each envelope binds the proposal to the Brain execution event ID and task SHA-256. Raw task text and raw worker output are not copied into the proposal envelope. Candidate source and the exact old source text are stored because the experiment engine must compare and stage them; literal secret assignments cause capture to be skipped.
+
+The Brain's `evolution_feedback.native_proposals` result contains the saved proposal path and ID. After refreshing the discovery queue, the matching envelope can be staged using that path:
+
+```bash
+python -m core.evolution.cli discover-candidates --root .
+python -m core.evolution.cli candidate-stage-native --root . \
+  --discovery-id DISCOVERY_ID \
+  --proposal-file PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/EVENT_PROPOSAL.json
+```
+
+Staging verifies the envelope's content hash, event ID and task hash against the selected discovery item before checking the exact source text and pinned tests.
