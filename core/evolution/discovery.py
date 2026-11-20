@@ -135,6 +135,8 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Discovery queue symlink is not allowed.")
         if not self.path.exists():
             return {"schema": SCHEMA, "updated_at": None, "items": []}
+        if not self.path.is_file() or self.path.stat().st_size > 2_000_000:
+            raise ExperimentError("Discovery queue is not a bounded regular file.")
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -240,6 +242,17 @@ class CandidateDiscoveryQueue:
             if previous is not None:
                 previous["last_seen_at"] = time.time()
                 previous["diagnostic_classification"] = diagnostic_classification
+                previous["agent"] = _bounded_text(item.get("agent"), 80)
+                previous["strategy"] = _bounded_text(item.get("strategy"), 80)
+                raw_error_types = item.get("error_types", [])
+                if not isinstance(raw_error_types, list):
+                    raw_error_types = []
+                previous["error_types"] = [
+                    safe for value in raw_error_types
+                    if (safe := _bounded_text(value, 100)) is not None
+                ][:5]
+                previous.pop("issue_texts", None)
+                previous.pop("worker_errors", None)
                 previous["issue_fingerprints"] = safe_fingerprints
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
