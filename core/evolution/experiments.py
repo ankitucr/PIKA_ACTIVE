@@ -425,12 +425,12 @@ class CandidateExperimentEngine:
         workspace.relative_to(candidate_root)
         target = _safe_relative(metadata["target"], suffix=".py")
         baseline_manifest = _tree_manifest(baseline)
-        baseline_snapshot_manifest = _tree_manifest(baseline_workspace)
-        workspace_manifest = _tree_manifest(workspace)
-        if baseline_snapshot_manifest != baseline_manifest:
-            raise ExperimentError("Baseline experiment snapshot was modified after staging.")
         if _manifest_sha256(baseline_manifest) != metadata.get("baseline_tree_sha256"):
             raise ExperimentError("Baseline source tree changed after staging; experiment is stale.")
+        baseline_snapshot_manifest = _tree_manifest(baseline_workspace)
+        if baseline_snapshot_manifest != baseline_manifest:
+            raise ExperimentError("Baseline experiment snapshot was modified after staging.")
+        workspace_manifest = _tree_manifest(workspace)
         expected_workspace = dict(baseline_manifest)
         expected_workspace[target.as_posix()] = metadata.get("candidate_sha256")
         if workspace_manifest != expected_workspace:
