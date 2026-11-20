@@ -34,7 +34,7 @@ class ExperimentError(ValueError):
 
 
 def _safe_relative(value: str, *, suffix: str | None = None) -> PurePosixPath:
-    if not isinstance(value, str) or not value or "\\\\" in value or "\\x00" in value:
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
         raise ExperimentError("Path must be a non-empty relative POSIX path.")
     path = PurePosixPath(value)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
@@ -101,7 +101,7 @@ def _json_write(path: Path, value: dict[str, Any]) -> None:
     try:
         with temp.open("x", encoding="utf-8") as stream:
             json.dump(value, stream, indent=2, ensure_ascii=False, allow_nan=False)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp, path)
