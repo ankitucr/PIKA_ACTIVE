@@ -30,7 +30,7 @@ def _reflection(event_id="event-123", outcome="FAILED"):
             "agent": "native-repair",
             "strategy": "structured-proposal",
             "error_types": ["AssertionError"],
-            "issue_texts": ["expected addition result"],
+            "issue_texts": ["expected addition result", "api_key=do-not-store"],
             "worker_errors": [],
             "evidence_missing": ["source_backed_diagnosis"],
         }]
