@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from core.phase36.evidence import LearningTrustGate
+
 
 class LearningEngine:
     """
@@ -25,10 +27,27 @@ class LearningEngine:
 
     VERSION = 1
 
-    def __init__(self, storage_path: str | Path):
+    def __init__(
+        self,
+        storage_path: str | Path,
+        *,
+        trust_gate: LearningTrustGate | None = None,
+    ):
         self.path = Path(storage_path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.trust_gate: LearningTrustGate | None = None
+        self.set_trust_gate(trust_gate)
         self.data = self._load()
+
+    def set_trust_gate(self, trust_gate: LearningTrustGate | None) -> None:
+        """Bind the verifier used for all trusted-learning and replay decisions.
+
+        No gate means no trusted learning. Caller-provided booleans are never
+        accepted as substitutes for a receipt verified by a pinned attestor.
+        """
+        if trust_gate is not None and not isinstance(trust_gate, LearningTrustGate):
+            raise TypeError("trust_gate must be a LearningTrustGate or None")
+        self.trust_gate = trust_gate
 
     # ---------------------------------------------------------
     # STORAGE
@@ -177,35 +196,27 @@ class LearningEngine:
 
         return record
 
-    @staticmethod
-    def _verified(verification: dict[str, Any]) -> bool:
+    def _has_trusted_evidence(self, verification: Any) -> bool:
+        """Trust only a valid signed sandbox receipt under the pinned policy.
+
+        Fields such as test_passed, independent_test, syntax_valid, and
+        execution_passed are descriptive claims supplied by the caller. They
+        are deliberately ignored for trust decisions.
         """
-        Trust requires real verification.
+        if self.trust_gate is None or not isinstance(verification, dict):
+            return False
+        try:
+            return self.trust_gate.accepts({"verification": verification}) is True
+        except Exception:
+            return False
 
-        Accepted signals:
-          syntax
-          test
-          independent_test
-          execution
-        """
-
-        syntax = bool(
-            verification.get("syntax")
-            or verification.get("syntax_valid")
-        )
-
-        test = bool(
-            verification.get("test")
-            or verification.get("test_passed")
-            or verification.get("independent_test")
-        )
-
-        execution = bool(
-            verification.get("execution")
-            or verification.get("execution_passed")
-        )
-
-        return test or (syntax and execution)
+    def _receipt_is_trusted(self, receipt: Any) -> bool:
+        if self.trust_gate is None:
+            return False
+        try:
+            return self.trust_gate.accepts({"evidence_receipt": receipt}) is True
+        except Exception:
+            return False
 
     # ---------------------------------------------------------
     # PATTERN DATABASE
@@ -385,6 +396,10 @@ class LearningEngine:
             for solution in pattern.get("solutions", []):
                 if solution.get("verified_count", 0) <= 0:
                     continue
+                # Persisted counters and legacy "trusted": true flags are not
+                # authority. Re-verify the signed receipt on every retrieval.
+                if not self._receipt_is_trusted(solution.get("evidence_receipt")):
+                    continue
 
                 success_count = solution.get(
                     "success_count",
@@ -484,6 +499,8 @@ class LearningEngine:
             for solution in match.get("solutions", []):
                 if solution.get("verified_count", 0) <= 0:
                     continue
+                if not self._receipt_is_trusted(solution.get("evidence_receipt")):
+                    continue
 
                 code = str(solution.get("solution", ""))
                 normalized = self.normalize(code)
@@ -540,7 +557,8 @@ class LearningEngine:
         trusted = sum(
             1
             for item in experiences
-            if item.get("trusted")
+            if item.get("success")
+            and self._has_trusted_evidence(item.get("verification", {}))
         )
 
         successes = sum(
