@@ -170,6 +170,46 @@ def test_native_proposal_envelope_flows_from_brain_to_discovery_and_candidate(tm
     assert (root / "core" / "calc.py").read_text(encoding="utf-8") == old_text
 
 
+
+def test_native_proposal_file_tampering_is_detected_before_staging(tmp_path):
+    import pytest
+    from core.evolution.experiments import ExperimentError
+
+    root = tmp_path / "repo"
+    old_text = _project(root)
+    knowledge = root / "PIKA_KNOWLEDGE"
+    observer = ExecutionObserver(knowledge)
+    token = observer.begin("fix calculator addition")
+    feedback = observer.finish(
+        token,
+        _result(_native_proposal(old_text)),
+        elapsed_seconds=0.2,
+    )
+    engine = CandidateExperimentEngine(knowledge)
+    queue = CandidateDiscoveryQueue(knowledge, root, engine)
+    refreshed = queue.refresh(
+        {"diagnosis_queue": [{
+            "event_id": token["event_id"],
+            "outcome": "FAILED",
+        }]},
+        {"events": [{
+            "event_id": token["event_id"],
+            "task_sha256": token["task_sha256"],
+            "event_classification": "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED",
+            "repeated_issue_fingerprints": [],
+            "attempt_classifications": [],
+        }]},
+    )
+    proposal_path = Path(feedback["native_proposals"][0]["path"])
+    envelope = json.loads(proposal_path.read_text(encoding="utf-8"))
+    envelope["proposal"]["candidates"][0] = "def add(a, b): return 999\\n"
+
+    with pytest.raises(ExperimentError, match="content hash mismatch"):
+        queue.stage_native_proposal(refreshed["discovery_ids"][0], envelope)
+
+    assert queue.summary()["candidate_count"] == 0
+
+
 def test_proposal_envelope_cannot_be_replayed_for_another_discovery_event(tmp_path):
     root = tmp_path / "repo"
     old_text = _project(root)
