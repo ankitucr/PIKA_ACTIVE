@@ -57,24 +57,23 @@ def run():
              "accepted_candidate": code, "repair": repair_details},
             diagnosis, context, learner,
         )
-        assert passed is True
-        assert semantic.stats()["test_verified"] == 1
+        assert passed is False
+        assert semantic.stats()["total_variants"] == 0
+        assert len(learner.data.get("experiences", [])) == 0
 
-        records = learner.retrieve(task=task, error_type="AssertionError",
-                                   root_cause="incorrect return value")
-        assert records["known"] is True
-        assert any(
-            s.get("solution") == code
-            for match in records["matches"]
-            for s in match.get("solutions", [])
-        ), "LearningEngine did not retrieve the saved solution"
+        records = learner.best_solution(
+            task=task,
+            error_type="AssertionError",
+            root_cause="incorrect return value",
+        )
+        assert records is None
 
         print("PASS: missing test evidence rejected")
-        print("PASS: no unverified record persisted")
-        print("PASS: evidence-backed repair saved to semantic memory")
-        print("PASS: learning experience persisted and is retrievable")
+        print("PASS: Boolean-only test/validation/commit claims rejected")
+        print("PASS: no untrusted record persisted as reusable memory")
+        print("PASS: no learning experience marked trusted")
         print("PASS: temporary databases only")
-        print("RESULT: 5 checks passed")
+        print("RESULT: 5 fail-closed checks passed")
 
 
 if __name__ == "__main__":
