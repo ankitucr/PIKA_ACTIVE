@@ -267,6 +267,7 @@ class ExecutionObserver:
                 ensure_ascii=False, allow_nan=False,
             ).encode("utf-8")
             proposal_id = hashlib.sha256(canonical).hexdigest()[:32]
+            envelope["proposal_id"] = proposal_id
             if proposal_id in seen:
                 continue
             seen.add(proposal_id)
