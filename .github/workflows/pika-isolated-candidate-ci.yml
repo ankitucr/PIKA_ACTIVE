@@ -5,6 +5,22 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/pika-isolated-candidate-ci.yml"
+      - ".github/workflows/pika-core-safety.yml"
+      - "core/**"
+      - "tests/**"
+      - "agents/**"
+      - "memory/**"
+      - "workspace/**"
+      - "learning/**"
+      - "evaluation/**"
+      - "tools/**"
+      - "config/**"
+      - "remote_bridge/**"
+      - "main.py"
+      - "pika.py"
+      - "pika_live.py"
+      - "requirements.txt"
+      - "pytest.ini"
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
