@@ -6,13 +6,18 @@ import pytest
 
 from core.phase36.attestor_policy import AttestorTrustPolicy
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
+from core.phase36.sandbox import SandboxUnavailable
 from core.phase36.governance import PromotionGate
 from core.phase36.sandbox import SandboxRunner
 
 
 class TestBackend:
     backend_id = "phase36-5-test-backend"
+    def __init__(self):
+        self.calls = 0
+
     def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
+        self.calls += 1
         return {"exit_code": 0, "test_count": 1, "stdout": "1 passed",
                 "stderr": "", "sandboxed": True,
                 "started_at": time.time(), "finished_at": time.time()}
@@ -47,16 +52,20 @@ def test_unsigned_test_receipt_cannot_be_promoted_or_replayed(tmp_path):
     source = tmp_path / "sample.py"
     source.write_text("assert True\n")
     authority = EvidenceAuthority(tmp_path)
-    runner = SandboxRunner(authority, TestBackend(), UnsignedTestAttestor())
-    receipt = runner.run_test(["pytest", "-q", "sample.py"], cwd=tmp_path,
-                              source_paths=["sample.py"])["evidence_receipt"]
-    hashes = {"sample.py": hashlib.sha256(source.read_bytes()).hexdigest()}
-    decision = PromotionGate(authority).assess(
-        evidence_receipt=receipt, human_approved=True, regression_passed=True,
-        rollback_verified=True, source_hashes=hashes, critical_findings=0)
-    assert decision.allowed is False
-    assert "independently_trusted_attestation_required" in decision.reasons
-    assert LearningTrustGate(authority).accepts({"evidence_receipt": receipt}) is False
+    backend = TestBackend()
+    runner = SandboxRunner(
+        authority, backend, UnsignedTestAttestor(), AttestorTrustPolicy()
+    )
+    with pytest.raises(SandboxUnavailable, match="pinned Ed25519"):
+        runner.run_test(
+            ["pytest", "-q", "sample.py"],
+            cwd=tmp_path,
+            source_paths=["sample.py"],
+        )
+    assert backend.calls == 0
+    assert LearningTrustGate(authority).accepts(
+        {"evidence_receipt": {"payload": {}, "signature": "0" * 64}}
+    ) is False
 
 
 def test_invalid_public_key_configuration_is_ignored():
@@ -94,7 +103,7 @@ def test_ed25519_attestation_is_accepted_only_when_pinned(tmp_path):
     policy = AttestorTrustPolicy({"native-os-attestor": {
         "public_key_hex": public_key.hex(),
         "backend_ids": ["phase36-5-test-backend"]}})
-    runner = SandboxRunner(authority, TestBackend(), SignedAttestor())
+    runner = SandboxRunner(authority, TestBackend(), SignedAttestor(), policy)
     receipt = runner.run_test(["pytest", "-q", "sample.py"], cwd=tmp_path,
                               source_paths=["sample.py"])["evidence_receipt"]
     attestation = receipt["payload"]["backend_attestation"]
