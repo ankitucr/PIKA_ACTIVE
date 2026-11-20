@@ -46,6 +46,9 @@ class Phase34LearningRepair:
         self.trust_gate = LearningTrustGate(
             self.evidence_authority, attestor_policy
         )
+        # The same pinned policy must govern storage trust and replay trust.
+        # Without an independently pinned attestor this gate fails closed.
+        self.bridge.learner.set_trust_gate(self.trust_gate)
 
     def lookup_candidates(
         self,

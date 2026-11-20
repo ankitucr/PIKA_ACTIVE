@@ -52,10 +52,10 @@ def add(a, b):
         source="cohere",
     )
 
-    assert first["trusted"] is True
+    assert first["trusted"] is False
 
-    print("LEARNING: VERIFIED")
-    print("TRUSTED SOLUTION: VERIFIED")
+    print("LEARNING: RECORDED")
+    print("TRUST: BLOCKED WITHOUT SIGNED PINNED EVIDENCE")
 
     # ------------------------------------------------------
     # ROUND 2
@@ -72,12 +72,9 @@ def add(a, b):
         error_message="expected 9 but received 0",
     )
 
-    assert replay is not None
-    assert replay["solution"] == first_solution
+    assert replay is None
 
-    print("MEMORY RETRIEVAL: VERIFIED")
-    print("LEARNED SOLUTION REUSED: VERIFIED")
-    print("COHERE CALL: 0")
+    print("MEMORY REPLAY: BLOCKED WITHOUT PINNED ATTESTATION")
 
     # ------------------------------------------------------
     # ROUND 3
@@ -109,7 +106,7 @@ def add(a, b):
         source="local",
     )
 
-    assert second["trusted"] is True
+    assert second["trusted"] is False
 
     stored = learner.retrieve(
         task="repair add function failing arithmetic test",
@@ -124,10 +121,9 @@ def add(a, b):
             match["solutions"]
         )
 
-    assert len(all_solutions) >= 2
+    assert len(all_solutions) == 0
 
-    print("MULTIPLE SOLUTIONS: VERIFIED")
-    print("SOLUTION DIVERSITY: VERIFIED")
+    print("UNATTESTED SOLUTIONS: NOT REPLAYABLE")
 
     # ------------------------------------------------------
     # ROUND 4
@@ -165,12 +161,10 @@ def add(a, b):
         root_cause="function returns incorrect arithmetic result",
     )
 
-    assert best is not None
-    assert best["solution"] != bad_solution
+    assert best is None
 
-    print("FAILED METHOD LEARNING: VERIFIED")
-    print("FAILED METHOD NOT TRUSTED: VERIFIED")
-    print("BAD METHOD NOT SELECTED: VERIFIED")
+    print("FAILED METHOD: RECORDED")
+    print("NO SOLUTION TRUSTED WITHOUT SIGNED EVIDENCE")
 
     # ------------------------------------------------------
     # FINAL
@@ -182,11 +176,8 @@ def add(a, b):
     print("STATS:", json.dumps(stats, indent=2))
     print("----------------------------------------------")
     print("PHASE 34 LEARNING ENGINE: PASS")
-    print("Actual reusable learning: VERIFIED")
-    print("Cohere-independent retrieval: VERIFIED")
-    print("Multiple solution methods: VERIFIED")
-    print("Failure learning: VERIFIED")
-    print("Only verified solutions become trusted: VERIFIED")
+    print("Caller-supplied Boolean claims: REJECTED")
+    print("Replay without pinned attestation: BLOCKED")
     print("TERMUX SHELL WILL REMAIN OPEN")
 
 

@@ -62,15 +62,18 @@ def main():
             result,
             {"root_cause": "incorrect multiplication"},
         )
-        assert saved is True
+        # The fake healer above supplies Boolean success claims only. Without
+        # a signed receipt from a pinned attestor, learning must fail closed.
+        assert saved is False
+        assert memory.stats()["total_variants"] == 0
 
-        # Verify persistence through a fresh instance.
+        # Verify that no caller-claimed success was persisted as trusted.
         reloaded = SemanticCodeMemory(db)
         hits = reloaded.retrieve(
             "Implement calculator multiplication",
             verified_only=True,
         )
-        assert any(v["code"] == candidate for v in hits), hits
+        assert not any(v["code"] == candidate for v in hits), hits
 
         print("\nSAVED RECORD:")
         for item in reloaded.data["variants"]:
@@ -81,7 +84,7 @@ def main():
                 "evidence": item["evidence"],
             })
 
-        print("\nPHASE 35 CONTROLLER -> MEMORY: PASS")
+        print("\nPHASE 35 CONTROLLER -> MEMORY: BOOLEAN-ONLY CLAIM BLOCKED")
         print("Production workspace and production memory were not modified.")
 
 

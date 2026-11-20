@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from core.phase36.evidence import LearningTrustGate
+
 
 class LearningEngine:
     """
@@ -25,10 +27,86 @@ class LearningEngine:
 
     VERSION = 1
 
-    def __init__(self, storage_path: str | Path):
+    def __init__(
+        self,
+        storage_path: str | Path,
+        *,
+        trust_gate: LearningTrustGate | None = None,
+    ):
         self.path = Path(storage_path).expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.trust_gate: LearningTrustGate | None = None
+        self.set_trust_gate(trust_gate)
         self.data = self._load()
+
+    def set_trust_gate(self, trust_gate: LearningTrustGate | None) -> None:
+        """Bind the verifier used for all trusted-learning and replay decisions.
+
+        No gate means no trusted learning. Caller-provided booleans are never
+        accepted as substitutes for a receipt verified by a pinned attestor.
+        """
+        if trust_gate is not None and not isinstance(trust_gate, LearningTrustGate):
+            raise TypeError("trust_gate must be a LearningTrustGate or None")
+        self.trust_gate = trust_gate
+        if hasattr(self, "data"):
+            self._revalidate_trust_metadata(self.data)
+
+    def _revalidate_trust_metadata(self, data: dict[str, Any]) -> None:
+        """Recompute trusted flags and solution counters from signed receipts."""
+        trusted_by_solution: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        experiences = data.get("experiences", [])
+        patterns = data.get("patterns", [])
+
+        for experience in experiences if isinstance(experiences, list) else []:
+            if not isinstance(experience, dict):
+                continue
+            trusted = bool(
+                experience.get("success")
+                and self._has_trusted_evidence(
+                    experience.get("verification", {})
+                )
+            )
+            experience["trusted"] = trusted
+            if not trusted:
+                continue
+            key = (
+                str(experience.get("problem_pattern", "")),
+                self.normalize(experience.get("solution", "")),
+            )
+            trusted_by_solution.setdefault(key, []).append(experience)
+
+        for pattern in patterns if isinstance(patterns, list) else []:
+            if not isinstance(pattern, dict):
+                continue
+            problem_pattern = str(pattern.get("problem_pattern", ""))
+            solutions = pattern.get("solutions", [])
+            if not isinstance(solutions, list):
+                pattern["solutions"] = []
+                continue
+            for solution in solutions:
+                if not isinstance(solution, dict):
+                    continue
+                key = (
+                    problem_pattern,
+                    self.normalize(solution.get("solution", "")),
+                )
+                matching = trusted_by_solution.get(key, [])
+                solution["verified_count"] = len(matching)
+                if matching:
+                    latest = max(
+                        matching,
+                        key=lambda item: float(item.get("timestamp", 0) or 0),
+                    )
+                    verification = latest.get("verification", {})
+                    receipt = (
+                        verification.get("evidence_receipt")
+                        if isinstance(verification, dict) else None
+                    )
+                    solution["evidence_receipt"] = (
+                        dict(receipt) if isinstance(receipt, dict) else None
+                    )
+                else:
+                    solution["evidence_receipt"] = None
 
     # ---------------------------------------------------------
     # STORAGE
@@ -54,7 +132,14 @@ class LearningEngine:
             data.setdefault("version", self.VERSION)
             data.setdefault("experiences", [])
             data.setdefault("patterns", [])
+            if not isinstance(data["experiences"], list):
+                data["experiences"] = []
+            if not isinstance(data["patterns"], list):
+                data["patterns"] = []
 
+            # Migrate old trust flags and counters through the currently
+            # configured evidence gate. No caller-persisted Boolean is authority.
+            self._revalidate_trust_metadata(data)
             return data
 
         except Exception:
@@ -159,7 +244,7 @@ class LearningEngine:
             "solution": solution,
             "verification": verification,
             "success": bool(success),
-            "trusted": bool(success and self._verified(verification)),
+            "trusted": bool(success and self._has_trusted_evidence(verification)),
             "source": source,
             "metadata": metadata,
             "replay_context": {
@@ -177,35 +262,27 @@ class LearningEngine:
 
         return record
 
-    @staticmethod
-    def _verified(verification: dict[str, Any]) -> bool:
+    def _has_trusted_evidence(self, verification: Any) -> bool:
+        """Trust only a valid signed sandbox receipt under the pinned policy.
+
+        Fields such as test_passed, independent_test, syntax_valid, and
+        execution_passed are descriptive claims supplied by the caller. They
+        are deliberately ignored for trust decisions.
         """
-        Trust requires real verification.
+        if self.trust_gate is None or not isinstance(verification, dict):
+            return False
+        try:
+            return self.trust_gate.accepts({"verification": verification}) is True
+        except Exception:
+            return False
 
-        Accepted signals:
-          syntax
-          test
-          independent_test
-          execution
-        """
-
-        syntax = bool(
-            verification.get("syntax")
-            or verification.get("syntax_valid")
-        )
-
-        test = bool(
-            verification.get("test")
-            or verification.get("test_passed")
-            or verification.get("independent_test")
-        )
-
-        execution = bool(
-            verification.get("execution")
-            or verification.get("execution_passed")
-        )
-
-        return test or (syntax and execution)
+    def _receipt_is_trusted(self, receipt: Any) -> bool:
+        if self.trust_gate is None:
+            return False
+        try:
+            return self.trust_gate.accepts({"evidence_receipt": receipt}) is True
+        except Exception:
+            return False
 
     # ---------------------------------------------------------
     # PATTERN DATABASE
@@ -385,6 +462,10 @@ class LearningEngine:
             for solution in pattern.get("solutions", []):
                 if solution.get("verified_count", 0) <= 0:
                     continue
+                # Persisted counters and legacy "trusted": true flags are not
+                # authority. Re-verify the signed receipt on every retrieval.
+                if not self._receipt_is_trusted(solution.get("evidence_receipt")):
+                    continue
 
                 success_count = solution.get(
                     "success_count",
@@ -484,6 +565,8 @@ class LearningEngine:
             for solution in match.get("solutions", []):
                 if solution.get("verified_count", 0) <= 0:
                     continue
+                if not self._receipt_is_trusted(solution.get("evidence_receipt")):
+                    continue
 
                 code = str(solution.get("solution", ""))
                 normalized = self.normalize(code)
@@ -540,7 +623,8 @@ class LearningEngine:
         trusted = sum(
             1
             for item in experiences
-            if item.get("trusted")
+            if item.get("success")
+            and self._has_trusted_evidence(item.get("verification", {}))
         )
 
         successes = sum(

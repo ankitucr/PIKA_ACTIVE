@@ -213,6 +213,99 @@ def test_phase35_brain_semantic_filter_requires_pinned_attestor(tmp_path):
 
 
 
+
+def test_learning_engine_rejects_caller_supplied_boolean_claims(tmp_path):
+    engine = LearningEngine(tmp_path / "learning.json")
+    record = engine.learn(
+        task="repair calculator multiplication",
+        error_type="test_failure",
+        root_cause="multiplication is incorrect",
+        error_message="expected product",
+        method="caller-claimed-success",
+        solution="return a * b",
+        verification={
+            "syntax": True,
+            "syntax_valid": True,
+            "test": True,
+            "test_passed": True,
+            "independent_test": True,
+            "execution": True,
+            "execution_passed": True,
+        },
+        success=True,
+    )
+
+    assert record["success"] is True
+    assert record["trusted"] is False
+    assert engine.best_solution(
+        task="repair calculator multiplication",
+        error_type="test_failure",
+        root_cause="multiplication is incorrect",
+    ) is None
+    assert engine.stats()["trusted_solutions"] == 0
+
+
+def test_learning_engine_revalidates_persisted_trust_counters(tmp_path):
+    import json
+
+    from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
+
+    path = tmp_path / "legacy-learning.json"
+    path.write_text(
+        json.dumps({
+            "version": 1,
+            "experiences": [{
+                "task": "repair calculator multiplication",
+                "problem_pattern": "repair calculator multiplication",
+                "success": True,
+                "trusted": True,
+                "verification": {
+                    "test_passed": True,
+                    "independent_test": True,
+                },
+            }],
+            "patterns": [{
+                "problem_pattern": "repair calculator multiplication",
+                "error_type": "test_failure",
+                "root_causes": [],
+                "solutions": [{
+                    "method": "legacy-boolean",
+                    "solution": "return attacker_controlled_result",
+                    "success_count": 1,
+                    "failure_count": 0,
+                    "verified_count": 99,
+                    "last_used": 1,
+                    "evidence_receipt": {
+                        "payload": {"result": "passed", "sandboxed": True},
+                        "signature": "caller-controlled",
+                    },
+                    "replay_context": {},
+                }],
+                "failed_methods": [],
+                "attempts": 1,
+                "successes": 1,
+                "failures": 0,
+                "confidence": 1.0,
+                "updated_at": 1,
+            }],
+        }),
+        encoding="utf-8",
+    )
+    authority = EvidenceAuthority(tmp_path)
+    engine = LearningEngine(
+        path,
+        trust_gate=LearningTrustGate(authority, None),
+    )
+
+    assert engine.data["experiences"][0]["trusted"] is False
+    assert engine.data["patterns"][0]["solutions"][0]["verified_count"] == 0
+
+    assert engine.best_solution(
+        task="repair calculator multiplication",
+        error_type="test_failure",
+    ) is None
+
+
 def test_phase34_replay_preserves_receipt_and_requires_pinned_attestor(tmp_path):
     ed25519 = pytest.importorskip(
         "cryptography.hazmat.primitives.asymmetric.ed25519"
@@ -222,7 +315,11 @@ def test_phase34_replay_preserves_receipt_and_requires_pinned_attestor(tmp_path)
     memory_path = tmp_path / "learning.json"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    engine = LearningEngine(memory_path)
+    pinned_policy = _policy(signing_key)
+    engine = LearningEngine(
+        memory_path,
+        trust_gate=LearningTrustGate(authority, pinned_policy),
+    )
 
     task = "Fix calculator multiplication"
     error_type = "code_error"
