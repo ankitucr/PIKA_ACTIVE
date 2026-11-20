@@ -239,6 +239,23 @@ class SandboxRunner:
         if not isinstance(raw, dict):
             raise EvidenceError("Sandbox backend returned malformed result.")
 
+        # The measured backend must attest to the inputs it actually consumed,
+        # not merely echo the request supplied by this Python wrapper.
+        if raw.get("executed_argv") != list(argv):
+            raise EvidenceError("Sandbox backend executed argv does not match the signed request.")
+        if raw.get("executed_timeout") != timeout:
+            raise EvidenceError("Sandbox backend timeout does not match the signed request.")
+        if raw.get("sandbox_policy_id") != SANDBOX_POLICY_ID:
+            raise EvidenceError("Sandbox backend did not confirm the required sandbox policy.")
+        if raw.get("executed_source_hashes") != hashes:
+            raise EvidenceError("Sandbox backend executed source hashes do not match the signed request.")
+
+        # Reject host-side source drift during a test run as an additional
+        # defense. The backend must also verify hashes inside its own sandbox.
+        after_hashes = self._hash_sources(root, source_paths)
+        if after_hashes != hashes:
+            raise EvidenceError("Source files changed while the sandbox test was running.")
+
         result = {
             "argv": list(argv),
             "timeout": timeout,
