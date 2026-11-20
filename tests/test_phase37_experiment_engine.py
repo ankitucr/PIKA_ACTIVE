@@ -150,6 +150,9 @@ def test_candidate_regression_is_detected_and_never_promoted(tmp_path):
     assert result["baseline"]["passed"] is True
     assert result["candidate"]["passed"] is False
     assert len(runner.calls) == 6
+    assert [Path(call["source_dir"]).name for call in runner.calls] == [
+        "repo", "workspace", "workspace", "repo", "repo", "workspace"
+    ]
     assert all(call["record"] is False for call in runner.calls)
 
 
@@ -176,6 +179,35 @@ def test_stale_baseline_is_rejected_before_any_runner_call(tmp_path):
     (root / "core" / "calc.py").write_text("def add(a, b):\n    return a * b\n")
 
     with pytest.raises(ExperimentError, match="Baseline source changed"):
+        engine.evaluate_candidate(staged["candidate_id"])
+    assert runner.calls == []
+
+
+def test_non_target_dependency_change_invalidates_whole_baseline_tree(tmp_path):
+    root = _project(tmp_path / "repo")
+    (root / "core" / "helper.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    runner = FakeRunner(False, True)
+    engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
+    (root / "core" / "helper.py").write_text("VALUE = 2\\n", encoding="utf-8")
+
+    with pytest.raises(ExperimentError, match="Baseline source tree changed"):
+        engine.evaluate_candidate(staged["candidate_id"])
+    assert runner.calls == []
+
+
+def test_candidate_workspace_extra_file_is_rejected(tmp_path):
+    root = _project(tmp_path / "repo")
+    runner = FakeRunner(False, True)
+    engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
+    candidate_root = (
+        tmp_path / "knowledge" / "PHASE37_EXPERIMENTS" / "candidates"
+        / staged["candidate_id"] / "workspace"
+    )
+    (candidate_root / "unexpected.py").write_text("SHOULD_NOT_RUN = True\\n")
+
+    with pytest.raises(ExperimentError, match="outside the declared target"):
         engine.evaluate_candidate(staged["candidate_id"])
     assert runner.calls == []
 
