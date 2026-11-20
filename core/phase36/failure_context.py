@@ -164,13 +164,18 @@ def _ast_context(source_text: str, line_number: int | None) -> dict[str, Any]:
 
     calls = []
     call_count = 0
-    if nearest_function is not None:
-        for node in ast.walk(nearest_function):
-            if isinstance(node, ast.Call):
-                call_count += 1
-                name = _call_target(node.func)
-                if name and name not in calls:
-                    calls.append(name)
+    call_scope = nearest_function or nearest_class or tree
+    for node in ast.walk(call_scope):
+        if not isinstance(node, ast.Call):
+            continue
+        call_line = getattr(node, "lineno", None)
+        if nearest_function is None and isinstance(call_line, int):
+            if abs(call_line - line_number) > 5:
+                continue
+        call_count += 1
+        name = _call_target(node.func)
+        if name and name not in calls:
+            calls.append(name)
 
     class_name = nearest_class.name if nearest_class is not None else None
     function_name = nearest_function.name if nearest_function is not None else None
@@ -199,6 +204,7 @@ def _ast_context(source_text: str, line_number: int | None) -> dict[str, Any]:
         "import_count": len(imports),
         "calls": calls[:32],
         "call_count": call_count,
+        "call_scope": qualified or "local_module_region",
         "calls_truncated": len(calls) > 32,
     }
 

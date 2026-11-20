@@ -193,7 +193,8 @@ def test_ast_context_does_not_claim_function_for_module_level_failure(tmp_path):
     context = result["snippets"][0]["ast_context"]
     assert context["parse_status"] == "parsed"
     assert context["enclosing_function"] is None
-    assert context["calls"] == []
+    assert context["calls"] == ["json.loads"]
+    assert context["call_scope"] == "local_module_region"
     assert "json" in context["imports"]
 
 
