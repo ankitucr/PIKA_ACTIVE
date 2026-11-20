@@ -1,2 +1,4 @@
 from .controller import EvolutionController
-__all__ = ["EvolutionController"]
+from .experiments import CandidateExperimentEngine, ExperimentError
+
+__all__ = ["EvolutionController", "CandidateExperimentEngine", "ExperimentError"]
