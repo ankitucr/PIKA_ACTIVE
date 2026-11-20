@@ -22,12 +22,19 @@ def _tokens(text):
 def _sha(data): return hashlib.sha256(data).hexdigest()
 
 class PikaCodeLearning:
-    def __init__(self, root=None, max_file_bytes=300_000):
+    def __init__(
+        self,
+        root=None,
+        max_file_bytes=300_000,
+        *,
+        auto_index_on_retrieve=True,
+    ):
         self.root = Path(root) if root else ROOT
         self.corpus = self.root / "data" / "github_code_corpus"
         self.index_path = self.root / "data" / "pika_learning_index.json"
         self.events_path = self.root / "data" / "pika_learning_events.jsonl"
         self.max_file_bytes = max_file_bytes
+        self.auto_index_on_retrieve = bool(auto_index_on_retrieve)
         self.records = []
         self._load_index()
 
@@ -83,11 +90,13 @@ class PikaCodeLearning:
         return {"indexed":len(self.records),"changed":changed,"errors":len(errors)}
 
     def retrieve(self, task, limit=4, max_snippet_chars=2200):
-        if not self.records: self.index_corpus()
+        if not self.records and self.auto_index_on_retrieve:
+            self.index_corpus()
         q=Counter(_tokens(task))
         if not q or not self.records:
             self._event({"type":"retrieval","query":str(task)[:500],"hits":0})
-            return {"query":str(task),"items":[],"reason":"no_query_terms_or_index"}
+            reason = "index_not_ready" if not self.records else "no_query_terms"
+            return {"query":str(task),"items":[],"reason":reason}
         n=len(self.records); df=Counter()
         for r in self.records: df.update(set(r.get("term_counts",{})))
         scored=[]
