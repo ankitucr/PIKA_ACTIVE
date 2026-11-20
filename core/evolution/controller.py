@@ -38,10 +38,10 @@ class EvolutionController:
             "phase37": self.experiments.summary(),
             "safety": {
                 "live_source_writes": False,
-                "generated_code_execution": False,
+                "live_generated_code_execution": False,
+                "local_candidate_execution": "STAGED_LOCAL_VENV_DIAGNOSTIC_ONLY",
                 "automatic_promotion": False,
                 "sandbox": "EXTERNAL_PENDING",
-                "local_candidate_experiments": True,
                 "candidate_trust": "UNVERIFIED_LOCAL",
             },
         }
