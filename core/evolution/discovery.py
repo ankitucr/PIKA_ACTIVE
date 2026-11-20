@@ -7,6 +7,7 @@ current baseline and explicit regression tests are pinned.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -147,11 +148,11 @@ class CandidateDiscoveryQueue:
             if outcome not in {"FAILED", "ERROR", "INCOMPLETE"}:
                 continue
 
-            task_hash = item.get("task_sha256")
+            diag = by_event.get(event_id, {})
+            task_hash = item.get("task_sha256") or diag.get("task_sha256")
             if not isinstance(task_hash, str) or len(task_hash) != 64:
                 task_hash = None
             discovery_id = self._event_key(event_id, task_hash)
-            diag = by_event.get(event_id, {})
             fingerprints = diag.get("repeated_issue_fingerprints", [])
             if not isinstance(fingerprints, list):
                 fingerprints = []
@@ -306,8 +307,18 @@ class CandidateDiscoveryQueue:
             selected_tests = [native_test] if isinstance(native_test, str) and native_test else []
         if not isinstance(selected_tests, list) or not selected_tests:
             raise ExperimentError("Explicit pinned test paths are required before staging.")
-        for path in selected_tests:
-            _safe_python_path(path)
+        normalized_tests = [_safe_python_path(path).as_posix() for path in selected_tests]
+        if len(set(normalized_tests)) != len(normalized_tests):
+            raise ExperimentError("Pinned test paths must be unique.")
+        for candidate_text in candidates:
+            if not isinstance(candidate_text, str) or not candidate_text:
+                raise ExperimentError("Native candidate source must be non-empty text.")
+            if len(candidate_text.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
+                raise ExperimentError("Native candidate exceeds the staging size limit.")
+            try:
+                ast.parse(candidate_text, filename=target.as_posix())
+            except SyntaxError as exc:
+                raise ExperimentError(f"Native candidate syntax rejected: {exc.msg}") from exc
 
         current = self.baseline.joinpath(*target.parts)
         cursor = self.baseline
@@ -336,15 +347,11 @@ class CandidateDiscoveryQueue:
             f"{item.get('event_id')}; native proposal remains unverified."
         )
         for candidate_text in candidates:
-            if not isinstance(candidate_text, str) or not candidate_text:
-                raise ExperimentError("Native candidate source must be non-empty text.")
-            if len(candidate_text.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
-                raise ExperimentError("Native candidate exceeds the staging size limit.")
             staged = self.experiments.stage_candidate(
                 self.baseline,
                 target.as_posix(),
                 candidate_text,
-                test_paths=selected_tests,
+                test_paths=normalized_tests,
                 expected_base_sha256=source_sha,
                 rationale=rationale,
             )
@@ -354,7 +361,7 @@ class CandidateDiscoveryQueue:
         item["candidate_ids"] = candidate_ids
         item["target"] = target.as_posix()
         item["source_sha256"] = source_sha
-        item["test_paths"] = list(selected_tests)
+        item["test_paths"] = list(normalized_tests)
         item["source_backed_root_cause_verified"] = False
         item["proposal_trust"] = "UNVERIFIED_PROPOSAL"
         item["candidate_trust"] = "UNVERIFIED_LOCAL"
@@ -377,7 +384,7 @@ class CandidateDiscoveryQueue:
             "discovery_id": discovery_id,
             "candidate_ids": candidate_ids,
             "target": target.as_posix(),
-            "test_paths": list(selected_tests),
+            "test_paths": list(normalized_tests),
             "proposal_trust": "UNVERIFIED_PROPOSAL",
             "candidate_trust": "UNVERIFIED_LOCAL",
             "source_backed_root_cause_verified": False,
