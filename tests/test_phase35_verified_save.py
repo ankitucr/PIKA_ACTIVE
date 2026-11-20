@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import time
 
 import pytest
@@ -18,9 +17,13 @@ from core.phase34_learning_repair import Phase34LearningRepair
 class TestBackend:
     backend_id = "phase35-learning-test-backend"
 
-    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id=None):
+    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
         now = time.time()
-        result = {
+        return {
+            "executed_argv": list(argv),
+            "executed_timeout": timeout,
+            "sandbox_policy_id": sandbox_policy_id,
+            "executed_source_hashes": dict(source_hashes),
             "exit_code": 0,
             "test_count": 1,
             "stdout": "1 passed",
@@ -29,14 +32,6 @@ class TestBackend:
             "started_at": now,
             "finished_at": now,
         }
-        if sandbox_policy_id is not None:
-            result.update({
-                "executed_argv": list(argv),
-                "executed_timeout": timeout,
-                "sandbox_policy_id": sandbox_policy_id,
-                "executed_source_hashes": dict(source_hashes),
-            })
-        return result
 
 
 def _signed_attestor(private_key):
@@ -87,11 +82,9 @@ def _receipt(tmp_path, private_key):
     )
     key = private_key or ed25519.Ed25519PrivateKey.generate()
     policy = _policy(key)
-    parameters = inspect.signature(SandboxRunner.__init__).parameters
-    if "attestor_policy" in parameters:
-        runner = SandboxRunner(authority, TestBackend(), _signed_attestor(key), policy)
-    else:
-        runner = SandboxRunner(authority, TestBackend(), _signed_attestor(key))
+    runner = SandboxRunner(
+        authority, TestBackend(), _signed_attestor(key), policy
+    )
     receipt = runner.run_test(
         ["python", "-m", "pytest", "-q", "sample.py"],
         cwd=tmp_path,
