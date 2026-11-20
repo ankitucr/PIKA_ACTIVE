@@ -17,7 +17,7 @@ class AttestorTrustPolicy:
     the worker or proposed repair. Empty or missing configuration trusts nobody.
     Test/fake identities are reserved and rejected.
     """
-    SCHEMA = "pika.os-attestation.v1"
+    SCHEMA = "pika.os-attestation.v2"
     RESERVED_PREFIXES = ("test", "fake", "mock", "stub")
 
     def __init__(self, trusted_attestors: Mapping[str, Mapping[str, Any]] | None = None,
