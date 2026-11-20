@@ -88,11 +88,12 @@ class EvolutionController:
             rationale=rationale,
         )
 
-    def evaluate_candidate(self, candidate_id, *, timeout=120, python=None):
+    def evaluate_candidate(self, candidate_id, *, timeout=120, python=None, repetitions=3):
         return self.experiments.evaluate_candidate(
             candidate_id,
             timeout=timeout,
             python=python,
+            repetitions=repetitions,
         )
 
     def cycle(self):
