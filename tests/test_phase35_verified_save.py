@@ -297,6 +297,9 @@ def test_learning_engine_revalidates_persisted_trust_counters(tmp_path):
         trust_gate=LearningTrustGate(authority, None),
     )
 
+    assert engine.data["experiences"][0]["trusted"] is False
+    assert engine.data["patterns"][0]["solutions"][0]["verified_count"] == 0
+
     assert engine.best_solution(
         task="repair calculator multiplication",
         error_type="test_failure",
