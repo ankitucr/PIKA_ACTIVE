@@ -6,7 +6,7 @@ from core.evolution.verified_memory import VerifiedExperimentMemory, VerifiedMem
 
 def make_report(path: Path):
     run = {'passed': True, 'returncode': 0, 'timed_out': False, 'no_tests_ran': False, 'tests_passed': 3, 'tests_failed': 0, 'tests_errors': 0, 'duration_s': 0.2, 'source_modified_files': []}
-    report = {'schema': 'pika.phase37.experiment.v1', 'experiment_id': 'e1', 'candidate_id': 'c1', 'target': 'core/a.py', 'baseline_sha256': 'a'*64, 'candidate_sha256': 'b'*64, 'test_hashes': {'tests/test_a.py': 'c'*64}, 'decision': 'NO_SIGNIFICANT_IMPROVEMENT', 'repetitions': 3, 'baseline': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'candidate': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'trust': 'UNVERIFIED_LOCAL', 'sandboxed': False, 'attested': False, 'replay_allowed': False, 'promotion': 'BLOCKED', 'promotion_allowed': False}
+    summary = {'passed': True, 'passed_runs': 3, 'failed_runs': 0, 'run_count': 3, 'tests_passed': 3, 'tests_failed': 0, 'tests_errors': 0, 'median_duration_s': 0.2, 'runs': [run, run, run]}\n    report = {'schema': 'pika.phase37.experiment.v1', 'experiment_id': 'e1', 'candidate_id': 'c1', 'target': 'core/a.py', 'baseline_sha256': 'a'*64, 'candidate_sha256': 'b'*64, 'test_hashes': {'tests/test_a.py': 'c'*64}, 'decision': 'NO_SIGNIFICANT_IMPROVEMENT', 'repetitions': 3, 'baseline': dict(summary), 'candidate': dict(summary), 'trust': 'UNVERIFIED_LOCAL', 'sandboxed': False, 'attested': False, 'replay_allowed': False, 'promotion': 'BLOCKED', 'promotion_allowed': False}
     path.write_text(json.dumps(report), encoding='utf-8')
     return report
 
