@@ -349,3 +349,46 @@ def test_experiment_summary_and_ledger_record_candidate_lifecycle(tmp_path):
     ledger = Ledger(tmp_path / "knowledge" / "EVOLUTION_LEDGER.jsonl")
     assert ledger.verify()["valid"] is True
     assert ledger.verify()["entries"] == 2
+
+def test_controller_integrates_stage_evaluate_and_status(tmp_path):
+    from core.evolution.controller import EvolutionController
+
+    root = _project(tmp_path / "repo")
+    candidate_file = tmp_path / "candidate_calc.py"
+    candidate_file.write_text(
+        "def add(a, b):\\n    return a + b\\n",
+        encoding="utf-8",
+    )
+    evolution = EvolutionController(root)
+    evolution.experiments.runner = FakeRunner(False, True)
+
+    staged = evolution.stage_candidate(
+        "core/calc.py",
+        candidate_file,
+        test_paths=["tests/test_calc.py"],
+        rationale="Fix incorrect calculator behavior",
+    )
+    result = evolution.evaluate_candidate(staged["candidate_id"])
+    status = evolution.status()
+
+    assert result["decision"] == "FUNCTIONAL_IMPROVEMENT_UNVERIFIED"
+    assert status["phase37"]["candidate_count"] == 1
+    assert status["phase37"]["experiment_count"] == 1
+    assert status["safety"]["local_candidate_execution"] == "STAGED_LOCAL_VENV_DIAGNOSTIC_ONLY"
+    assert status["safety"]["automatic_promotion"] is False
+
+
+def test_expected_base_sha256_prevents_stale_candidate_staging(tmp_path):
+    root = _project(tmp_path / "repo")
+    engine = CandidateExperimentEngine(tmp_path / "knowledge")
+
+    with pytest.raises(ExperimentError, match="Baseline target hash changed"):
+        engine.stage_candidate(
+            root,
+            "core/calc.py",
+            "def add(a, b): return a + b\\n",
+            test_paths=["tests/test_calc.py"],
+            expected_base_sha256="0" * 64,
+        )
+
+
