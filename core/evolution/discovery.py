@@ -24,6 +24,12 @@ _MAX_CANDIDATES = 3
 _MAX_PROPOSAL_BYTES = 500_000
 
 
+def _bounded_text(value: Any, limit: int = 120) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return " ".join(value.split())[:limit] or None
+
+
 def _canonical(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -155,6 +161,16 @@ class CandidateDiscoveryQueue:
                 for row in diag.get("attempt_classifications", [])
                 if isinstance(row, dict) and isinstance(row.get("classification"), str)
             ] if isinstance(diag.get("attempt_classifications"), list) else []
+            all_fingerprints = set(value for value in fingerprints if isinstance(value, str))
+            attempts = diag.get("attempt_classifications", [])
+            if isinstance(attempts, list):
+                for attempt in attempts:
+                    if isinstance(attempt, dict) and isinstance(attempt.get("issue_fingerprints"), list):
+                        all_fingerprints.update(
+                            value for value in attempt["issue_fingerprints"]
+                            if isinstance(value, str)
+                        )
+            safe_fingerprints = sorted(all_fingerprints)[:12]
 
             previous = existing.get(discovery_id)
             if previous is not None:
@@ -170,24 +186,13 @@ class CandidateDiscoveryQueue:
                 "event_id": event_id[:120],
                 "task_sha256": task_hash,
                 "outcome": outcome,
-                "agent": item.get("agent"),
-                "strategy": item.get("strategy"),
+                "agent": _bounded_text(item.get("agent"), 80),
+                "strategy": _bounded_text(item.get("strategy"), 80),
                 "error_types": [
                     value[:100] for value in item.get("error_types", [])
                     if isinstance(value, str)
                 ][:5] if isinstance(item.get("error_types"), list) else [],
-                "issue_texts": [
-                    value[:240] for value in item.get("issue_texts", [])
-                    if isinstance(value, str)
-                ][:10] if isinstance(item.get("issue_texts"), list) else [],
-                "worker_errors": [
-                    value[:160] for value in item.get("worker_errors", [])
-                    if isinstance(value, str)
-                ][:5] if isinstance(item.get("worker_errors"), list) else [],
-                "evidence_missing": [
-                    value for value in item.get("evidence_missing", [])
-                    if isinstance(value, str)
-                ][:10] if isinstance(item.get("evidence_missing"), list) else [],
+                "issue_fingerprints": safe_fingerprints,
                 "diagnostic_classification": diag.get("event_classification"),
                 "repeated_issue_fingerprints": fingerprints[:8],
                 "attempt_classifications": classifications[:12],
