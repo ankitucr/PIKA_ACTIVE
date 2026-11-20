@@ -235,7 +235,7 @@ def test_candidate_rejects_path_traversal_and_symlinked_workspace(tmp_path):
     root = _project(tmp_path / "repo")
     engine = CandidateExperimentEngine(tmp_path / "knowledge")
 
-    with pytest.raises(ExperimentError, match="relative POSIX"):
+    with pytest.raises(ExperimentError, match="traversal"):
         engine.stage_candidate(
             root, "../calc.py", "def add(a, b): return a + b\n",
             test_paths=["tests/test_calc.py"],
