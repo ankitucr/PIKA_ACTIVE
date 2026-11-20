@@ -34,6 +34,10 @@ class BoundBackend:
         self.calls += 1
         assert sandbox_policy_id == SANDBOX_POLICY_ID
         return {
+            "executed_argv": list(argv),
+            "executed_timeout": timeout,
+            "sandbox_policy_id": sandbox_policy_id,
+            "executed_source_hashes": dict(source_hashes),
             "exit_code": 0,
             "test_count": 3,
             "stdout": "3 passed",
