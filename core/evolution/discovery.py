@@ -356,6 +356,11 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("A successful native repair proposal is required.")
         if proposal.get("provider") != "pika-native":
             raise ExperimentError("Only a proposal from the PIKA native repair generator can enter this queue.")
+        if proposal.get("generation_mode") not in {
+            "native_deterministic_rule",
+            "validated_structured_worker_proposal",
+        }:
+            raise ExperimentError("Native proposal generation mode is missing or unsupported.")
         if (
             proposal.get("source_executed") is not False
             or proposal.get("live_source_modified") is not False
