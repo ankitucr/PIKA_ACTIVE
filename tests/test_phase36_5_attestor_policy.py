@@ -20,8 +20,7 @@ class TestBackend:
 
 class UnsignedTestAttestor:
     def attest_backend(self, descriptor):
-        return {"attestor_id": "TEST_ONLY_NOT_PRODUCTION",
-                "backend_id": descriptor["backend_id"],
+        return {**descriptor, "attestor_id": "TEST_ONLY_NOT_PRODUCTION",
                 "measurement_sha256": hashlib.sha256(b"test").hexdigest(),
                 "verified_at": time.time(), "verification_id": "test-attestation"}
 
@@ -81,6 +80,10 @@ def test_ed25519_attestation_is_accepted_only_when_pinned(tmp_path):
             record = {"schema": AttestorTrustPolicy.SCHEMA,
                       "attestor_id": "native-os-attestor",
                       "backend_id": descriptor["backend_id"],
+                      "integration_type": descriptor["integration_type"],
+                      "challenge_nonce": descriptor["challenge_nonce"],
+                      "run_context_sha256": descriptor["run_context_sha256"],
+                      "sandbox_policy_id": descriptor["sandbox_policy_id"],
                       "measurement_sha256": hashlib.sha256(b"measured-backend").hexdigest(),
                       "verified_at": time.time(), "verification_id": "native-verification-001",
                       "signature_algorithm": "ed25519"}
