@@ -140,3 +140,72 @@ def test_invalid_limits_are_rejected(tmp_path):
         FailureContextExtractor(tmp_path, max_bytes=0)
     with pytest.raises(ValueError):
         FailureContextExtractor(tmp_path, radius=21)
+
+
+
+def test_ast_context_identifies_enclosing_class_function_imports_and_calls(tmp_path):
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "calculator.py").write_text(
+        "import math\n"
+        "class Calculator:\n"
+        "    def multiply(self, left, right):\n"
+        "        result = math.prod([left, right])\n"
+        "        return result\n",
+        encoding="utf-8",
+    )
+    result = FailureContextExtractor(tmp_path).collect(
+        'File "/tmp/run/work/core/calculator.py", line 4, in multiply\n'
+    )
+    context = result["snippets"][0]["ast_context"]
+    assert context["parse_status"] == "parsed"
+    assert context["enclosing_class"] == "Calculator"
+    assert context["enclosing_function"] == "multiply"
+    assert context["qualified_symbol"] == "Calculator.multiply"
+    assert context["parameters"] == ["self", "left", "right"]
+    assert "math" in context["imports"]
+    assert "math.prod" in context["calls"]
+
+
+def test_ast_context_reports_syntax_error_without_guessing(tmp_path):
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "broken.py").write_text(
+        "def broken(:\n    return missing()\n",
+        encoding="utf-8",
+    )
+    result = FailureContextExtractor(tmp_path).collect(
+        'File "/tmp/run/work/core/broken.py", line 2, in broken\n'
+    )
+    context = result["snippets"][0]["ast_context"]
+    assert context["parse_status"] == "syntax_error"
+    assert context["parse_error"] == "invalid syntax"
+    assert context["calls"] == []
+
+
+def test_ast_context_does_not_claim_function_for_module_level_failure(tmp_path):
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "module.py").write_text(
+        "import json\nVALUE = json.loads('{}')\n",
+        encoding="utf-8",
+    )
+    result = FailureContextExtractor(tmp_path).collect(
+        'File "/tmp/run/work/core/module.py", line 2, in <module>\n'
+    )
+    context = result["snippets"][0]["ast_context"]
+    assert context["parse_status"] == "parsed"
+    assert context["enclosing_function"] is None
+    assert context["calls"] == []
+    assert "json" in context["imports"]
+
+
+def test_ast_context_marks_missing_line_as_not_attempted(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sample.py").write_text(
+        "def test_sample():\n    assert True\n",
+        encoding="utf-8",
+    )
+    result = FailureContextExtractor(tmp_path).collect(
+        "FAILED tests/test_sample.py::test_sample - AssertionError\n"
+    )
+    context = result["snippets"][0]["ast_context"]
+    assert context["parse_status"] == "not_attempted"
+    assert context["reason"] == "no_traceback_line"

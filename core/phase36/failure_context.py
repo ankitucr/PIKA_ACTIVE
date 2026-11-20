@@ -5,6 +5,7 @@ that a traceback location is a proven root cause.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import re
 from pathlib import Path, PurePosixPath
@@ -71,6 +72,135 @@ def _map_runner_path(raw: str) -> str | None:
     if any(part.startswith(".") for part in rel.parts):
         return None
     return rel.as_posix()
+
+
+
+def _call_target(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_target(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return None
+
+
+def _ast_context(source_text: str, line_number: int | None) -> dict[str, Any]:
+    """Describe enclosing symbols and static calls without executing source."""
+    if line_number is None:
+        return {
+            "parse_status": "not_attempted",
+            "reason": "no_traceback_line",
+            "enclosing_symbols": [],
+            "imports": [],
+            "calls": [],
+        }
+    try:
+        tree = ast.parse(source_text, type_comments=True)
+    except (SyntaxError, ValueError, RecursionError, MemoryError) as exc:
+        return {
+            "parse_status": "syntax_error" if isinstance(exc, SyntaxError) else "parse_unavailable",
+            "parse_error": getattr(exc, "msg", type(exc).__name__)[:200],
+            "parse_error_line": getattr(exc, "lineno", None),
+            "enclosing_symbols": [],
+            "imports": [],
+            "calls": [],
+        }
+
+    symbol_nodes = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        start = getattr(node, "lineno", None)
+        end = getattr(node, "end_lineno", start)
+        if isinstance(start, int) and isinstance(end, int) and start <= line_number <= end:
+            symbol_nodes.append(node)
+    symbol_nodes.sort(
+        key=lambda node: (
+            -(getattr(node, "end_lineno", node.lineno) - node.lineno),
+            node.lineno,
+            node.name,
+        )
+    )
+
+    enclosing_symbols = []
+    for node in symbol_nodes[-8:]:
+        kind = "class" if isinstance(node, ast.ClassDef) else (
+            "async_function" if isinstance(node, ast.AsyncFunctionDef) else "function"
+        )
+        enclosing_symbols.append({
+            "kind": kind,
+            "name": node.name,
+            "start_line": node.lineno,
+            "end_line": getattr(node, "end_lineno", node.lineno),
+        })
+
+    classes = [node for node in symbol_nodes if isinstance(node, ast.ClassDef)]
+    functions = [
+        node for node in symbol_nodes
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    nearest_class = min(
+        classes,
+        key=lambda node: getattr(node, "end_lineno", node.lineno) - node.lineno,
+        default=None,
+    )
+    nearest_function = min(
+        functions,
+        key=lambda node: getattr(node, "end_lineno", node.lineno) - node.lineno,
+        default=None,
+    )
+
+    imports = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            imports.extend(
+                f"{module}.{alias.name}" if module else alias.name
+                for alias in node.names
+            )
+    imports = list(dict.fromkeys(imports))
+
+    calls = []
+    call_count = 0
+    if nearest_function is not None:
+        for node in ast.walk(nearest_function):
+            if isinstance(node, ast.Call):
+                call_count += 1
+                name = _call_target(node.func)
+                if name and name not in calls:
+                    calls.append(name)
+
+    class_name = nearest_class.name if nearest_class is not None else None
+    function_name = nearest_function.name if nearest_function is not None else None
+    qualified = ".".join(x for x in (class_name, function_name) if x) or None
+    parameters = []
+    if nearest_function is not None:
+        args = nearest_function.args
+        parameters = [
+            item.arg for item in (
+                list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)
+            )
+        ]
+        if args.vararg is not None:
+            parameters.append("*" + args.vararg.arg)
+        if args.kwarg is not None:
+            parameters.append("**" + args.kwarg.arg)
+
+    return {
+        "parse_status": "parsed",
+        "enclosing_symbols": enclosing_symbols,
+        "enclosing_class": class_name,
+        "enclosing_function": function_name,
+        "qualified_symbol": qualified,
+        "parameters": parameters[:32],
+        "imports": imports[:32],
+        "import_count": len(imports),
+        "calls": calls[:32],
+        "call_count": call_count,
+        "calls_truncated": len(calls) > 32,
+    }
 
 
 class FailureContextExtractor:
@@ -209,6 +339,7 @@ class FailureContextExtractor:
                 "end_line": end,
                 "source_sha256": hashlib.sha256(raw).hexdigest(),
                 "content": rendered,
+                "ast_context": _ast_context(source_text, line_number),
                 "source_view": view,
             })
 
