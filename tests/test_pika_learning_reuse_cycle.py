@@ -52,33 +52,23 @@ def run():
             semantic, task, [code], outcome, diagnosis,
             replay_context=context, learning_engine=learner,
         )
-        assert saved is True
+        # The fixture supplies only caller-authored Boolean claims and no
+        # signed sandbox receipt. It must not create trusted reusable memory.
+        assert saved is False
 
         # Simulate a later run by reopening both persistent stores.
         semantic2 = SemanticCodeMemory(sem_path)
         learner2 = LearningEngine(learn_path)
 
         hits = semantic2.retrieve(task, language="python", verified_only=True)
-        match = next((v for v in hits if v["code"] == code), None)
-        assert match is not None, "Saved verified code not retrieved after reload"
-        assert match["verification"] == "test_verified"
-        assert match["replay_context"] == context
+        assert not any(v["code"] == code for v in hits), hits
 
-        # Only reuse when all replay-context fields match exactly.
-        required = ("target_path", "old_text", "test_path")
-        compatible = all(match["replay_context"].get(k) == context[k] for k in required)
-        incompatible_context = dict(context, test_path="different_test.py")
-        incompatible = all(
-            match["replay_context"].get(k) == incompatible_context[k]
-            for k in required
+        experience = learner2.best_solution(
+            task=task,
+            error_type="AssertionError",
+            root_cause="wrong return value",
         )
-        assert compatible is True
-        assert incompatible is False
-
-        experience = learner2.best_solution(task=task, error_type="AssertionError",
-                                             root_cause="wrong return value")
-        assert experience is not None, "LearningEngine did not return saved experience"
-        assert experience.get("solution") == code
+        assert experience is None
 
         # Unverified variants must never be returned by default.
         semantic2.remember(
@@ -90,13 +80,11 @@ def run():
         safe_hits = semantic2.retrieve("unverified dangerous alternative", verified_only=True)
         assert all("return -1" not in item["code"] for item in safe_hits)
 
-        print("PASS: repair saved with explicit test evidence")
-        print("PASS: semantic memory survived reload")
-        print("PASS: verified code and replay context retrieved")
-        print("PASS: matching context accepted; changed test context rejected")
-        print("PASS: LearningEngine experience survived reload and retrieval")
-        print("PASS: unverified code excluded from default retrieval")
-        print("RESULT: 6 checks passed; temporary files only")
+        print("PASS: Boolean-only repair claims were rejected")
+        print("PASS: untrusted code excluded from semantic replay")
+        print("PASS: untrusted LearningEngine record not replayable")
+        print("PASS: unverified alternative excluded from default retrieval")
+        print("RESULT: 4 fail-closed checks passed; temporary files only")
 
 
 if __name__ == "__main__":
