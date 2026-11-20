@@ -1,0 +1,204 @@
+name: PIKA Isolated Candidate CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/pika-isolated-candidate-ci.yml"
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Full 40-character commit SHA from this repository"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pika-isolated-candidate-${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-candidate:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
+    name: Isolated candidate tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha || github.sha }}
+      CANDIDATE_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+    steps:
+      - name: Check out trusted base workflow source
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+          submodules: false
+
+      - name: Validate candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_REPO" == "$GITHUB_REPOSITORY" ]] || {
+            echo "Only same-repository candidate commits are accepted."
+            exit 1
+          }
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Candidate SHA must be a full 40-character commit hash."
+            exit 1
+          }
+          echo "Candidate: $CANDIDATE_SHA"
+          echo "Repository: $CANDIDATE_REPO"
+
+      - name: Check out candidate source without persisted credentials
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          token: ${{ github.token }}
+          path: candidate
+          persist-credentials: false
+          submodules: false
+          clean: true
+
+      - name: Compose candidate source with trusted base tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p composite
+          git -C candidate archive --format=tar "$CANDIDATE_SHA" | tar -xf - -C composite
+
+          # Candidate changes cannot replace the test suite or CI configuration
+          # used to judge them. Restore those from the trusted main checkout.
+          rm -rf composite/tests
+          cp -a trusted/tests composite/tests
+          cp trusted/pytest.ini composite/pytest.ini
+          cp trusted/requirements.txt composite/requirements.txt
+          find trusted -maxdepth 1 -type f \\( -name 'test_*.py' -o -name 'phase*_test.py' \\) \\
+            -exec cp -f {} composite/ \\;
+
+          # Never execute repository hooks or candidate-controlled CI files.
+          rm -rf composite/.git composite/.github composite/.venv composite/.sandbox_venv
+          rm -f composite/.env composite/.env.local composite/sitecustomize.py composite/conftest.py
+
+          # Refuse accidentally tracked credentials before creating the archive.
+          if find composite -type f \\( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \\) | grep -q .; then
+            echo "Potential credential file found in candidate checkout; refusing execution."
+            find composite -type f \\( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \\) -print
+            exit 1
+          fi
+
+          tar -cf "$RUNNER_TEMP/pika-candidate.tar" -C composite .
+          sha256sum "$RUNNER_TEMP/pika-candidate.tar"
+          du -h "$RUNNER_TEMP/pika-candidate.tar"
+
+      - name: Build trusted test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pika-image"
+          cp trusted/requirements.txt "$RUNNER_TEMP/pika-image/requirements.txt"
+          cat > "$RUNNER_TEMP/pika-image/Dockerfile" <<'DOCKER'
+          ARG PYTHON_VERSION
+          FROM python:${PYTHON_VERSION}-slim
+          ENV PYTHONDONTWRITEBYTECODE=1 \\
+              PYTHONUNBUFFERED=1 \\
+              PIP_DISABLE_PIP_VERSION_CHECK=1 \\
+              HOME=/tmp
+          COPY requirements.txt /opt/pika/requirements.txt
+          RUN python -m pip install --no-cache-dir --upgrade pip \\
+              && python -m pip install --no-cache-dir -r /opt/pika/requirements.txt \\
+                 pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
+          WORKDIR /work
+          DOCKER
+          docker build --pull \\
+            --build-arg PYTHON_VERSION="${{ matrix.python-version }}" \\
+            -t "pika-isolated-ci:${{ matrix.python-version }}" \\
+            "$RUNNER_TEMP/pika-image"
+
+      - name: Run candidate in disposable network-isolated container
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="pika-isolated-ci:${{ matrix.python-version }}"
+          CID=$(docker create \\
+            --network none \\
+            --read-only \\
+            --cap-drop ALL \\
+            --security-opt no-new-privileges \\
+            --pids-limit 128 \\
+            --memory 3g \\
+            --cpus 2 \\
+            --shm-size 64m \\
+            --ulimit nofile=1024:1024 \\
+            --ulimit nproc=128:128 \\
+            --user 65532:65532 \\
+            --tmpfs /work:rw,nosuid,nodev,mode=1777,size=1536m \\
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=512m \\
+            --workdir /work \\
+            "$IMAGE" sh -c 'sleep 1800')
+          cleanup() { docker rm -f "$CID" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          docker start "$CID" >/dev/null
+          docker cp "$RUNNER_TEMP/pika-candidate.tar" "$CID:/tmp/pika-candidate.tar"
+
+          set +e
+          docker exec "$CID" sh -c '
+            set -eu
+            tar -xf /tmp/pika-candidate.tar -C /work
+            cd /work
+
+            echo "===== CANDIDATE SOURCE COMPILE ====="
+            python -m compileall -q core agents tests pika_live.py main.py pika.py remote_bridge
+
+            echo "===== PREPARE CONTAINER-LOCAL DIAGNOSTIC VENV ====="
+            python -m venv --system-site-packages .sandbox_venv
+            PIP_NO_INDEX=1 python -m core.evolution.local_runner setup
+
+            echo "===== TRUSTED FIRST-PARTY TEST SUITE ====="
+            python -m pytest -q -p no:cacheprovider tests \\
+              --ignore=tests/test_pika_real_cohere_repair.py \\
+              --ignore=tests/test_pika_brain_real_repair.py
+
+            echo "===== TRUSTED ROOT-LEVEL REGRESSION SUITE ====="
+            python -m pytest -q -p no:cacheprovider \\
+              --ignore=test_api_workers.py \\
+              --ignore=test_pika_api.py \\
+              --ignore=tests/test_pika_real_cohere_repair.py \\
+              --ignore=tests/test_pika_brain_real_repair.py
+
+            echo "===== LOCAL RUNNER SELFTEST (NOT ATTESTATION) ====="
+            python -m core.evolution.local_runner selftest
+
+            echo "===== ISOLATED CANDIDATE TESTS COMPLETE ====="
+          ' 2>&1 | tee "$RUNNER_TEMP/pika-isolated-${{ matrix.python-version }}.log"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          echo "container_exit_code=$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate SHA: $CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Python: ${{ matrix.python-version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Isolation: GitHub-hosted ephemeral VM + Docker network=none, read-only rootfs, no capabilities, non-root user, CPU/memory/PID limits." >> "$GITHUB_STEP_SUMMARY"
+          echo "Trust: CI result only. No production attestation or promotion receipt is issued." >> "$GITHUB_STEP_SUMMARY"
+          exit "$STATUS"
+
+      - name: Upload bounded test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pika-isolated-${{ matrix.python-version }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/pika-isolated-${{ matrix.python-version }}.log
+          if-no-files-found: ignore
+          retention-days: 7
