@@ -200,7 +200,10 @@ class VerifiedExperimentMemory:
             if not isinstance(row, dict) or not isinstance(row.get('payload'), dict):
                 raise VerifiedMemoryError(f"Invalid journal row at line {number}.")
             payload = row['payload']
-            expected = hashlib.sha256(_canonical(payload)).hexdigest()
+            try:
+                expected = hashlib.sha256(_canonical(payload)).hexdigest()
+            except (TypeError, ValueError) as exc:
+                raise VerifiedMemoryError(f\"Invalid canonical payload at line {number}.\") from exc
             if row.get('payload_sha256') != expected:
                 raise VerifiedMemoryError(f"Journal hash mismatch at line {number}.")
             identity = (payload.get('experiment_id'), payload.get('report_sha256'))
@@ -298,7 +301,7 @@ class VerifiedExperimentMemory:
         baseline = _validate_group(report.get('baseline'), repetitions)
         candidate = _validate_group(report.get('candidate'), repetitions)
         decision = report.get('decision')
-        if decision not in ALLOWED_DECISIONS:
+        if not isinstance(decision, str) or decision not in ALLOWED_DECISIONS:
             raise VerifiedMemoryError("Unknown experiment decision.")
         _validate_decision(decision, baseline, candidate, repetitions)
         target = _safe_repo_path(report.get('target'))
