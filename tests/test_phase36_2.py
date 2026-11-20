@@ -4,8 +4,13 @@ import hashlib
 import tempfile
 import time
 import unittest
+import inspect
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from core.phase36.attestor_policy import AttestorTrustPolicy
 from core.phase36.evidence import EvidenceAuthority, EvidenceError, LearningTrustGate
 from core.phase36.sandbox import SandboxRunner, SandboxUnavailable
 from core.phase36.governance import PromotionGate
@@ -22,21 +27,68 @@ class FakeRuntime:
 
 
 
+_TEST_ATTESTOR_KEY = Ed25519PrivateKey.generate()
+_TEST_ATTESTOR_PUBLIC = _TEST_ATTESTOR_KEY.public_key().public_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PublicFormat.Raw,
+)
+_TEST_ATTESTOR_ID = "phase36-2-test-attestor"
+_TEST_ATTESTOR_POLICY = AttestorTrustPolicy({
+    _TEST_ATTESTOR_ID: {
+        "public_key_hex": _TEST_ATTESTOR_PUBLIC.hex(),
+        "backend_ids": ["phase36-2-test-backend"],
+    }
+})
+
+
 class FakeBackendAttestor:
     """TEST ONLY. Never configure this in production."""
     def attest_backend(self, descriptor):
-        import hashlib, time
-        bid = descriptor["backend_id"]
-        return {"attestor_id": "TEST_ONLY_NOT_PRODUCTION", "backend_id": bid,
-                "measurement_sha256": hashlib.sha256(bid.encode()).hexdigest(),
-                "verified_at": time.time(), "verification_id": "TEST-ATTESTATION"}
+        record = {
+            "schema": AttestorTrustPolicy.SCHEMA,
+            "attestor_id": _TEST_ATTESTOR_ID,
+            **descriptor,
+            "measurement_sha256": hashlib.sha256(b"phase36-2-test-measurement").hexdigest(),
+            "verified_at": time.time(),
+            "verification_id": "phase36-2-test-attestation",
+            "signature_algorithm": "ed25519",
+        }
+        record["signature_hex"] = _TEST_ATTESTOR_KEY.sign(
+            AttestorTrustPolicy.canonical_message(record)
+        ).hex()
+        return record
+
 
 class FakeSandboxBackend:
-    is_os_isolated = True
-    backend_id = "test-only-fake-backend"
-    def run_test(self, *, argv, cwd, timeout, source_hashes):
-        return {"exit_code": 0, "test_count": 1, "stdout": "1 passed", "stderr": "",
-                "sandboxed": True, "started_at": time.time(), "finished_at": time.time()}
+    backend_id = "phase36-2-test-backend"
+    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id=None):
+        now = time.time()
+        result = {
+            "exit_code": 0,
+            "test_count": 1,
+            "stdout": "1 passed",
+            "stderr": "",
+            "sandboxed": True,
+            "started_at": now,
+            "finished_at": now,
+        }
+        if sandbox_policy_id is not None:
+            result.update({
+                "executed_argv": list(argv),
+                "executed_timeout": timeout,
+                "sandbox_policy_id": sandbox_policy_id,
+                "executed_source_hashes": dict(source_hashes),
+            })
+        return result
+
+
+def _sandbox_runner(authority):
+    backend = FakeSandboxBackend()
+    attestor = FakeBackendAttestor()
+    parameters = inspect.signature(SandboxRunner.__init__).parameters
+    if "attestor_policy" in parameters:
+        return SandboxRunner(authority, backend, attestor, _TEST_ATTESTOR_POLICY)
+    return SandboxRunner(authority, backend, attestor)
 
 
 class Phase362IntegratedTests(unittest.TestCase):
@@ -117,7 +169,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("def test_ok(): assert True\n")
         authority = EvidenceAuthority(self.root)
-        runner = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor())
+        runner = _sandbox_runner(authority)
         result = runner.run_test(["python", "-m", "pytest", "-q", "test_sample.py"],
                                  cwd=self.root, source_paths=["test_sample.py"])
         receipt = result["evidence_receipt"]
@@ -130,7 +182,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        result = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        result = _sandbox_runner(authority).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         receipt = result["evidence_receipt"]
         receipt["payload"]["exit_code"] = 1
@@ -154,7 +206,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = _sandbox_runner(authority).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         decision = PromotionGate(authority).assess(
             evidence_receipt=run["evidence_receipt"], human_approved=True,
@@ -166,7 +218,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = _sandbox_runner(authority).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         hashes = {"test_sample.py": hashlib.sha256(test.read_bytes()).hexdigest()}
         gate = PromotionGate(authority)
@@ -251,7 +303,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = _sandbox_runner(authority).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         trusted = {"solution": "SAFE", "evidence_receipt": run["evidence_receipt"]}
         legacy = {"solution": "UNTRUSTED", "verification": {"test_passed": True, "independent_test": True}}
