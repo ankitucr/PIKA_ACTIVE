@@ -57,6 +57,7 @@ def _native_proposal(old_text):
         "success": True,
         "stage": "native_proposal_ready",
         "provider": "pika-native",
+        "generation_mode": "validated_structured_worker_proposal",
         "target_path": "core/calc.py",
         "old_text": old_text,
         "test_path": "tests/test_calc.py",
@@ -138,6 +139,15 @@ def test_native_proposal_is_source_bound_and_staged_into_experiment_engine(tmp_p
     assert item["candidate_ids"] == result["candidate_ids"]
     assert item["source_sha256"]
     assert item["test_paths"] == ["tests/test_calc.py"]
+    candidate_meta_path = (
+        knowledge / "PHASE37_EXPERIMENTS" / "candidates"
+        / result["candidate_ids"][0] / "candidate.json"
+    )
+    metadata = json.loads(candidate_meta_path.read_text(encoding="utf-8"))
+    assert metadata["provenance"]["discovery_id"] == discovery_id
+    assert metadata["provenance"]["event_id"] == item["event_id"]
+    assert metadata["provenance"]["provider"] == "pika-native"
+    assert metadata["provenance"]["generation_mode"] == "validated_structured_worker_proposal"
 
 
 def test_native_proposal_rejects_stale_old_text_before_staging(tmp_path):
@@ -185,6 +195,24 @@ def test_native_proposal_contract_rejects_worker_claimed_execution(tmp_path):
 
     with pytest.raises(ExperimentError, match="inert proposal contract"):
         queue.stage_native_proposal(discovery_id, proposal)
+
+
+
+def test_discovery_rejects_non_native_proposal_provider(tmp_path):
+    root = _project(tmp_path / "repo")
+    old_text = (root / "core" / "calc.py").read_text(encoding="utf-8")
+    knowledge = tmp_path / "knowledge"
+    queue = CandidateDiscoveryQueue(
+        knowledge, root, CandidateExperimentEngine(knowledge)
+    )
+    discovery_id = queue.refresh(_reflection(), _diagnostics())["discovery_ids"][0]
+    proposal = _native_proposal(old_text)
+    proposal["provider"] = "external-api"
+
+    with pytest.raises(ExperimentError, match="PIKA native repair generator"):
+        queue.stage_native_proposal(discovery_id, proposal)
+
+    assert queue.summary()["candidate_count"] == 0
 
 
 def test_discovery_refresh_preserves_staged_candidate_state(tmp_path):
