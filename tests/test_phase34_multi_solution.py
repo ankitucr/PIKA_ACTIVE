@@ -73,7 +73,7 @@ def main():
         assert len(pattern["failed_methods"]) == 1
 
         assert all(
-            item["verified_count"] > 0
+            item["verified_count"] == 0
             for item in pattern["solutions"]
         )
 
@@ -83,7 +83,7 @@ def main():
 
         assert pattern["confidence"] == round(2 / 3, 4)
 
-        print("PASS: two distinct verified solutions preserved")
+        print("PASS: two Boolean-only success claims remain untrusted")
         print("PASS: failed method stored separately")
         print("PASS: confidence reflects 2 successes / 3 attempts")
 
@@ -112,12 +112,10 @@ def main():
             item["solution"] for item in retrieved_solutions
         }
 
-        assert "return a + b" in solution_texts
-        assert "return sum((a, b))" in solution_texts
-        assert "return a * b" not in solution_texts
+        assert solution_texts == set()
 
-        print("PASS: similar problem retrieved")
-        print("PASS: both verified solutions are available")
+        print("PASS: similar problem pattern found")
+        print("PASS: no solution replayed without signed pinned evidence")
         print("PASS: failed method excluded from trusted solutions")
 
         print("\nPHASE 34 MULTI-SOLUTION MEMORY TEST: PASS")
