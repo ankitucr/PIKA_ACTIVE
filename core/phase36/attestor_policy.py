@@ -127,17 +127,20 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
-def load_attestor_trust_policy(config_path: str | Path) -> AttestorTrustPolicy:
+def load_attestor_trust_policy(
+    config_path: str | Path,
+    *,
+    project_root: str | Path | None = None,
+) -> AttestorTrustPolicy:
     """Load pinned public keys from an explicitly supplied host-managed file.
 
-    The file contains public keys only. It must not be placed in the workspace.
-    Missing, malformed, symlinked, or broadly writable files fail closed.
+    The file contains public keys only, must be outside the project workspace,
+    and must be owner-only on POSIX. Missing or invalid config fails closed.
     """
     if not isinstance(config_path, (str, Path)) or not str(config_path).strip():
         raise AttestorConfigError("An explicit attestor config path is required.")
 
-    supplied = Path(config_path).expanduser()
-    absolute = Path(os.path.abspath(supplied))
+    absolute = Path(os.path.abspath(Path(config_path).expanduser()))
     current = absolute
     while True:
         if current.is_symlink():
@@ -148,13 +151,30 @@ def load_attestor_trust_policy(config_path: str | Path) -> AttestorTrustPolicy:
 
     try:
         resolved = absolute.resolve(strict=True)
-        metadata = resolved.stat()
+        if project_root is not None:
+            workspace_root = (Path(project_root).expanduser().resolve() / "workspace").resolve()
+            try:
+                resolved.relative_to(workspace_root)
+            except ValueError:
+                pass
+            else:
+                raise AttestorConfigError("Attestor config must be outside the project workspace.")
+
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(resolved, flags)
+        with os.fdopen(fd, "rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            raw_bytes = stream.read(65537)
+    except AttestorConfigError:
+        raise
     except OSError as exc:
         raise AttestorConfigError(f"Attestor config is unavailable: {type(exc).__name__}") from exc
 
     if not stat.S_ISREG(metadata.st_mode):
         raise AttestorConfigError("Attestor config must be a regular file.")
-    if metadata.st_size <= 0 or metadata.st_size > 65536:
+    if not raw_bytes or len(raw_bytes) > 65536 or metadata.st_size > 65536:
         raise AttestorConfigError("Attestor config size must be between 1 and 65536 bytes.")
 
     if os.name == "posix":
@@ -168,11 +188,11 @@ def load_attestor_trust_policy(config_path: str | Path) -> AttestorTrustPolicy:
             raise AttestorConfigError("Attestor config directory must not be group/world writable.")
 
     try:
-        raw = resolved.read_text(encoding="utf-8")
+        raw = raw_bytes.decode("utf-8")
         data = json.loads(raw, object_pairs_hook=_reject_duplicate_json_keys)
     except AttestorConfigError:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise AttestorConfigError(f"Attestor config cannot be parsed: {type(exc).__name__}") from exc
 
     if not isinstance(data, dict):

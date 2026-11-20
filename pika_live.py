@@ -278,7 +278,9 @@ async def main() -> int:
     attestor_policy = None
     if args.attestor_config:
         try:
-            attestor_policy = load_attestor_trust_policy(args.attestor_config)
+            attestor_policy = load_attestor_trust_policy(
+                args.attestor_config, project_root=root
+            )
         except Exception as exc:
             parser.error(f"Attestor configuration rejected: {type(exc).__name__}: {exc}")
 

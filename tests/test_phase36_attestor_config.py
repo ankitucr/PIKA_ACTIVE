@@ -159,3 +159,13 @@ def test_runtime_status_exposes_only_pinned_attestor_ids(tmp_path):
     assert status["mode"] == "PINNED_ED25519"
     assert status["trusted_attestor_ids"] == ["host-integrator-01"]
     assert status["execution"] == "BLOCKED_UNTIL_AUDITED_OS_SANDBOX"
+
+
+
+def test_config_inside_project_workspace_is_rejected(tmp_path):
+    project_root = tmp_path / "pika"
+    workspace = project_root / "workspace"
+    workspace.mkdir(parents=True)
+    path, _ = _write_config(workspace)
+    with pytest.raises(AttestorConfigError, match="outside the project workspace"):
+        load_attestor_trust_policy(path, project_root=project_root)
