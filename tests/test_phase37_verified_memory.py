@@ -26,6 +26,16 @@ def test_rejects_summary_mismatch(tmp_path):
     report = tmp_path/'report.json'; value = make_report(report); value['candidate']['passed_runs'] = 2; report.write_text(json.dumps(value))
     with pytest.raises(VerifiedMemoryError): VerifiedExperimentMemory(tmp_path/'knowledge').record(report)
 
+def test_rejects_corrupt_existing_journal_before_writing_memory(tmp_path):
+    report = tmp_path/'report.json'; make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    memory.knowledge.mkdir(parents=True, exist_ok=True)
+    memory.journal.write_text('{broken-json\\n', encoding='utf-8')
+    with pytest.raises(VerifiedMemoryError):
+        memory.record(report)
+    assert not memory.memory.path.exists()
+
+
 def test_rejects_duplicate_evidence(tmp_path):
     report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge'); memory.record(report)
     with pytest.raises(VerifiedMemoryError): memory.record(report)
