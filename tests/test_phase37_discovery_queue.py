@@ -19,7 +19,7 @@ def _project(root: Path):
         "def test_add():\n    assert add(2, 3) == 5\n",
         encoding="utf-8",
     )
-    return source
+    return root
 
 
 def _reflection(event_id="event-123", outcome="FAILED"):
