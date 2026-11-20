@@ -20,19 +20,19 @@ Phase 37 introduces a repeatable candidate lifecycle in `core/evolution/experime
 Create a candidate source file separately from the live source tree, then stage it against an existing target and its tests:
 
 ```bash
-python -m core.evolution.cli candidate-stage --root . \\
-  --target core/example.py \\
-  --candidate-file /path/to/candidate_example.py \\
-  --test-path tests/test_example.py \\
+python -m core.evolution.cli candidate-stage --root . \
+  --target core/example.py \
+  --candidate-file /path/to/candidate_example.py \
+  --test-path tests/test_example.py \
   --rationale 'Describe the observed failure and expected behavior'
 ```
 
 Use the returned candidate ID to compare baseline and candidate:
 
 ```bash
-python -m core.evolution.cli candidate-evaluate --root . \\
-  --candidate-id CANDIDATE_ID \\
-  --timeout 120 --repetitions 3 \\
+python -m core.evolution.cli candidate-evaluate --root . \
+  --candidate-id CANDIDATE_ID \
+  --timeout 120 --repetitions 3 \
   --python .sandbox_venv/bin/python
 ```
 
