@@ -30,3 +30,7 @@ python -m core.evolution.cli record-experiment-memory --root . --report-file PIK
 ## Trust boundary
 
 These records are local diagnostic evidence only. They remain `UNVERIFIED`, cannot be replayed as trusted learning, and cannot authorize promotion. Independent attestation, trusted-learning admission and human approval remain separate requirements.
+
+## Operational recovery
+
+If an evaluation writes the journal but a later projection fails, rerun `record-experiment-memory` for the same report. The journal identity is reused and only missing memory/ledger projections are appended.
