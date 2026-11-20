@@ -1,0 +1,79 @@
+.env
+.env.*
+!.env.example
+.venv/
+.sandbox_venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pika/
+logs/
+backups/
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# PIKA private trust and authentication files
+/data/.phase36_trust.key
+/remote_bridge/.token
+
+# Private runtime state
+/memory/
+/workspace/
+/data/
+
+# Local generated reports
+PIKA_*_AUDIT.txt
+PIKA_*_REPORT.txt
+
+# Private memory export and root backups
+/pika_memory_export.txt
+/main.py.before_*
+/main.py.*.backup
+
+# Historical source backups
+*.backup
+*.bak
+*.before_*
+*.old
+*.phase*-backup
+backups/
+
+# Additional historical test/source snapshots
+*.before-*
+*.pre-*
+*.phase*_backup
+*.orig
+*.rej
+*~
+
+# Remaining historical snapshots
+*.pre_*
+*.pre-*
+*.diag-backup
+*.predict_fix_*
+*.circular-backup
+
+# Additional numbered backup snapshots
+*.backup2
+*.backup3
+
+# PIKA private runtime knowledge and personal state
+/PIKA_KNOWLEDGE/*LEDGER*.jsonl
+/PIKA_KNOWLEDGE/*MEMORY*.jsonl
+/PIKA_KNOWLEDGE/IDENTITY.*
+/PIKA_KNOWLEDGE/GOAL_QUEUE.json
+/PIKA_KNOWLEDGE/HANDOFF.md
+/PIKA_KNOWLEDGE/BATTERY_RUNS.jsonl
+/PIKA_KNOWLEDGE/DIAGNOSTIC_ANALYSIS.json
+/PIKA_KNOWLEDGE/EVOLUTION_STATE.json
+/PIKA_KNOWLEDGE/EXPLANATION_WORK_REPORT.json
+/PIKA_KNOWLEDGE/REFLECTION_REPORT.json
+/PIKA_KNOWLEDGE/RESOURCE_SNAPSHOT.json
+/PIKA_KNOWLEDGE/LATENCY_PROFILE.json
+/PIKA_KNOWLEDGE/STRATEGY_RELIABILITY.jsonl
+/PIKA_KNOWLEDGE/EVALUATION_COVERAGE.json

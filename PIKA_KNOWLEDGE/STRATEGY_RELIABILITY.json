@@ -1,0 +1,15 @@
+{
+  "schema": "pika.live.strategy_reliability.v1",
+  "events_analyzed": 19,
+  "strategies": {
+    "unknown": {
+      "events": 19,
+      "completed": 19,
+      "successes": 3,
+      "failures_or_errors": 16,
+      "incomplete": 0,
+      "success_rate": 0.1579
+    }
+  },
+  "policy": "Descriptive live telemetry only; correlation is not causation and no strategy is automatically changed."
+}

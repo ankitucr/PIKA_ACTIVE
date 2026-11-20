@@ -1,0 +1,186 @@
+{
+  "schema": "pika.capability_registry.v1",
+  "generated_at": "2026-11-05T18:12:28+00:00",
+  "status_semantics": {
+    "AVAILABLE": "Probe or capability is presently available; scope is explicitly stated.",
+    "DISCOVERED": "Source structure exists; runtime behavior has not been verified.",
+    "VERIFIED": "Independent evidence has been validated by a trusted verifier.",
+    "DEGRADED": "Some required source components are present but others are missing.",
+    "UNAVAILABLE": "Not present or deliberately blocked by policy."
+  },
+  "verified_status_policy": "This scanner never sets VERIFIED. Only a future trusted evidence integration may do so.",
+  "capabilities": [
+    {
+      "id": "workspace_runtime",
+      "name": "Workspace inspection runtime",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/workspace_runtime.py",
+        "tools/workspace.py"
+      ],
+      "present_files": [
+        "core/workspace_runtime.py",
+        "tools/workspace.py"
+      ],
+      "missing_files": [],
+      "description": "Structured project list/read/search/validation tool layer.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "transaction_engine",
+      "name": "Transactional snapshots and rollback",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/transaction_engine.py",
+        "core/snapshot_manager.py"
+      ],
+      "present_files": [
+        "core/transaction_engine.py",
+        "core/snapshot_manager.py"
+      ],
+      "missing_files": [],
+      "description": "Snapshot, commit, and restore infrastructure.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "self_healing",
+      "name": "Self-healing repair engine",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/self_healing.py",
+        "core/phase33_controller.py"
+      ],
+      "present_files": [
+        "core/self_healing.py",
+        "core/phase33_controller.py"
+      ],
+      "missing_files": [],
+      "description": "Repair candidate and recovery logic.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "semantic_memory",
+      "name": "Semantic code memory",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/semantic_code_memory.py"
+      ],
+      "present_files": [
+        "core/semantic_code_memory.py"
+      ],
+      "missing_files": [],
+      "description": "Semantic memory and prior solution retrieval.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "phase36_evidence",
+      "name": "Evidence and governance",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/phase36/evidence.py",
+        "core/phase36/governance.py"
+      ],
+      "present_files": [
+        "core/phase36/evidence.py",
+        "core/phase36/governance.py"
+      ],
+      "missing_files": [],
+      "description": "Source-bound evidence receipts and promotion decisions.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "sandbox_runner",
+      "name": "Sandbox runner implementation",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/phase36/sandbox.py"
+      ],
+      "present_files": [
+        "core/phase36/sandbox.py"
+      ],
+      "missing_files": [],
+      "description": "Sandbox adapter exists; this does not prove an OS sandbox is installed.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "candidate_staging",
+      "name": "Candidate staging and static validation",
+      "status": "DISCOVERED",
+      "required_files": [
+        "core/phase36/staging.py"
+      ],
+      "present_files": [
+        "core/phase36/staging.py"
+      ],
+      "missing_files": [],
+      "description": "Separate candidate workspace with baseline hashes, diff, static parsing, and rollback metadata; no candidate execution.",
+      "evidence": [],
+      "reason": "Source structure found; runtime behavior not yet independently verified."
+    },
+    {
+      "id": "audited_os_sandbox",
+      "name": "Audited OS-level isolation",
+      "status": "UNAVAILABLE",
+      "required_files": [
+        "core/phase36/sandbox.py"
+      ],
+      "present_files": [
+        "core/phase36/sandbox.py"
+      ],
+      "missing_files": [],
+      "description": "A real independently audited OS sandbox backend.",
+      "evidence": [],
+      "reason": "Blocked by safety policy until a separately audited OS isolation backend is available."
+    },
+    {
+      "id": "autonomous_self_modification",
+      "name": "Governed live self-modification",
+      "status": "UNAVAILABLE",
+      "required_files": [
+        "core/phase32_controller.py",
+        "core/phase33_controller.py"
+      ],
+      "present_files": [
+        "core/phase32_controller.py",
+        "core/phase33_controller.py"
+      ],
+      "missing_files": [],
+      "description": "Live code promotion behind verified isolation and governance.",
+      "evidence": [],
+      "reason": "Blocked by safety policy until a separately audited OS isolation backend is available."
+    },
+    {
+      "id": "local_model_artifacts",
+      "name": "Local model artifacts",
+      "status": "UNAVAILABLE",
+      "required_files": [],
+      "present_files": [],
+      "missing_files": [],
+      "description": "Model files detected by extension only; model load/runtime not tested.",
+      "evidence": [],
+      "reason": "0 model artifact(s) discovered; loadability and identity are unverified."
+    },
+    {
+      "id": "resource_awareness",
+      "name": "Hardware and runtime resource awareness",
+      "status": "AVAILABLE",
+      "required_files": [],
+      "present_files": [],
+      "missing_files": [],
+      "description": "Standard-library resource snapshot.",
+      "evidence": [
+        {
+          "type": "runtime_probe",
+          "captured_at": "2026-11-05T18:12:28+00:00"
+        }
+      ],
+      "reason": "Basic platform, CPU, RAM, disk, and environment-presence probes completed."
+    }
+  ]
+}

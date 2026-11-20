@@ -1,0 +1,84 @@
+{
+  "schema": "pika.evolution_roadmap.v1",
+  "north_star": "True Evolution through Verified Self-Improvement",
+  "strategy": "Four integrated milestones. Implement multiple related capabilities together, but preserve evidence, isolation, and rollback gates.",
+  "milestones": [
+    {
+      "id": "36.6",
+      "name": "Self-Awareness & System Intelligence",
+      "status": "completed",
+      "outcomes": [
+        "Persistent identity and mission",
+        "Static architecture and dependency discovery",
+        "Capability registry with evidence-aware statuses",
+        "Hardware and runtime resource snapshot",
+        "Persistent evolution state, decision ledger, and handoff"
+      ],
+      "exit_criteria": [
+        "Discovery is read-only and does not import or execute project modules",
+        "Capability statuses distinguish discovered, available, degraded, unavailable, and verified",
+        "Knowledge files are atomically written and ledger integrity is checkable",
+        "A new session can resume from EVOLUTION_STATE.json and HANDOFF.md"
+      ]
+    },
+    {
+      "id": "36.7",
+      "name": "Safe Execution & Self-Repair Engine",
+      "status": "in_progress",
+      "outcomes": [
+        "Immutable staging workspace and source-bound snapshots",
+        "Transactional candidate patch application and complete rollback",
+        "Audited OS sandbox integration with filesystem, process, network, and resource limits",
+        "Independent verification, regression, benchmark, and evidence receipts",
+        "Human-governed promotion with no self-approval"
+      ],
+      "exit_criteria": [
+        "Real OS isolation is independently audited; proot alone is not accepted as hostile-code isolation",
+        "Candidate code cannot mutate live source during tests",
+        "Rollback is tested against tampering, partial writes, and interrupted transactions",
+        "Promotion requires current source hashes, trusted attestation, regression evidence, approval, and rollback proof"
+      ]
+    },
+    {
+      "id": "36.8",
+      "name": "Autonomous Learning & Cognitive Evolution",
+      "status": "planned",
+      "outcomes": [
+        "Self-reflection and root-cause analysis",
+        "Episodic, semantic, procedural, failure, and code memory",
+        "Continual learning with provenance and correction history",
+        "Meta-learning to evaluate and improve learning strategies",
+        "Knowledge-gap detection and autonomous goal proposals",
+        "Bounded autonomous planning with resource and permission budgets"
+      ],
+      "exit_criteria": [
+        "Learning records are evidence-backed and replay trust is checked",
+        "Memory supports correction, supersession, deduplication, and provenance",
+        "Goal proposals include rationale, expected value, cost, risk, and verification plan",
+        "The system measures task correctness and resource cost, not just self-reported success"
+      ]
+    },
+    {
+      "id": "36.9",
+      "name": "Recursive Evolution & Adaptive Architecture",
+      "status": "planned",
+      "outcomes": [
+        "Recursive source and architecture analysis",
+        "Dynamic tool and module creation with permission manifests",
+        "Adaptive model, agent, and routing selection",
+        "Hardware-aware model and runtime optimization",
+        "C++ and Rust extension build pipeline",
+        "Evolution monitoring, recovery, and long-term evaluation"
+      ],
+      "exit_criteria": [
+        "New tools and modules are staged, sandbox-tested, reviewed, and reversible",
+        "Architecture changes preserve interface and regression compatibility",
+        "Optimizations are benchmarked against a stable baseline",
+        "Long-term evaluation detects regressions, forgetting, and capability degradation"
+      ]
+    }
+  ],
+  "updated_at": "2026-11-05T18:12:28+00:00",
+  "current_milestone": "36.7",
+  "next_milestone": "36.8"
+}

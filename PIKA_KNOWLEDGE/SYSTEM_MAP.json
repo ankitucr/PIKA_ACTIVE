@@ -1,0 +1,1924 @@
+{
+  "schema": "pika.system_map.v1",
+  "root_name": "pika_work_20261104",
+  "platform": "Android-16-aarch64-64bit-ELF",
+  "python_version": "3.14.8",
+  "file_count": 346,
+  "python_file_count": 263,
+  "python_files": [
+    "PIKA_INSTALL_LEARNING.py",
+    "live_task_battery.py",
+    "main.py",
+    "patch_pika.py",
+    "phase32_recovery_test.py",
+    "phase32_transaction_test.py",
+    "phase35_connect.py",
+    "phase35_full_flow_test.py",
+    "phase35_live_repair.py",
+    "phase35_result_fix.py",
+    "phase35_safe_patch.py",
+    "phase35_verified_loop.py",
+    "phase35_wrong_candidate_test.py",
+    "pika.py",
+    "pika_code_learning.py",
+    "pika_live.py",
+    "test_api_workers.py",
+    "test_phase10_tool_brain.py",
+    "test_phase11_workspace.py",
+    "test_phase12_execution.py",
+    "test_phase13_edit_rollback.py",
+    "test_phase14_self_healing.py",
+    "test_phase15_failure_recovery.py",
+    "test_phase16_critic.py",
+    "test_phase17_brain_critic.py",
+    "test_phase18_critic_repair.py",
+    "test_phase19_candidate_ranking.py",
+    "test_phase20_experience_learning.py",
+    "test_phase21_learning_decision.py",
+    "test_phase22_unified_decision.py",
+    "test_phase23_multi_candidate.py",
+    "test_phase24_autonomous_engine.py",
+    "test_phase4_retry.py",
+    "test_phase6_memory.py",
+    "test_phase7_planner.py",
+    "test_phase8_routing.py",
+    "test_phase9_tools.py",
+    "test_pika_api.py",
+    "agents/__init__.py",
+    "agents/api.py",
+    "agents/api_load_balancer.py",
+    "agents/base.py",
+    "agents/local.py",
+    "agents/native_cognition.py",
+    "backups/phase13/20261007T160133001701Z/demo_phase19.py",
+    "backups/phase13/20261007T161334467042Z/phase23_demo.py",
+    "backups/phase13/20261007T161334790617Z/phase23_demo.py",
+    "backups/phase13/20261007T170755934974Z/phase23_demo.py",
+    "backups/phase13/20261007T170756265356Z/phase23_demo.py",
+    "backups/phase13/20261007T170926625921Z/phase24_demo.py",
+    "backups/phase13/20261007T170926961048Z/phase24_demo.py",
+    "backups/phase19/self_healing.py",
+    "backups/phase21/candidate_ranker.py",
+    "backups/phase21/experience_learner.py",
+    "backups/phase22/brain.py",
+    "backups/phase22/candidate_ranker.py",
+    "backups/phase22/critic.py",
+    "backups/phase22/experience_learner.py",
+    "backups/phase2_before_lfm/main.py",
+    "backups/phase2_before_lfm/agents/__init__.py",
+    "backups/phase2_before_lfm/agents/base.py",
+    "backups/phase2_before_lfm/agents/local.py",
+    "backups/phase2_before_lfm/config/__init__.py",
+    "backups/phase2_before_lfm/config/settings.py",
+    "backups/phase2_before_lfm/core/__init__.py",
+    "backups/phase2_before_lfm/core/brain.py",
+    "backups/phase2_before_lfm/core/planner.py",
+    "backups/phase2_before_lfm/core/router.py",
+    "backups/phase2_before_lfm/core/runtime.py",
+    "backups/phase2_before_lfm/models/__init__.py",
+    "backups/phase2_before_lfm/models/base.py",
+    "backups/phase2_before_lfm/models/registry.py",
+    "backups/phase2_before_lfm/models/providers/mock.py",
+    "backups/phase2_before_lfm/models/providers/openai_compatible.py",
+    "backups/phase34/20261008_215304_repair_candidate_generator.py",
+    "backups/phase34/20261008_215821_phase34_real_e2e_before_worker_plan_fix.py",
+    "backups/phase34/20261008_220130_learning_repair_bridge.py",
+    "backups/phase34/20261008_221617_phase34_real_e2e.py",
+    "backups/phase34/20261008_221716_phase34_real_e2e.py",
+    "backups/phase34/20261009_125120_learning_engine.py",
+    "backups/phase34/20261008_213824/brain.py",
+    "backups/phase34/20261008_213824/learning_engine.py",
+    "backups/phase34/20261008_213824/phase33_controller.py",
+    "backups/phase34/20261008_213824/self_healing.py",
+    "backups/phase34_brain_20261009_162645/brain.py",
+    "backups/phase34_brain_20261009_163921/brain.py",
+    "backups/phase34_db_path_20261009_170230/phase33_controller.py",
+    "backups/phase34_db_path_20261009_170230/phase34_real_e2e.py",
+    "backups/phase34_db_path_20261009_170230/self_healing.py",
+    "backups/phase34_diagnostics_20261009_164815/phase34_real_e2e.py",
+    "backups/phase34_diagnostics_20261009_164815/repair_candidate_generator.py",
+    "backups/phase34_multi_20261009_140513/brain.py",
+    "backups/phase34_multi_20261009_140513/learning_engine.py",
+    "backups/phase34_multi_20261009_140513/phase34_learning_repair.py",
+    "backups/phase36_retry_guard_20261106_204422/core/brain.py",
+    "backups/pika_github_learning_v3_20261110_030526/core/git_learning_loop.py",
+    "backups/pika_github_learning_v3_20261110_030526/core/native_code_analyzer.py",
+    "backups/pika_live_runtime_20261107_014416/pika_live.py",
+    "backups/pika_native_independent_brain_20261109_181014/main.py",
+    "backups/pika_native_independent_brain_20261109_181014/pika_live.py",
+    "backups/pika_native_independent_brain_20261109_181014/core/brain.py",
+    "backups/pika_native_independent_brain_20261109_181014/core/live_runtime.py",
+    "backups/pika_native_independent_brain_20261109_181014/core/runtime.py",
+    "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/brain.py",
+    "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/native_cognition.py",
+    "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/native_knowledge_extractor.py",
+    "backups/pika_verified_self_improvement_v1_20261110_112223/pika_live.py",
+    "backups/pika_verified_self_improvement_v2_20261110_121035/test_verified_self_improvement.py",
+    "backups/pika_verified_self_improvement_v2_20261110_121035/verified_self_improvement.py",
+    "config/__init__.py",
+    "config/settings.py",
+    "core/__init__.py",
+    "core/apply_pika_learning_patch.py",
+    "core/autonomous_engine.py",
+    "core/backup_manager.py",
+    "core/brain.py",
+    "core/candidate_ranker.py",
+    "core/controlled_editor.py",
+    "core/critic.py",
+    "core/critic_repair.py",
+    "core/decision.py",
+    "core/decision_loop.py",
+    "core/error_analyzer.py",
+    "core/experience_learner.py",
+    "core/git_learning_loop.py",
+    "core/github_skill_acquisition.py",
+    "core/learning_engine.py",
+    "core/learning_repair_bridge.py",
+    "core/live_runtime.py",
+    "core/multi_candidate_engine.py",
+    "core/native_code_analyzer.py",
+    "core/native_cognition.py",
+    "core/native_knowledge_extractor.py",
+    "core/native_repair_generator.py",
+    "core/package_manager.py",
+    "core/phase32_controller.py",
+    "core/phase33_controller.py",
+    "core/phase34_learning_repair.py",
+    "core/pika_code_learning.py",
+    "core/pika_github_evolution_loop.py",
+    "core/pika_learning_integration_map.py",
+    "core/pika_self_evaluator.py",
+    "core/pika_verified_learning.py",
+    "core/planner.py",
+    "core/recovery_engine.py",
+    "core/repair_candidate_generator.py",
+    "core/router.py",
+    "core/runtime.py",
+    "core/self_healing.py",
+    "core/semantic_code_memory.py",
+    "core/snapshot_manager.py",
+    "core/task_analyzer.py",
+    "core/tool_runtime.py",
+    "core/transaction_engine.py",
+    "core/verification_engine.py",
+    "core/verified_self_improvement.py",
+    "core/workspace_executor.py",
+    "core/workspace_runtime.py",
+    "core/evolution/__init__.py",
+    "core/evolution/cli.py",
+    "core/evolution/controller.py",
+    "core/evolution/diagnostic_analysis.py",
+    "core/evolution/factory.py",
+    "core/evolution/identity.py",
+    "core/evolution/inventory.py",
+    "core/evolution/ledger.py",
+    "core/evolution/local_runner.py",
+    "core/evolution/memory.py",
+    "core/evolution/planner.py",
+    "core/evolution/reflection.py",
+    "core/evolution/repair.py",
+    "core/evolution/retry_guard.py",
+    "core/evolution/telemetry.py",
+    "core/phase36/__init__.py",
+    "core/phase36/__main__.py",
+    "core/phase36/attestor_policy.py",
+    "core/phase36/capabilities.py",
+    "core/phase36/controller.py",
+    "core/phase36/evidence.py",
+    "core/phase36/governance.py",
+    "core/phase36/ledger.py",
+    "core/phase36/local_diagnostics.py",
+    "core/phase36/proposals.py",
+    "core/phase36/sandbox.py",
+    "core/phase36/scanner.py",
+    "core/phase36/staging.py",
+    "core/phase36/staging_cli.py",
+    "core/phase36/weaknesses.py",
+    "core/self_awareness/__init__.py",
+    "core/self_awareness/cli.py",
+    "core/self_awareness/engine.py",
+    "evaluation/__init__.py",
+    "evaluation/evaluator.py",
+    "learning/__init__.py",
+    "learning/experience.py",
+    "memory/__init__.py",
+    "memory/manager.py",
+    "models/__init__.py",
+    "models/base.py",
+    "models/registry.py",
+    "models/providers/api.py",
+    "models/providers/mock.py",
+    "models/providers/openai_compatible.py",
+    "remote_bridge/app.py",
+    "skills/__init__.py",
+    "skills/builtin.py",
+    "skills/registry.py",
+    "skills/workspace.py",
+    "storage/__init__.py",
+    "tests/__init__.py",
+    "tests/bridge_smoke_test.py",
+    "tests/conftest.py",
+    "tests/phase33_brain_real_e2e.py",
+    "tests/phase34_complex_wrong_code.py",
+    "tests/phase34_complex_wrong_code_retest.py",
+    "tests/phase34_memory_progress_audit.py",
+    "tests/phase34_real_e2e.py",
+    "tests/phase34_wrong_code_repair.py",
+    "tests/phase34_wrong_code_retest.py",
+    "tests/test_bootstrap.py",
+    "tests/test_brain_feedback_integration.py",
+    "tests/test_cohere_budget.py",
+    "tests/test_evolution_core.py",
+    "tests/test_evolution_diagnostic_analysis.py",
+    "tests/test_evolution_identity_compat.py",
+    "tests/test_git_learning_v3_hotfix.py",
+    "tests/test_live_runtime.py",
+    "tests/test_local_runner.py",
+    "tests/test_native_cognition.py",
+    "tests/test_native_knowledge_extractor.py",
+    "tests/test_phase34_brain_fallback.py",
+    "tests/test_phase34_brain_integration.py",
+    "tests/test_phase34_learning_real.py",
+    "tests/test_phase34_multi_solution.py",
+    "tests/test_phase35_brain_semantic_integration.py",
+    "tests/test_phase35_context_persistence.py",
+    "tests/test_phase35_controller_to_memory.py",
+    "tests/test_phase35_memory_inspection.py",
+    "tests/test_phase35_production_memory_reuse.py",
+    "tests/test_phase35_verified_save.py",
+    "tests/test_phase36_2.py",
+    "tests/test_phase36_3_workspace_compat.py",
+    "tests/test_phase36_4_attestation.py",
+    "tests/test_phase36_5_attestor_policy.py",
+    "tests/test_phase36_6_self_awareness.py",
+    "tests/test_phase36_7_staging.py",
+    "tests/test_phase36_foundation.py",
+    "tests/test_phase36_hardening.py",
+    "tests/test_phase36_local_diagnostics.py",
+    "tests/test_phase36_retry_guard.py",
+    "tests/test_phase37_explanation_gate.py",
+    "tests/test_phase37_quality_feedback.py",
+    "tests/test_pika_brain_cross_instance_reuse.py",
+    "tests/test_pika_brain_learning_persistence.py",
+    "tests/test_pika_brain_real_repair.py",
+    "tests/test_pika_learning_reuse_cycle.py",
+    "tests/test_pika_real_cohere_repair.py",
+    "tests/test_semantic_code_memory.py",
+    "tests/test_verified_self_improvement.py",
+    "tools/__init__.py",
+    "tools/builtin.py",
+    "tools/registry.py",
+    "tools/workspace.py"
+  ],
+  "files": [
+    {
+      "path": ".env",
+      "size": 974
+    },
+    {
+      "path": "PIKA_INSTALL_LEARNING.py",
+      "size": 3085,
+      "sha256": "00b5aafa3781433867a1b82b9c1a091155d07fb2081891da4e4ff86823cddfec"
+    },
+    {
+      "path": "live_task_battery.py",
+      "size": 3591,
+      "sha256": "aed79356430238108898ca3fc17a893790b7f055e1811593164b4b98547afac9"
+    },
+    {
+      "path": "main.py",
+      "size": 4964,
+      "sha256": "e83cbcd1cc9123fea8317df1c05aa80ebc91ebe5bb84d6cca1872f841b70762b"
+    },
+    {
+      "path": "main.py.before_phase26",
+      "size": 2027
+    },
+    {
+      "path": "main.py.phase29-broken.backup",
+      "size": 3793
+    },
+    {
+      "path": "main.py.phase31-pretest.backup",
+      "size": 3710
+    },
+    {
+      "path": "patch_pika.py",
+      "size": 4969,
+      "sha256": "971c83dababcf9ca6d72d1282dff8316d93a852be60095bebc54b13630537db1"
+    },
+    {
+      "path": "phase32_recovery_test.py",
+      "size": 1584,
+      "sha256": "7ca42d8aae217a04bfa5a1b0179cd415c3415de9db6aa226880c42c0d48dd490"
+    },
+    {
+      "path": "phase32_transaction_test.py",
+      "size": 2410,
+      "sha256": "26f0c211ff2c46c3b0967768f0e50b8e8d42250815a0386fdc4024ab1079c124"
+    },
+    {
+      "path": "phase35_connect.py",
+      "size": 4424,
+      "sha256": "02fbe49f5ba5234138c0dced8c0079020d1b17c8a93df717ec3908f7671c72a5"
+    },
+    {
+      "path": "phase35_full_flow_test.py",
+      "size": 5414,
+      "sha256": "31bbd550947b77040aafd1da07ff97de0a350bf6bc88fa267047caa277126e09"
+    },
+    {
+      "path": "phase35_live_repair.py",
+      "size": 2861,
+      "sha256": "899e95d8a6a79cf158d0a0726e106c4aebf18590687c024d2cb640434054ee91"
+    },
+    {
+      "path": "phase35_result_fix.py",
+      "size": 3799,
+      "sha256": "623fdd52718a0783cec8fd13ba006c23606a8d08779afc2fed46acc21cd21058"
+    },
+    {
+      "path": "phase35_safe_patch.py",
+      "size": 3860,
+      "sha256": "11e487db3659ef15632f9e516c27aa3680292b1ce0bb58217eb7c816a92de3f5"
+    },
+    {
+      "path": "phase35_verified_loop.py",
+      "size": 5277,
+      "sha256": "e4e482aa990002c5d046bf7d44b96d77337bcefebd658073f6731ed4c69067ac"
+    },
+    {
+      "path": "phase35_wrong_candidate_test.py",
+      "size": 2207,
+      "sha256": "5aff6118e763a008c1aa81dc3693cae10cb0d2e49e0613cd292a626f598cadf9"
+    },
+    {
+      "path": "pika.py",
+      "size": 2210,
+      "sha256": "0ef138b0d9a2d516f2a7ab74622d5877444ff4ecafe4f1c3c0c40a4edcad7968"
+    },
+    {
+      "path": "pika_code_learning.py",
+      "size": 7687,
+      "sha256": "342f24366490680a35c86046d4ddbef4be03bd3b69656441303903fa3ecd33ca"
+    },
+    {
+      "path": "pika_live.py",
+      "size": 12350,
+      "sha256": "a51c3574cd498e2fb88aa64d72a263d7c71a50ade09cd968cd20bf7e83da5baf"
+    },
+    {
+      "path": "pika_memory_export.txt",
+      "size": 332515
+    },
+    {
+      "path": "pytest.ini",
+      "size": 29
+    },
+    {
+      "path": "requirements.txt",
+      "size": 49
+    },
+    {
+      "path": "test_api_workers.py",
+      "size": 2023,
+      "sha256": "4cb8ba814b74e7088c484079258a3d722a498013e0ab6fb9c4001fa413626ad0"
+    },
+    {
+      "path": "test_phase10_tool_brain.py",
+      "size": 2160,
+      "sha256": "4abdc76af541484da760f9b63e1c8723b72bcacf74670901d896f9f646dbe3af"
+    },
+    {
+      "path": "test_phase11_workspace.py",
+      "size": 2597,
+      "sha256": "a878aaf323bd8f0a69dcff09c8adee1ad8658c44d0ab546819779be5ebac7744"
+    },
+    {
+      "path": "test_phase12_execution.py",
+      "size": 1478,
+      "sha256": "8d7a6a8165d4be35076a275f524e5e193a1a3539d8920561c8c7441df68c6b1a"
+    },
+    {
+      "path": "test_phase13_edit_rollback.py",
+      "size": 1957,
+      "sha256": "3e59c436829c1d77dd87e5fe497a6909bae6dbfadea998682684075ff93b1e48"
+    },
+    {
+      "path": "test_phase14_self_healing.py",
+      "size": 2873,
+      "sha256": "9db12393f73f5a0e574dc231ab1d76722f487878c648712471a8e35630632a56"
+    },
+    {
+      "path": "test_phase15_failure_recovery.py",
+      "size": 4672,
+      "sha256": "acc67a788ebb85d0332e75eec969d5fcb66ded5852418cd41c143f49e24554be"
+    },
+    {
+      "path": "test_phase16_critic.py",
+      "size": 1804,
+      "sha256": "4868c1e3cd8ec4474745e4362ba9f6821bebd96c6b1e5cecb299333aa4d2f4ee"
+    },
+    {
+      "path": "test_phase17_brain_critic.py",
+      "size": 6147,
+      "sha256": "00556392df68f2fc1a7b4bf370bc0a4aa4402fc4ee804f996114c186d8c61912"
+    },
+    {
+      "path": "test_phase18_critic_repair.py",
+      "size": 2441,
+      "sha256": "990fec041a1f94801fc847e8c5333d138d3f36e389b304025d1ac016556d9f96"
+    },
+    {
+      "path": "test_phase19_candidate_ranking.py",
+      "size": 2707,
+      "sha256": "b4f36319b68c004659cc41856cc9f930852df52aead39525de67d5335c478275"
+    },
+    {
+      "path": "test_phase20_experience_learning.py",
+      "size": 2229,
+      "sha256": "fadef710e9ddd82e4dbccf1aa182c32514cc00ecfa07dc68790c0cb8fd52e603"
+    },
+    {
+      "path": "test_phase21_learning_decision.py",
+      "size": 3052,
+      "sha256": "18da7b4a1720078aa5d07ab26311140c59dd694da5ecadc2a95c33544e4cc8e3"
+    },
+    {
+      "path": "test_phase22_unified_decision.py",
+      "size": 4904,
+      "sha256": "6781d2c99facb1b0ef68b8ec4bf205cd8fe0d36a36f16c8bbcaea0fb13b8c631"
+    },
+    {
+      "path": "test_phase23_multi_candidate.py",
+      "size": 2865,
+      "sha256": "6b2fe56de6e12985a49e18326a209adb3520df14937184d10327c8ecc9eadeb1"
+    },
+    {
+      "path": "test_phase24_autonomous_engine.py",
+      "size": 3274,
+      "sha256": "e7a4fe3be23d5b713e0941be9e60c13798d23efe0084123ffabfdd9e3f15a67a"
+    },
+    {
+      "path": "test_phase4_retry.py",
+      "size": 3434,
+      "sha256": "e234eb91d78019f576a3b1d6b57ffa105a4603e254f65aac23db6ddd9343a213"
+    },
+    {
+      "path": "test_phase6_memory.py",
+      "size": 2250,
+      "sha256": "64cc8cf28177ba853c4b4a3f97213004f96796ded260808d37eb3d5fd9639e0c"
+    },
+    {
+      "path": "test_phase7_planner.py",
+      "size": 2407,
+      "sha256": "758715abede1f187ebbe8af75f1ac336975d641aecd420f7466264528068766f"
+    },
+    {
+      "path": "test_phase8_routing.py",
+      "size": 3797,
+      "sha256": "0d561e5b3ce9675de30517b5b87c67214bd437b4732ff1d76e2afda29e7ac2f3"
+    },
+    {
+      "path": "test_phase9_tools.py",
+      "size": 2728,
+      "sha256": "42b25bea9154360881f14d058971b2a8babec721579a7e67b5600b649fa4dbcf"
+    },
+    {
+      "path": "test_pika_api.py",
+      "size": 2014,
+      "sha256": "6c95685131f31171442473235d1cf6ae89a09ccf8702df71646e2b96e015c4cb"
+    },
+    {
+      "path": "agents/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "agents/api.py",
+      "size": 1411,
+      "sha256": "30e23db348cb632f06d6077808d78d4fe95aad238ba2fb2f151a1bfc9af07fba"
+    },
+    {
+      "path": "agents/api_load_balancer.py",
+      "size": 9854,
+      "sha256": "b538a199dae21ac5c4ac004ce3a395e73070530aeff815bfe6010afffcffb810"
+    },
+    {
+      "path": "agents/api_load_balancer.py.phase32-backup",
+      "size": 8333
+    },
+    {
+      "path": "agents/api_load_balancer.py.phase32-json-contract.backup",
+      "size": 8333
+    },
+    {
+      "path": "agents/base.py",
+      "size": 664,
+      "sha256": "9b765c5018b5fdf4c30fc5c7f1f5613efe5aa0100cfc76f6934e54259c895ea2"
+    },
+    {
+      "path": "agents/local.py",
+      "size": 1284,
+      "sha256": "7428aad4fd7d3486183c2e17356a39de6ea046a4572102fb7729e732135e341d"
+    },
+    {
+      "path": "agents/native_cognition.py",
+      "size": 653,
+      "sha256": "f0b149f14a0bc7a6447799732c39404d232c289fbf1f1308c83b828ac0dcb8d1"
+    },
+    {
+      "path": "backups/phase13/20261007T160133001701Z/demo_phase19.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T161334467042Z/phase23_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T161334790617Z/phase23_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T170755934974Z/phase23_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T170756265356Z/phase23_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T170926625921Z/phase24_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase13/20261007T170926961048Z/phase24_demo.py",
+      "size": 40,
+      "sha256": "4a8430a0403d6d21a62b43b10ca02e9ae96acbc76f6e9d990999cdc30c1795bd"
+    },
+    {
+      "path": "backups/phase19/self_healing.py",
+      "size": 6884,
+      "sha256": "972a9e122e3d578f13433d6ca317d86e40d833a06a68e9698836ddf373aa2683"
+    },
+    {
+      "path": "backups/phase21/candidate_ranker.py",
+      "size": 2242,
+      "sha256": "c3a73dcb9c3cc52b06965d2aa0b72d9eb6baeb5d6b0835bb3d6b5cfff19183ae"
+    },
+    {
+      "path": "backups/phase21/experience_learner.py",
+      "size": 7518,
+      "sha256": "d3bbf4682fd1f2a93ab0aa1a1830ea457cf8d2c1784a18f36f90c3114f62f0b0"
+    },
+    {
+      "path": "backups/phase22/brain.py",
+      "size": 11564,
+      "sha256": "d1af7c9f260b851a7a9f9c6382c6bce1496e8abb7b579b8c1fe02af4bde9ab90"
+    },
+    {
+      "path": "backups/phase22/candidate_ranker.py",
+      "size": 3025,
+      "sha256": "1a710ac3b1a2c308a1845469c2cf969d9eca0c9ad10e8aaad70d6be5697f02de"
+    },
+    {
+      "path": "backups/phase22/critic.py",
+      "size": 4466,
+      "sha256": "aa5e1e3a12abf409992a6efd237fda356f7a69c0c4139776341004f75ff767fe"
+    },
+    {
+      "path": "backups/phase22/experience_learner.py",
+      "size": 9360,
+      "sha256": "aaa255476a543f65875b3de14de8f4ef412e36fb9fe04fa732fc16681453c37f"
+    },
+    {
+      "path": "backups/phase2_before_lfm/main.py",
+      "size": 1231,
+      "sha256": "5176ca5da7e7c735d32b7dff33951d47c17ea1214a00fe79594f63aeecc53240"
+    },
+    {
+      "path": "backups/phase2_before_lfm/agents/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backups/phase2_before_lfm/agents/base.py",
+      "size": 664,
+      "sha256": "9b765c5018b5fdf4c30fc5c7f1f5613efe5aa0100cfc76f6934e54259c895ea2"
+    },
+    {
+      "path": "backups/phase2_before_lfm/agents/local.py",
+      "size": 1284,
+      "sha256": "7428aad4fd7d3486183c2e17356a39de6ea046a4572102fb7729e732135e341d"
+    },
+    {
+      "path": "backups/phase2_before_lfm/config/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backups/phase2_before_lfm/config/settings.py",
+      "size": 384,
+      "sha256": "2d8934c15a0228fe3372a1012ca4cbb9e5a8610f81612781f05e58cc21a20c7e"
+    },
+    {
+      "path": "backups/phase2_before_lfm/core/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backups/phase2_before_lfm/core/brain.py",
+      "size": 1352,
+      "sha256": "4f922e9f18e8da295b76c00f99b2529985803781fd8d8b2c883b97258da989b9"
+    },
+    {
+      "path": "backups/phase2_before_lfm/core/planner.py",
+      "size": 377,
+      "sha256": "84bda74fba7f5d1b78b54c5a5e0eab56f22f64214214811cdcab62924ed8198c"
+    },
+    {
+      "path": "backups/phase2_before_lfm/core/router.py",
+      "size": 874,
+      "sha256": "b72669f881836e2ae2ac1f4522c27b9aa487a4e29ed81e5a5a2dd00e0b1e26fe"
+    },
+    {
+      "path": "backups/phase2_before_lfm/core/runtime.py",
+      "size": 333,
+      "sha256": "a9449c951864da055da0678a9d143cb7fc09cf777da47a6a4a5e10b2b268874f"
+    },
+    {
+      "path": "backups/phase2_before_lfm/models/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backups/phase2_before_lfm/models/base.py",
+      "size": 476,
+      "sha256": "a852b2e1ee891027bbab81fc103e0653904c6752b9a61f0cc420d6c72455dc13"
+    },
+    {
+      "path": "backups/phase2_before_lfm/models/registry.py",
+      "size": 602,
+      "sha256": "c57ae69948affa6b54a5e83476ef89038b9dffaef0ed8552b7a03a3142a8658d"
+    },
+    {
+      "path": "backups/phase2_before_lfm/models/providers/mock.py",
+      "size": 663,
+      "sha256": "e0840bcbb2e0e54941f37bda8e99a4f0b84a588f03c31c481d373b613595d028"
+    },
+    {
+      "path": "backups/phase2_before_lfm/models/providers/openai_compatible.py",
+      "size": 2268,
+      "sha256": "92dc3afdb721474dc3e0c7fb4a7d4c55d71905d66cf4b3a231afd114a63e0863"
+    },
+    {
+      "path": "backups/phase34/20261008_215304_repair_candidate_generator.py",
+      "size": 18333,
+      "sha256": "4341b8252c1bd76ae8bfa0581ab57def5b994457e6233ec8912b1a007029558b"
+    },
+    {
+      "path": "backups/phase34/20261008_215821_phase34_real_e2e_before_worker_plan_fix.py",
+      "size": 9401,
+      "sha256": "a3819f715e83d663e45ef8e60993b12d26e9e654611fe8909225c095912eca4b"
+    },
+    {
+      "path": "backups/phase34/20261008_220130_learning_repair_bridge.py",
+      "size": 3631,
+      "sha256": "679ce594bde679f67f242375005e0f19116906673e5803806735a6f0cba366d3"
+    },
+    {
+      "path": "backups/phase34/20261008_221617_phase34_real_e2e.py",
+      "size": 10074,
+      "sha256": "8547b4b0c09adafd7e9a55620a7b2d29166701cebcecf850e17a772527f13fc9"
+    },
+    {
+      "path": "backups/phase34/20261008_221716_phase34_real_e2e.py",
+      "size": 10108,
+      "sha256": "7cecc832f1280d8a4ed6400e9564bc1cb36d092a020ae271c9ab35e336ca2b72"
+    },
+    {
+      "path": "backups/phase34/20261009_125120_learning_engine.py",
+      "size": 14216,
+      "sha256": "6a8ae9dd116dd73eebfb38abda5fc23ac0ca4f87d0203f488bf2238e843dff29"
+    },
+    {
+      "path": "backups/phase34/brain.py.20261008_213425",
+      "size": 31539
+    },
+    {
+      "path": "backups/phase34/phase33_controller.py.20261008_213425",
+      "size": 2912
+    },
+    {
+      "path": "backups/phase34/repair_candidate_generator.py.20261008_213425",
+      "size": 18333
+    },
+    {
+      "path": "backups/phase34/self_healing.py.20261008_213425",
+      "size": 14322
+    },
+    {
+      "path": "backups/phase34/20261008_213824/brain.py",
+      "size": 31539,
+      "sha256": "823d48594335d65842adb2586b1b045c99ecc5499471a9a598698bd90c5a396a"
+    },
+    {
+      "path": "backups/phase34/20261008_213824/learning_engine.py",
+      "size": 13366,
+      "sha256": "5e90eafac1771df40df724c85f3d1185225d83828ec328c44640daf2bcdf1268"
+    },
+    {
+      "path": "backups/phase34/20261008_213824/phase33_controller.py",
+      "size": 2912,
+      "sha256": "74625e8dcd10190e87cc62daaed9648734c102a99ad1d7fa4efeebce9cffda48"
+    },
+    {
+      "path": "backups/phase34/20261008_213824/self_healing.py",
+      "size": 14470,
+      "sha256": "99925084898d1a2ce02a1b1074e83674c91f3c1d878466b730b7e258c4c0ddf3"
+    },
+    {
+      "path": "backups/phase34_brain_20261009_162645/brain.py",
+      "size": 37202,
+      "sha256": "e5b1a040777b18a9ead83561838cbe7b024894643004076f71094fc574bf66e8"
+    },
+    {
+      "path": "backups/phase34_brain_20261009_163921/brain.py",
+      "size": 37202,
+      "sha256": "e5b1a040777b18a9ead83561838cbe7b024894643004076f71094fc574bf66e8"
+    },
+    {
+      "path": "backups/phase34_db_path_20261009_170230/phase33_controller.py",
+      "size": 2945,
+      "sha256": "d080b178911bb07984770d585f85d3c6c8ac30f709fa4647c031ce5691d1533c"
+    },
+    {
+      "path": "backups/phase34_db_path_20261009_170230/phase34_real_e2e.py",
+      "size": 10171,
+      "sha256": "3d38ce6d9d3ef997ba8738a55f4052e4f236807d615a03b9b6b75da7ac42e6e4"
+    },
+    {
+      "path": "backups/phase34_db_path_20261009_170230/self_healing.py",
+      "size": 18946,
+      "sha256": "933f60a5563443fc0636cc4cef035de5693c3e7668dd733d82c9a3b8be665371"
+    },
+    {
+      "path": "backups/phase34_diagnostics_20261009_164815/phase34_real_e2e.py",
+      "size": 10142,
+      "sha256": "72d238546ae5e5ba642e54ac0e84118f870252d397cacbe4abbbaa9dbf5e4c87"
+    },
+    {
+      "path": "backups/phase34_diagnostics_20261009_164815/repair_candidate_generator.py",
+      "size": 19293,
+      "sha256": "e4f713c9f05908230ea92d7d5771cd188ae651d9255667ac4fbe7da7b22722db"
+    },
+    {
+      "path": "backups/phase34_multi_20261009_140513/brain.py",
+      "size": 37202,
+      "sha256": "e5b1a040777b18a9ead83561838cbe7b024894643004076f71094fc574bf66e8"
+    },
+    {
+      "path": "backups/phase34_multi_20261009_140513/learning_engine.py",
+      "size": 14216,
+      "sha256": "6a8ae9dd116dd73eebfb38abda5fc23ac0ca4f87d0203f488bf2238e843dff29"
+    },
+    {
+      "path": "backups/phase34_multi_20261009_140513/phase34_learning_repair.py",
+      "size": 1518,
+      "sha256": "2640fd29b96f0d6b9407c5e76e80bd6cd8fca5fe4a50b1993d09ad15b202385b"
+    },
+    {
+      "path": "backups/phase36_retry_guard_20261106_204422/core/brain.py",
+      "size": 51629,
+      "sha256": "9a7267e6101a50fdd6f711762db20eaf73dce5ad5b8b3c7f41a4b7121dbfd60d"
+    },
+    {
+      "path": "backups/pika_github_learning_v3_20261110_030526/core/git_learning_loop.py",
+      "size": 16947,
+      "sha256": "47dd4a812fa805bd5750248fd66a4c81372967d0d7603ab62ff89bde58187729"
+    },
+    {
+      "path": "backups/pika_github_learning_v3_20261110_030526/core/native_code_analyzer.py",
+      "size": 21974,
+      "sha256": "3e2255a233423bf5f56543c0e39385422c7c4f3ca1dc41a34e9bb19025230c75"
+    },
+    {
+      "path": "backups/pika_live_runtime_20261107_014416/pika_live.py",
+      "size": 2050,
+      "sha256": "09b8f79cf53a067cf800ba741c8b6d8a746b0dd569c03411c74bd4b2a09528e6"
+    },
+    {
+      "path": "backups/pika_native_independent_brain_20261109_181014/main.py",
+      "size": 4944,
+      "sha256": "9bcaf6d06406feaa30d51beb1879c2150fe7e4e5558bbd520fff6e1cd589b3df"
+    },
+    {
+      "path": "backups/pika_native_independent_brain_20261109_181014/pika_live.py",
+      "size": 10199,
+      "sha256": "6467f7f6c2d9940c6f19222415fafb79fc79ca727eb42bbcade021ae2404cd61"
+    },
+    {
+      "path": "backups/pika_native_independent_brain_20261109_181014/core/brain.py",
+      "size": 52188,
+      "sha256": "eedbb30d308c6a221aadf1ce27f2ffae773bd156a8c842456f3b927790341260"
+    },
+    {
+      "path": "backups/pika_native_independent_brain_20261109_181014/core/live_runtime.py",
+      "size": 18330,
+      "sha256": "d95f21a3e48bb1e4f67dcc2dbbcd41389d925a30eb81a271ee766251b5a44384"
+    },
+    {
+      "path": "backups/pika_native_independent_brain_20261109_181014/core/runtime.py",
+      "size": 769,
+      "sha256": "4d78510b1e30a79b9a00c64ebc36bebca896777ddd2af352bd92694370e13fe5"
+    },
+    {
+      "path": "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/brain.py",
+      "size": 52462,
+      "sha256": "8063f5f37848966963733aa3e9b2409f85924f2a2f511e531a932976cf5da698"
+    },
+    {
+      "path": "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/native_cognition.py",
+      "size": 14954,
+      "sha256": "220a6e7053980508a8b62b8dba9c85e10b595c9187bf11078f535b0e8a593943"
+    },
+    {
+      "path": "backups/pika_native_knowledge_brain_v2_20261110_042534_873632/core/native_knowledge_extractor.py",
+      "size": 27264,
+      "sha256": "71656391f950cb41d5bc5da32b3cb1fa463395cce2512d0864fde1e88eb103f4"
+    },
+    {
+      "path": "backups/pika_verified_self_improvement_v1_20261110_112223/pika_live.py",
+      "size": 11672,
+      "sha256": "06595c2d752fcfc5d1fbe1bcb1c31e4c34d65e4a09dd20bb05aef8bd6dc26490"
+    },
+    {
+      "path": "backups/pika_verified_self_improvement_v2_20261110_121035/test_verified_self_improvement.py",
+      "size": 4674,
+      "sha256": "0020c2322b89e09fbcc5fcdaf9c4693cb5bc60f348b68cd1c3c630dc39ca0a9b"
+    },
+    {
+      "path": "backups/pika_verified_self_improvement_v2_20261110_121035/verified_self_improvement.py",
+      "size": 20044,
+      "sha256": "4773044baf988dccb308ecc95aeaef05ca825d502cf2d00a423e388186a5c67a"
+    },
+    {
+      "path": "config/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "config/settings.py",
+      "size": 384,
+      "sha256": "2d8934c15a0228fe3372a1012ca4cbb9e5a8610f81612781f05e58cc21a20c7e"
+    },
+    {
+      "path": "core/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "core/apply_pika_learning_patch.py",
+      "size": 5834,
+      "sha256": "fce2e3e8f9f0862662a31b895dafab1cacb5f4392337446f82c384afa2f7b110"
+    },
+    {
+      "path": "core/autonomous_engine.py",
+      "size": 2236,
+      "sha256": "7abe777ff5691e4288e8e2954c18bd378b1f4033ec5c4c0bf52bc61e4e615cce"
+    },
+    {
+      "path": "core/backup_manager.py",
+      "size": 2749,
+      "sha256": "67b3b8a6ebf87e7601f178ddd41792f4e58329faae0f119fcd08d886fccac568"
+    },
+    {
+      "path": "core/brain.py",
+      "size": 54120,
+      "sha256": "0b1c8601af662d3e797a52561a384220abf156dd989a2cdac882e7c93ae4648c"
+    },
+    {
+      "path": "core/brain.py.before-context-fix",
+      "size": 40638
+    },
+    {
+      "path": "core/brain.py.phase16_backup",
+      "size": 9651
+    },
+    {
+      "path": "core/brain.py.phase17_error_backup",
+      "size": 11668
+    },
+    {
+      "path": "core/brain.py.phase30-integration.backup",
+      "size": 14774
+    },
+    {
+      "path": "core/brain.py.phase31-preintegration.backup",
+      "size": 16240
+    },
+    {
+      "path": "core/brain.py.phase31.backup",
+      "size": 16240
+    },
+    {
+      "path": "core/brain.py.phase32-before-controller.backup",
+      "size": 23740
+    },
+    {
+      "path": "core/brain.py.phase32-error-propagation.backup",
+      "size": 24948
+    },
+    {
+      "path": "core/brain.py.phase32-final.backup",
+      "size": 25982
+    },
+    {
+      "path": "core/brain.py.phase32-integration.backup",
+      "size": 23740
+    },
+    {
+      "path": "core/brain.py.phase32-start.backup",
+      "size": 23740
+    },
+    {
+      "path": "core/brain.py.phase33-preintegration.backup",
+      "size": 25982
+    },
+    {
+      "path": "core/brain.py.phase35-backup",
+      "size": 40638
+    },
+    {
+      "path": "core/brain.py.phase35-before-result-fix",
+      "size": 40582
+    },
+    {
+      "path": "core/brain.py.phase35-final-backup",
+      "size": 41320
+    },
+    {
+      "path": "core/brain.py.phase35-loop-backup",
+      "size": 38395
+    },
+    {
+      "path": "core/brain.py.phase35-order-backup",
+      "size": 40638
+    },
+    {
+      "path": "core/brain.py.phase35-result-backup",
+      "size": 40582
+    },
+    {
+      "path": "core/brain.py.phase35-safe-backup",
+      "size": 38395
+    },
+    {
+      "path": "core/brain.py.pre_github_learning_v1",
+      "size": 45489
+    },
+    {
+      "path": "core/brain.py.pre_github_repair_knowledge_v2",
+      "size": 46121
+    },
+    {
+      "path": "core/brain.py.pre_learning_backup",
+      "size": 44323
+    },
+    {
+      "path": "core/candidate_ranker.py",
+      "size": 3025,
+      "sha256": "1a710ac3b1a2c308a1845469c2cf969d9eca0c9ad10e8aaad70d6be5697f02de"
+    },
+    {
+      "path": "core/controlled_editor.py",
+      "size": 2883,
+      "sha256": "ee4f16cfe158879573512e0896f67098c73f49dbb967682bf929b68e1896b6ac"
+    },
+    {
+      "path": "core/critic.py",
+      "size": 4466,
+      "sha256": "aa5e1e3a12abf409992a6efd237fda356f7a69c0c4139776341004f75ff767fe"
+    },
+    {
+      "path": "core/critic_repair.py",
+      "size": 2605,
+      "sha256": "aa96570af569e1fec20cd3079359d6ab2a3f8ff21833a22a71c8a651a774b4cf"
+    },
+    {
+      "path": "core/critic_repair.py.phase33-before-integration.backup",
+      "size": 2605
+    },
+    {
+      "path": "core/decision.py",
+      "size": 12713,
+      "sha256": "03de5012a47e1a7c8c677a2b8cc42bb6e68da8526612c8f9ecea59145d1681c3"
+    },
+    {
+      "path": "core/decision_loop.py",
+      "size": 6652,
+      "sha256": "bf01d4fcc31c70fe5ac34b6fe26e2e2183fc7b4ed0b1a28d11ee2ff58f199dee"
+    },
+    {
+      "path": "core/error_analyzer.py",
+      "size": 8312,
+      "sha256": "6cd504cc5b3980fc79dbd4b9a6cdc0a32d7a7cc1f0e43f84c2e853c09e48ac70"
+    },
+    {
+      "path": "core/error_analyzer.py.phase32-dependency.backup",
+      "size": 7437
+    },
+    {
+      "path": "core/error_analyzer.py.pre-generic-recovery",
+      "size": 7685
+    },
+    {
+      "path": "core/experience_learner.py",
+      "size": 9360,
+      "sha256": "aaa255476a543f65875b3de14de8f4ef412e36fb9fe04fa732fc16681453c37f"
+    },
+    {
+      "path": "core/git_learning_loop.py",
+      "size": 19976,
+      "sha256": "ff8906f03f98b73baa48d9322a7720417afe40a4afa1489e33aedefe288f215e"
+    },
+    {
+      "path": "core/github_skill_acquisition.py",
+      "size": 7624,
+      "sha256": "1c58c048990d538430c38957d9735fd5dcf9c00e94deb36b1ef818454abe31f9"
+    },
+    {
+      "path": "core/learning_engine.py",
+      "size": 15203,
+      "sha256": "21c5c825e3d8c2ca2ea3b30043558a74d47b17c86011bc45820477558a107f46"
+    },
+    {
+      "path": "core/learning_repair_bridge.py",
+      "size": 3734,
+      "sha256": "65c9fe006a5038aeb87362c3971548e5a37564ac27de0c2d31939d77aa4052c0"
+    },
+    {
+      "path": "core/live_runtime.py",
+      "size": 18383,
+      "sha256": "57663c535f5bdefbd44c6bd33fe0682928d554160692180307500d6846609059"
+    },
+    {
+      "path": "core/multi_candidate_engine.py",
+      "size": 2782,
+      "sha256": "901640f41e0ec3ec1288dfa804c75eba1b7f8f4a30be3fec0dfdb22465d1a7d5"
+    },
+    {
+      "path": "core/native_code_analyzer.py",
+      "size": 22608,
+      "sha256": "a1fa685488a5e54693b22ecef00636f1eb33a9e0da6eeab2d646ac51abaf32c9"
+    },
+    {
+      "path": "core/native_cognition.py",
+      "size": 18030,
+      "sha256": "7717c15dd1872cdf116bea9231ccdb2860fdda608f1efc0abef763a1a94ef756"
+    },
+    {
+      "path": "core/native_knowledge_extractor.py",
+      "size": 28831,
+      "sha256": "0a9d8ab6f3f87c7313c4934f35cef934c4c3d9c2de257aed89677849c865913a"
+    },
+    {
+      "path": "core/native_repair_generator.py",
+      "size": 1541,
+      "sha256": "538a3b8deb0ee853637f249110e95aaefdd1f59210fd461c78b2e2a7238ad9b7"
+    },
+    {
+      "path": "core/package_manager.py",
+      "size": 4029,
+      "sha256": "2bf06942490f2d14546268d1bd8caec6cb136120862841aba4ca2bd766f3e511"
+    },
+    {
+      "path": "core/package_manager.py.pre-generic-recovery",
+      "size": 3838
+    },
+    {
+      "path": "core/phase32_controller.py",
+      "size": 17777,
+      "sha256": "b0ee04ed5ff5a4f2cd515e05be95abe10199d42855a151843de6460001a6fa9b"
+    },
+    {
+      "path": "core/phase32_controller.py.circular-backup",
+      "size": 13293
+    },
+    {
+      "path": "core/phase32_controller.py.phase32-error-propagation.backup",
+      "size": 15586
+    },
+    {
+      "path": "core/phase32_controller.py.phase32-final.backup",
+      "size": 13249
+    },
+    {
+      "path": "core/phase32_controller.py.phase32-writefix.backup",
+      "size": 13249
+    },
+    {
+      "path": "core/phase32_controller.py.pre-generic-recovery",
+      "size": 13249
+    },
+    {
+      "path": "core/phase33_controller.py",
+      "size": 3335,
+      "sha256": "b8be86836558839d8dada43122e1509d1e3ecfb88b2b4d389a0122e2ceb1b707"
+    },
+    {
+      "path": "core/phase33_controller.py.phase35-backup",
+      "size": 3056
+    },
+    {
+      "path": "core/phase33_controller.py.phase35-result-backup",
+      "size": 3056
+    },
+    {
+      "path": "core/phase34_learning_repair.py",
+      "size": 2543,
+      "sha256": "0371b1c78e1178c9c0329531350997eda5f05ee4e8898a64530acd59eff2b475"
+    },
+    {
+      "path": "core/pika_code_learning.py",
+      "size": 7687,
+      "sha256": "342f24366490680a35c86046d4ddbef4be03bd3b69656441303903fa3ecd33ca"
+    },
+    {
+      "path": "core/pika_github_evolution_loop.py",
+      "size": 9730,
+      "sha256": "32e1cfac9a9ebd31492d54ddae6e6eeefa67c2273879f7f8c644e29d4f5ed5c6"
+    },
+    {
+      "path": "core/pika_learning_integration_map.py",
+      "size": 3642,
+      "sha256": "369f1331568bf8f56f1be233cd0decfd8f0680c9a19742a902fdb9bb46bee3ec"
+    },
+    {
+      "path": "core/pika_self_evaluator.py",
+      "size": 5894,
+      "sha256": "f13b44a52978f3ff0ecddaab7e8d52d073401035d2181d95f9a42ef61be41b97"
+    },
+    {
+      "path": "core/pika_verified_learning.py",
+      "size": 4234,
+      "sha256": "ac39370c62e51a3c864e8d51955d2e23cf2b7320b189703e33ac186bdd303a7d"
+    },
+    {
+      "path": "core/planner.py",
+      "size": 15464,
+      "sha256": "e4b50fa9355fefd2e34936784de19d0c68d3e1d9c96ee88915768feae68320fb"
+    },
+    {
+      "path": "core/planner.py.phase29.backup",
+      "size": 2478
+    },
+    {
+      "path": "core/recovery_engine.py",
+      "size": 2176,
+      "sha256": "e74c5fbbb73a2cfec7b5e5542269902e455a5c0c1d32c26fcc88c661b600d9c9"
+    },
+    {
+      "path": "core/recovery_engine.py.phase32-dependency.backup",
+      "size": 2176
+    },
+    {
+      "path": "core/repair_candidate_generator.py",
+      "size": 20672,
+      "sha256": "e1c5f225e328f22044b1326775b36c319ac8041d878a46160142c8cbf18b924a"
+    },
+    {
+      "path": "core/repair_candidate_generator.py.pre_dict_fix_20261012_145118",
+      "size": 19351
+    },
+    {
+      "path": "core/repair_candidate_generator.py.pre_github_repair_knowledge_v2",
+      "size": 19708
+    },
+    {
+      "path": "core/router.py",
+      "size": 2844,
+      "sha256": "59f2a22cbbcbd19b83540b001e3628004da88669620271414fd12f685478f5e2"
+    },
+    {
+      "path": "core/runtime.py",
+      "size": 806,
+      "sha256": "f5aa09da881f90969aa4d78f6555312bc0915cf4dd4f65b9abca38c712a01db9"
+    },
+    {
+      "path": "core/runtime.py.phase31.backup",
+      "size": 769
+    },
+    {
+      "path": "core/runtime.py.phase32-integration.backup",
+      "size": 769
+    },
+    {
+      "path": "core/self_healing.py",
+      "size": 19980,
+      "sha256": "f7990758282fffb0116b33fd826d980098e272223a756cbf7dce3102a617f4fa"
+    },
+    {
+      "path": "core/self_healing.py.phase33-before-integration.backup",
+      "size": 15193
+    },
+    {
+      "path": "core/self_healing.py.phase35-backup",
+      "size": 19195
+    },
+    {
+      "path": "core/self_healing.py.phase35-result-backup",
+      "size": 19195
+    },
+    {
+      "path": "core/self_healing.py.pre-real-e2e-root-fix-20261008-203845",
+      "size": 15093
+    },
+    {
+      "path": "core/self_healing.py.pre-root-fix-20261008-204039",
+      "size": 15093
+    },
+    {
+      "path": "core/semantic_code_memory.py",
+      "size": 9483,
+      "sha256": "b213042a530895df7503ca37709e4758b44081c53b626f147bca543e7724bb64"
+    },
+    {
+      "path": "core/semantic_code_memory.py.before-context-fix",
+      "size": 9483
+    },
+    {
+      "path": "core/semantic_code_memory.py.phase35-backup",
+      "size": 9274
+    },
+    {
+      "path": "core/snapshot_manager.py",
+      "size": 15622,
+      "sha256": "5bc6c61bef7fa057f38b5f653128c33c2cfb8611bcced4fddbfd4a4daa225f08"
+    },
+    {
+      "path": "core/task_analyzer.py",
+      "size": 10069,
+      "sha256": "191e09bc8a6b96bdb4046978b2c32c5f19ddfefc669e24ab011a7845c346069d"
+    },
+    {
+      "path": "core/task_analyzer.py.before_phase27",
+      "size": 8470
+    },
+    {
+      "path": "core/tool_runtime.py",
+      "size": 5599,
+      "sha256": "c63147bc0a2ff9ba38442de698c85a4f94884548a76b00e9064fb01b01cfd2af"
+    },
+    {
+      "path": "core/transaction_engine.py",
+      "size": 1790,
+      "sha256": "50c3c5ae145688aeafba227f65afc4113c4d2b6ba2a7e03233cdea740840fdfe"
+    },
+    {
+      "path": "core/verification_engine.py",
+      "size": 3459,
+      "sha256": "72e980a7bda4f7f31b937582c1f1cd437791a51e719db3a38b72023af7880e70"
+    },
+    {
+      "path": "core/verified_self_improvement.py",
+      "size": 23620,
+      "sha256": "9153ba6963225574b8f8e7cc103a2ffa0591e5da5e47e518b1ed0f4435a5f10c"
+    },
+    {
+      "path": "core/workspace_executor.py",
+      "size": 12124,
+      "sha256": "0bc795dc2a8b38d95dee750205c24404fb6433ee4193a08c2ebb5ad101b6fed6"
+    },
+    {
+      "path": "core/workspace_executor.py.phase32-integration.backup",
+      "size": 11548
+    },
+    {
+      "path": "core/workspace_executor.py.phase32-start.backup",
+      "size": 11548
+    },
+    {
+      "path": "core/workspace_executor.py.phase32-writefix.backup",
+      "size": 11548
+    },
+    {
+      "path": "core/workspace_executor.py.phase32-writefix.backup2",
+      "size": 11548
+    },
+    {
+      "path": "core/workspace_executor.py.pre-generic-recovery",
+      "size": 11885
+    },
+    {
+      "path": "core/workspace_runtime.py",
+      "size": 2276,
+      "sha256": "81500c53077fed51769a43fea23b7ed91218ac1e49ee18ea1f0ee00265dfc1a8"
+    },
+    {
+      "path": "core/evolution/__init__.py",
+      "size": 78,
+      "sha256": "10d46a80fb347ff5d572400eef9219af514dd75bd208bf01e1213e7cdcf5a18d"
+    },
+    {
+      "path": "core/evolution/cli.py",
+      "size": 883,
+      "sha256": "9672ff9773e5ff5cd4e82784a16da3ebdb2088faaa1fa7df779aa7dc97dc2d5b"
+    },
+    {
+      "path": "core/evolution/controller.py",
+      "size": 2663,
+      "sha256": "2868f6da749db1460c3ef948af02a4897640bbe7c375fc1b857191f8055a6b93"
+    },
+    {
+      "path": "core/evolution/diagnostic_analysis.py",
+      "size": 8909,
+      "sha256": "3cc195da6f7269d932ad265b3e8a534e37e6db6039dac09c001d70b0d25bd0a0"
+    },
+    {
+      "path": "core/evolution/factory.py",
+      "size": 1112,
+      "sha256": "c157d1bfb2d0fbc4b02825370830d6ceea83ba113b67ec9301bd076102dd9652"
+    },
+    {
+      "path": "core/evolution/identity.py",
+      "size": 3454,
+      "sha256": "a7e1a8d3fa9d86172766925e33d82b8a8517b71c4cdc58d484e4b04fdabffadc"
+    },
+    {
+      "path": "core/evolution/inventory.py",
+      "size": 1497,
+      "sha256": "bdc17a039dc3b3eeb91ee2f8eb5caa8cb063412ef8e92eec69642f1e95214cfb"
+    },
+    {
+      "path": "core/evolution/ledger.py",
+      "size": 1389,
+      "sha256": "440afddfcbd41cf0acb05ef1a5008be497a72bf55a8a6c56024331791919d0db"
+    },
+    {
+      "path": "core/evolution/local_runner.py",
+      "size": 11692,
+      "sha256": "300dedaff6b8c021c30f273885a01be18f698f056ceb0b134011f74430315e06"
+    },
+    {
+      "path": "core/evolution/memory.py",
+      "size": 1728,
+      "sha256": "fdc63769916cda2cc716a956c0602d67390058e6a8ba23ad9dd89e906f0d92f8"
+    },
+    {
+      "path": "core/evolution/planner.py",
+      "size": 4265,
+      "sha256": "c872b68588ced76eb648659e7ac1700109a12b7521c0390a5c3298135f003033"
+    },
+    {
+      "path": "core/evolution/reflection.py",
+      "size": 7280,
+      "sha256": "e1568c2df486d72c1e96351f0234684abfa3aebb9e39bdc120c59aa5edbff858"
+    },
+    {
+      "path": "core/evolution/repair.py",
+      "size": 1012,
+      "sha256": "5aafd10f9928bf41ad4aac1ab0f0a475ad773509d49b6d96ed443ed108d8f5ab"
+    },
+    {
+      "path": "core/evolution/retry_guard.py",
+      "size": 3099,
+      "sha256": "abc2987d2671c11afd849a113fe79321db3ad13496e6ca8ff26a7e35bacd4494"
+    },
+    {
+      "path": "core/evolution/telemetry.py",
+      "size": 9211,
+      "sha256": "315af10a39b6b8d3a6c0ac760f54b708425bc956e6b0448c60540742a48d20bf"
+    },
+    {
+      "path": "core/phase36/__init__.py",
+      "size": 369,
+      "sha256": "a83e1acc6fc6b2a29b8d0f98db7316d143803d6d300def2a14790c33422b224b"
+    },
+    {
+      "path": "core/phase36/__main__.py",
+      "size": 1144,
+      "sha256": "1aba78b54e83cb1c15b0cfd84d9b3d3958de714d9a28b8457eda095248244034"
+    },
+    {
+      "path": "core/phase36/attestor_policy.py",
+      "size": 4844,
+      "sha256": "7f40f1baf4938f80d924451db490614ac7c0963bb67b72fb1cb7ebef78502fbd"
+    },
+    {
+      "path": "core/phase36/capabilities.py",
+      "size": 5522,
+      "sha256": "ffbe31dab78e6b849e69134ba5d057efaba16570a379361869cd1ce1bc806128"
+    },
+    {
+      "path": "core/phase36/controller.py",
+      "size": 2505,
+      "sha256": "1439df125f46e3ae2922ad58c137d09289c24a9dada06fefcccf3b701f91eed6"
+    },
+    {
+      "path": "core/phase36/evidence.py",
+      "size": 8673,
+      "sha256": "0071f5a4bfe4da98dba753b65e04e0edc58e7ed3198adc254a99d17626bf915c"
+    },
+    {
+      "path": "core/phase36/governance.py",
+      "size": 2576,
+      "sha256": "522d0da138519d07038d0fa1dadb48db82fb945d197ef8d5b9a766a550801b81"
+    },
+    {
+      "path": "core/phase36/ledger.py",
+      "size": 7576,
+      "sha256": "71145e2302f40e271a3d24dd6ded28b65c15ae55e42bf36bfe11fce4bfcfab33"
+    },
+    {
+      "path": "core/phase36/local_diagnostics.py",
+      "size": 14198,
+      "sha256": "bb9ea9f90c63a6f87f6915bfaafb356d4d64f3d0741ed85b6d3bcec7d4492b24"
+    },
+    {
+      "path": "core/phase36/proposals.py",
+      "size": 4502,
+      "sha256": "8ec5f39c42461cb87db8c679d99a8f546d1cc47830fbf1a39390c1a5ef663e35"
+    },
+    {
+      "path": "core/phase36/sandbox.py",
+      "size": 5166,
+      "sha256": "bf55a783e2c856be5829a01557e13a47e790042f51e125078ebaada710c2f7f1"
+    },
+    {
+      "path": "core/phase36/scanner.py",
+      "size": 4782,
+      "sha256": "7ac4d0d719144720189300fdd702c6c959d49c2ae44e393c8bf1f104e2868c68"
+    },
+    {
+      "path": "core/phase36/staging.py",
+      "size": 25415,
+      "sha256": "2487004d17c095cb5c5af7d55f27be07ca8e4e060cc0e917f5f1f0480b02305c"
+    },
+    {
+      "path": "core/phase36/staging_cli.py",
+      "size": 1432,
+      "sha256": "5a4e5279896cc9c7be18356bd5e61381f48f593bf2dfbe521c9c4f1be6836a54"
+    },
+    {
+      "path": "core/phase36/weaknesses.py",
+      "size": 9789,
+      "sha256": "6c09d29375544d3bee279573f6e0b84cd7bb6a9209408f4acc954ccd6f083eba"
+    },
+    {
+      "path": "core/self_awareness/__init__.py",
+      "size": 214,
+      "sha256": "4f0fda55b920f8466641b948276e2d21756658130e3fc4033a9122e86107b0a9"
+    },
+    {
+      "path": "core/self_awareness/cli.py",
+      "size": 1118,
+      "sha256": "23d01e43e57407e5cce8786956ac2ac1334a0d5151b51491d797bfd8fe28824b"
+    },
+    {
+      "path": "core/self_awareness/engine.py",
+      "size": 33479,
+      "sha256": "b6e0580b05693489af4521f3f66ab42796f2f32ac3d0647267c22277caecfe90"
+    },
+    {
+      "path": "evaluation/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "evaluation/evaluator.py",
+      "size": 18714,
+      "sha256": "8b9a8baaba62c132d1f1f29d08c24af7b69b83c39af5458cf74b22a583b5251e"
+    },
+    {
+      "path": "evaluation/evaluator.py.before_task_aware",
+      "size": 7423
+    },
+    {
+      "path": "evaluation/evaluator.py.pre_flow_guard_20261012_184831",
+      "size": 11898
+    },
+    {
+      "path": "learning/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "learning/experience.py",
+      "size": 2149,
+      "sha256": "ed9eb5e44891aba3038d6e8042c238a2243fb51266fd9b3cfb5375fdb6ca81f5"
+    },
+    {
+      "path": "logs/pika_evolution_daemon.log",
+      "size": 21318
+    },
+    {
+      "path": "logs/pika_evolution_loop.log",
+      "size": 11073
+    },
+    {
+      "path": "logs/pika_native_git_learning.log",
+      "size": 10224
+    },
+    {
+      "path": "logs/pika_self_evaluation.log",
+      "size": 6431
+    },
+    {
+      "path": "logs/real_repair_repeat_20261012_145704.log",
+      "size": 2578
+    },
+    {
+      "path": "memory/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "memory/manager.py",
+      "size": 6420,
+      "sha256": "7a90a703df210da836466944da8c6e773ab4137d3f0a74c5126ce81c28cb9a9f"
+    },
+    {
+      "path": "models/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "models/base.py",
+      "size": 476,
+      "sha256": "a852b2e1ee891027bbab81fc103e0653904c6752b9a61f0cc420d6c72455dc13"
+    },
+    {
+      "path": "models/registry.py",
+      "size": 602,
+      "sha256": "c57ae69948affa6b54a5e83476ef89038b9dffaef0ed8552b7a03a3142a8658d"
+    },
+    {
+      "path": "models/providers/api.py",
+      "size": 3576,
+      "sha256": "01fbbfb3ce07bece0e9843744bf7322bfbb622c2157467739a64e3e444462088"
+    },
+    {
+      "path": "models/providers/mock.py",
+      "size": 663,
+      "sha256": "e0840bcbb2e0e54941f37bda8e99a4f0b84a588f03c31c481d373b613595d028"
+    },
+    {
+      "path": "models/providers/openai_compatible.py",
+      "size": 2628,
+      "sha256": "672635bde3ebbcca5faf42d89a6664c6e132cfb2c576afef529203e00f849053"
+    },
+    {
+      "path": "remote_bridge/.token",
+      "size": 43
+    },
+    {
+      "path": "remote_bridge/app.py",
+      "size": 5661,
+      "sha256": "9da7aa02239c6cca81b5c6e559516697cbfbaff23f92d1f7f81f9485d0b22aee"
+    },
+    {
+      "path": "remote_bridge/app.py.before_workspace_fix",
+      "size": 5648
+    },
+    {
+      "path": "skills/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "skills/builtin.py",
+      "size": 971,
+      "sha256": "978c8402be1c2f13911afcbbc3052e6502b1aac491f36b478845f5bc141c2a20"
+    },
+    {
+      "path": "skills/registry.py",
+      "size": 2158,
+      "sha256": "447a4c7d3d0956ac5a3a9f962c6958a1909c2bca2f59039c5da4d57d67d4a07c"
+    },
+    {
+      "path": "skills/workspace.py",
+      "size": 633,
+      "sha256": "4264aae128314fef98fe6a22c0f8fef76b9a69929c1a8d1eb2c3f81fb3787604"
+    },
+    {
+      "path": "storage/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/__init__.py",
+      "size": 33,
+      "sha256": "68d81f7a5d1cb7feed0275703a921fd26fa8034c9d33f765364f9d2f2302eb21"
+    },
+    {
+      "path": "tests/bridge_smoke_test.py",
+      "size": 41,
+      "sha256": "c07129b9feadf914cf359608cc97c1bb1958e694bb4f336bbc45d41fb73cc0a4"
+    },
+    {
+      "path": "tests/conftest.py",
+      "size": 257,
+      "sha256": "96160ead10bc699cc3f98f6a415a694404211f6f82de59eb371ca6926687859b"
+    },
+    {
+      "path": "tests/phase33_brain_real_e2e.py",
+      "size": 12081,
+      "sha256": "711f998737b9f0f8e75b9144ba7d5b89d90526848aeb1bc36ae74dd0f36439cf"
+    },
+    {
+      "path": "tests/phase34_complex_wrong_code.py",
+      "size": 7135,
+      "sha256": "277f40bf5444d11a6992e3bb89f59a2df4ebffe2d4f9ffcd076c696bfa7cf5ab"
+    },
+    {
+      "path": "tests/phase34_complex_wrong_code_retest.py",
+      "size": 7029,
+      "sha256": "3dfe4ae7654141144618fe8a69e1886ff7b59cd30ca0cf541a30c341111584cd"
+    },
+    {
+      "path": "tests/phase34_memory_progress_audit.py",
+      "size": 8828,
+      "sha256": "9fcf903c793077d7cf39ebff5d19da2bb471c539a06423d1e405dd535508b6a5"
+    },
+    {
+      "path": "tests/phase34_real_e2e.py",
+      "size": 10255,
+      "sha256": "607b83d883822c1a419a7a9f97092743125302d9446f4c24a0453085919daa4d"
+    },
+    {
+      "path": "tests/phase34_wrong_code_repair.py",
+      "size": 5234,
+      "sha256": "969b7ab684411735968be6791c8189c88717770e057c5684df760b35faa7e675"
+    },
+    {
+      "path": "tests/phase34_wrong_code_retest.py",
+      "size": 4789,
+      "sha256": "a7b2138c035f38cf47c2ad213edcf4a748d53c397889c339aa8e254802964233"
+    },
+    {
+      "path": "tests/test_bootstrap.py",
+      "size": 1652,
+      "sha256": "d2a30f942771b7d8301520fff7de762c56797e2b708301ad30107fc2d859a094"
+    },
+    {
+      "path": "tests/test_bootstrap.py.bak",
+      "size": 714
+    },
+    {
+      "path": "tests/test_brain_feedback_integration.py",
+      "size": 5596,
+      "sha256": "2bce718a94dde808edb8980d69b2983d912af2a344f9040aa6d598f3dfca439f"
+    },
+    {
+      "path": "tests/test_cohere_budget.py",
+      "size": 723,
+      "sha256": "109debd4e07b88da96ed06901597d85ab99d878c00d12652ebf6fb5174e9657f"
+    },
+    {
+      "path": "tests/test_evolution_core.py",
+      "size": 1773,
+      "sha256": "f44736336b7e746a2d19980e731e4bf741ae2627b2339e306fff243acb6ff3a8"
+    },
+    {
+      "path": "tests/test_evolution_diagnostic_analysis.py",
+      "size": 3591,
+      "sha256": "33fbd186f73839025ab1214d2cdbdb7f3476cb3bded8fb893874e5a8e44746c7"
+    },
+    {
+      "path": "tests/test_evolution_identity_compat.py",
+      "size": 2859,
+      "sha256": "79347567cb9d9436d068caf646c8380a2336bdee69b7e4d858bcefec9e75d4cb"
+    },
+    {
+      "path": "tests/test_git_learning_v3_hotfix.py",
+      "size": 8061,
+      "sha256": "2e9f9ca24392dac7e0e356e11f7e12c97bacb77b1a6ae365a9bbf6248bc0b547"
+    },
+    {
+      "path": "tests/test_live_runtime.py",
+      "size": 5527,
+      "sha256": "cb53b39ed338c561bfee23982af0e39a8a0e73cfc3eae2dc123bb23fce990fa1"
+    },
+    {
+      "path": "tests/test_local_runner.py",
+      "size": 2474,
+      "sha256": "2e7bc395f23fb4a512dc94c8bf33c976ceb69105456f1a3a54e71621ddca3b1d"
+    },
+    {
+      "path": "tests/test_native_cognition.py",
+      "size": 3697,
+      "sha256": "e7e449a696063a07aa381990c5b9913ea0f05751a4025f40028a26d0fd7e5804"
+    },
+    {
+      "path": "tests/test_native_knowledge_extractor.py",
+      "size": 5924,
+      "sha256": "ec6475ba84ec77048974f7d9d4517263262b22a81a3dc2f0f111ad6dfa1044fd"
+    },
+    {
+      "path": "tests/test_phase34_brain_fallback.py",
+      "size": 7158,
+      "sha256": "eee3d11f3c306a18fe1b81dae36eeab3b1de5e7c1ba2b97a2a37dac77198f15d"
+    },
+    {
+      "path": "tests/test_phase34_brain_fallback.py.diag-backup",
+      "size": 6738
+    },
+    {
+      "path": "tests/test_phase34_brain_integration.py",
+      "size": 5933,
+      "sha256": "e3974cccc6a3eec25d2a8a056db1d721f2c083384b3f8ad0d699e41f88578f0a"
+    },
+    {
+      "path": "tests/test_phase34_learning_real.py",
+      "size": 5487,
+      "sha256": "6e00387dcd7d21f91b70fff1dcd7d8281c467ece8d9b80a909ad3c00c9bd0cc6"
+    },
+    {
+      "path": "tests/test_phase34_multi_solution.py",
+      "size": 3750,
+      "sha256": "1fcc89dd4313b6ced8b8700d332a2493c741c8c607d43399da2441d6fc772582"
+    },
+    {
+      "path": "tests/test_phase35_brain_semantic_integration.py",
+      "size": 4590,
+      "sha256": "806d766a3a766c3eff9c8c65e7ea0c20909d5b40053cfe9c73a71f12fdeb3291"
+    },
+    {
+      "path": "tests/test_phase35_brain_semantic_integration.py.before-replay-test",
+      "size": 4409
+    },
+    {
+      "path": "tests/test_phase35_context_persistence.py",
+      "size": 1678,
+      "sha256": "2040624fce5a8705133707533231cb983c8ed1da4840afa4d864855a222d2dc6"
+    },
+    {
+      "path": "tests/test_phase35_controller_to_memory.py",
+      "size": 2914,
+      "sha256": "81320a03437752b8510d1c007e3c7f144013280091fb596999f8b1fecb28fda5"
+    },
+    {
+      "path": "tests/test_phase35_memory_inspection.py",
+      "size": 3814,
+      "sha256": "a745a5520b1b615c0d45e5231a59aace12995b4b796d7ff357157620ea7636f0"
+    },
+    {
+      "path": "tests/test_phase35_production_memory_reuse.py",
+      "size": 3267,
+      "sha256": "c89b4ea5e56a226531df22167453ef128bb7f0983fff627a64f544cd68144ea3"
+    },
+    {
+      "path": "tests/test_phase35_production_memory_reuse.py.bak",
+      "size": 2920
+    },
+    {
+      "path": "tests/test_phase35_production_memory_reuse.py.pre-fix",
+      "size": 3060
+    },
+    {
+      "path": "tests/test_phase35_verified_save.py",
+      "size": 3047,
+      "sha256": "fcdec88eec79d49287dd0e1399b0c4b24bd4f7b76f16de75bd97b41d09a75fc5"
+    },
+    {
+      "path": "tests/test_phase36_2.py",
+      "size": 14202,
+      "sha256": "5d5ebe26c0cb28bb324a471703902dfd6d2632b0f487ffe824cc55a1a55066f6"
+    },
+    {
+      "path": "tests/test_phase36_3_workspace_compat.py",
+      "size": 2593,
+      "sha256": "ae9ab9cdf7296edb8db42f76d20b62be438a819701b75114334b79676e63a951"
+    },
+    {
+      "path": "tests/test_phase36_4_attestation.py",
+      "size": 2523,
+      "sha256": "d52dc537c2f9be136f5531c2e4d25d63060b89c039f83c3b67aa8ccc55e3a31f"
+    },
+    {
+      "path": "tests/test_phase36_5_attestor_policy.py",
+      "size": 5095,
+      "sha256": "c3bb06baf98755296a62d4d29198a3f85e69e183cf6d52847336f14357cf0581"
+    },
+    {
+      "path": "tests/test_phase36_6_self_awareness.py",
+      "size": 5603,
+      "sha256": "d85a333411db947e2da8fc7df462d93f80dd31cdb6c5f8243bf3eec6add03a26"
+    },
+    {
+      "path": "tests/test_phase36_7_staging.py",
+      "size": 7893,
+      "sha256": "6f8e688858734bacedb3ea536c5894335d73600cb4a13022228d11ce91a98e88"
+    },
+    {
+      "path": "tests/test_phase36_foundation.py",
+      "size": 5983,
+      "sha256": "c5d9cb2117ac35dbff6134b0c50788e453f93c46dd0c4c39962799ffca6d536a"
+    },
+    {
+      "path": "tests/test_phase36_hardening.py",
+      "size": 4174,
+      "sha256": "94f1bb8934d6f1cc2469fbf9e42a1fd95d58d4057e0c36ca4914c485265576eb"
+    },
+    {
+      "path": "tests/test_phase36_local_diagnostics.py",
+      "size": 6154,
+      "sha256": "46247683154bf1e0f2797a91e6d6e7e3069eb8d6efdbe34342d1da72ecf6fbb7"
+    },
+    {
+      "path": "tests/test_phase36_retry_guard.py",
+      "size": 1273,
+      "sha256": "c40230559fbc40e439c9b4eaf4a9d2e2f156dc6d80f0ad49c655da7b77a278cd"
+    },
+    {
+      "path": "tests/test_phase37_explanation_gate.py",
+      "size": 775,
+      "sha256": "839b63e0d910118a8ac07a193e19b4038bd5c30b7313235f2a12ff2c0cea2e9a"
+    },
+    {
+      "path": "tests/test_phase37_quality_feedback.py",
+      "size": 4491,
+      "sha256": "7bb264379e367ab6f7179b20c97eda62c9c14491463a95610675b68e26fd1fe3"
+    },
+    {
+      "path": "tests/test_pika_brain_cross_instance_reuse.py",
+      "size": 5019,
+      "sha256": "a62562569bd13a1d483ebf10789ead8337724f6eaf422ea5ac6e6d913d81ebee"
+    },
+    {
+      "path": "tests/test_pika_brain_learning_persistence.py",
+      "size": 3001,
+      "sha256": "11fc8a218a564bbdde1a44830499ed76ea778d669518a7e58a9159f4661790ba"
+    },
+    {
+      "path": "tests/test_pika_brain_real_repair.py",
+      "size": 5674,
+      "sha256": "302b14d39a382893de8d933a7cd000e39ac8cc35ac3c724224b4598b7b742b94"
+    },
+    {
+      "path": "tests/test_pika_learning_reuse_cycle.py",
+      "size": 4253,
+      "sha256": "b19aa29b673aeaefe484c53902e44a426d4a98dac01f8008cff0f211c6e6f3b3"
+    },
+    {
+      "path": "tests/test_pika_real_cohere_repair.py",
+      "size": 5192,
+      "sha256": "9dd32f0503697fcad46450e85ac8e5b4d00e26146af91e3acd04df9cae81c9d3"
+    },
+    {
+      "path": "tests/test_semantic_code_memory.py",
+      "size": 3411,
+      "sha256": "238bb74f8c3cbf0d02d258f5728797d9d76f7f09aa58e5b7621cf5948b50b057"
+    },
+    {
+      "path": "tests/test_verified_self_improvement.py",
+      "size": 6152,
+      "sha256": "fd575bddf8b54e451786558c3511326701f91ee308301c9deec2d717f98c85d0"
+    },
+    {
+      "path": "tools/__init__.py",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tools/builtin.py",
+      "size": 5834,
+      "sha256": "e41fcab070f71c5b42831a03ff60443049472c446698bd2228f0a7a3cbffc474"
+    },
+    {
+      "path": "tools/builtin.py.phase31-preworkspace.backup",
+      "size": 1463
+    },
+    {
+      "path": "tools/builtin.py.phase31.backup",
+      "size": 1463
+    },
+    {
+      "path": "tools/registry.py",
+      "size": 2092,
+      "sha256": "fa5c8015c40c86863ba6c6710083a336f34e9c3f6de73a7e2cd05a9a8b34488f"
+    },
+    {
+      "path": "tools/workspace.py",
+      "size": 8333,
+      "sha256": "384e09efbbd994d700b2bce7afe6e6edbccb6787317848f7192e93fdef41b9d8"
+    },
+    {
+      "path": "tools/workspace.py.phase31-prehardening.backup",
+      "size": 937
+    },
+    {
+      "path": "tools/workspace.py.phase32-start.backup",
+      "size": 1790
+    }
+  ],
+  "scan_errors": [],
+  "scope_note": "Virtualenvs, hidden directories, workspace artifacts and data trees excluded."
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "pika.live.evolution_work_report.v1",
+  "live_events_analyzed": 19,
+  "goal_work": {
+    "diagnose_recent_brain_failures": "ANALYSIS_GENERATED",
+    "review_strategy_reliability": "PROFILE_GENERATED",
+    "complete_execution_evaluation_evidence": "EVIDENCE_CAPTURED",
+    "profile_high_latency_strategies": "PROFILE_GENERATED"
+  },
+  "reports": [
+    "DIAGNOSTIC_ANALYSIS.json",
+    "STRATEGY_RELIABILITY.json",
+    "LATENCY_PROFILE.json",
+    "EVALUATION_COVERAGE.json"
+  ],
+  "execution_policy": "READ_ONLY_ANALYSIS_ONLY_NO_SOURCE_MODIFICATION_OR_GOAL_AUTOMATION"
+}

@@ -1,0 +1,1 @@
+# PIKA Evolution Roadmap\n\n36.6 Self-Awareness & System Intelligence → 36.7 Safe Execution & Self-Repair → 36.8 Autonomous Learning & Cognitive Evolution → 36.9 Recursive Evolution & Adaptive Architecture.\n\nThe north star is **True Evolution through Verified Self-Improvement**. Milestone completion requires implementation, tests, evidence, and safety gates.\n
