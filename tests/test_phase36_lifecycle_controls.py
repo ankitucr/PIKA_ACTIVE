@@ -135,7 +135,7 @@ def test_code_knowledge_retrieval_does_not_index_implicitly(tmp_path):
 
     indexed = knowledge.index_corpus()
     assert indexed["indexed"] == 1
-    result = knowledge.retrieve("deterministic repair")
+    result = knowledge.retrieve("deterministic_repair")
     assert result["items"]
     assert knowledge.index_path.exists()
 
