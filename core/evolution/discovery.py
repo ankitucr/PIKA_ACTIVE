@@ -231,6 +231,7 @@ class CandidateDiscoveryQueue:
             "queue_path": str(self.path),
             "added": added,
             "refreshed": refreshed,
+            "discovery_ids": [row["discovery_id"] for row in items],
             "summary": result["summary"],
         }
 
