@@ -87,3 +87,22 @@ class Phase32Controller:
         self._execute_once()
 '''
     assert _has_pre_execution_fail_closed_gate(unsafe) is False
+
+
+def test_workspace_manager_direct_mutation_and_execution_are_fail_closed(tmp_path):
+    from workspace.manager import WorkspaceManager
+
+    manager = WorkspaceManager(tmp_path)
+    write = manager.write_file("canary.txt", "EXECUTED")
+    command = manager.run_command(
+        ["python", "-c", "open('canary.txt', 'w').write('EXECUTED')"]
+    )
+    python = manager.run_python("canary.py")
+
+    for result in (write, command, python):
+        assert result["success"] is False
+        assert result["stage"] == "isolation_unavailable"
+        assert result["sandboxed"] is False
+        assert result["promotion_allowed"] is False
+
+    assert not (tmp_path / "canary.txt").exists()
