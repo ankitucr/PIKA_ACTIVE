@@ -46,7 +46,6 @@ class Phase33Controller:
 
         self.healer = SelfHealingEngine(
             self.root,
-            max_retries=2,
             max_candidates=self.max_candidates,
             learning_memory_path=learning_memory_path,
         )
