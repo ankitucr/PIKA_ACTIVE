@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import shutil
+import statistics
 import time
 import uuid
 from pathlib import Path, PurePosixPath
@@ -304,27 +305,59 @@ class CandidateExperimentEngine:
             return False
         if not isinstance(result.get("timed_out"), bool) or not isinstance(result.get("no_tests_ran"), bool):
             return False
+        if result.get("sandboxed") is not False or result.get("attested") is not False:
+            return False
+        if result.get("promotion_eligible") is not False or result.get("trust") != "UNVERIFIED_LOCAL":
+            return False
+        for key in ("tests_passed", "tests_failed", "tests_errors"):
+            value = result.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                return False
+        if not isinstance(result.get("source_modified_files"), list):
+            return False
+        duration = result.get("duration_s")
+        if (
+            not isinstance(duration, (int, float))
+            or isinstance(duration, bool)
+            or duration < 0
+        ):
+            return False
         if result["passed"]:
-            duration = result.get("duration_s")
             return (
                 result["returncode"] == 0
                 and not result["timed_out"]
                 and not result["no_tests_ran"]
-                and result.get("sandboxed") is False
-                and result.get("attested") is False
-                and result.get("promotion_eligible") is False
-                and result.get("trust") == "UNVERIFIED_LOCAL"
-                and isinstance(result.get("tests_passed"), int)
-                and not isinstance(result.get("tests_passed"), bool)
                 and result["tests_passed"] > 0
-                and result.get("tests_failed", 0) == 0
-                and result.get("tests_errors", 0) == 0
-                and result.get("source_modified_files") == []
-                and isinstance(duration, (int, float))
-                and not isinstance(duration, bool)
-                and duration >= 0
+                and result["tests_failed"] == 0
+                and result["tests_errors"] == 0
+                and result["source_modified_files"] == []
             )
         return True
+
+    @staticmethod
+    def _summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
+        durations = [
+            float(item["duration_s"])
+            for item in runs
+            if isinstance(item.get("duration_s"), (int, float))
+            and not isinstance(item.get("duration_s"), bool)
+        ]
+        passed_count = sum(item["passed"] is True for item in runs)
+        return {
+            "passed": bool(runs) and passed_count == len(runs),
+            "passed_runs": passed_count,
+            "failed_runs": len(runs) - passed_count,
+            "run_count": len(runs),
+            "tests_passed": int(statistics.median([item["tests_passed"] for item in runs])),
+            "tests_failed": int(statistics.median([item["tests_failed"] for item in runs])),
+            "tests_errors": int(statistics.median([item["tests_errors"] for item in runs])),
+            "median_duration_s": round(statistics.median(durations), 6) if durations else None,
+            "runs": runs,
+            "trust": "UNVERIFIED_LOCAL",
+            "sandboxed": False,
+            "attested": False,
+            "promotion_eligible": False,
+        }
 
     def evaluate_candidate(
         self,
@@ -334,6 +367,7 @@ class CandidateExperimentEngine:
         timeout: int = 120,
         python: str | Path | None = None,
         performance_threshold: float = 0.10,
+        repetitions: int = 3,
     ) -> dict[str, Any]:
         if not isinstance(candidate_id, str) or not __import__("re").fullmatch(r"[0-9a-f]{32}", candidate_id):
             raise ExperimentError("Invalid candidate ID.")
@@ -345,6 +379,8 @@ class CandidateExperimentEngine:
             or not 0 <= performance_threshold <= 0.5
         ):
             raise ExperimentError("performance_threshold must be between 0 and 0.5.")
+        if isinstance(repetitions, bool) or not isinstance(repetitions, int) or not 1 <= repetitions <= 5:
+            raise ExperimentError("repetitions must be between 1 and 5.")
 
         candidate_entry = self.candidates / candidate_id
         if candidate_entry.is_symlink():
@@ -416,54 +452,85 @@ class CandidateExperimentEngine:
             "record": False,
         }
         started = time.time()
-        outcomes: dict[str, Any] = {}
-        for label, source_root in (("baseline", baseline), ("candidate", workspace)):
-            try:
-                result = self.runner(source_root, list(argv), **run_kwargs)
-            except Exception as exc:
-                result = {
-                    "passed": False,
-                    "returncode": -1,
-                    "timed_out": False,
-                    "no_tests_ran": True,
-                    "error_type": type(exc).__name__,
+        raw_runs: dict[str, list[dict[str, Any]]] = {"baseline": [], "candidate": []}
+        attempts: list[dict[str, Any]] = []
+        for index in range(repetitions):
+            order = ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")
+            for label in order:
+                source_root = baseline if label == "baseline" else workspace
+                try:
+                    result = self.runner(source_root, list(argv), **run_kwargs)
+                except Exception as exc:
+                    result = {
+                        "passed": False,
+                        "returncode": -1,
+                        "timed_out": False,
+                        "no_tests_ran": True,
+                        "tests_passed": 0,
+                        "tests_failed": 0,
+                        "tests_errors": 1,
+                        "duration_s": 0.0,
+                        "source_modified_files": [],
+                        "trust": "UNVERIFIED_LOCAL",
+                        "sandboxed": False,
+                        "attested": False,
+                        "promotion_eligible": False,
+                        "error_type": type(exc).__name__,
+                    }
+                if not self._valid_run(result):
+                    result = {
+                        "passed": False,
+                        "returncode": -1,
+                        "timed_out": False,
+                        "no_tests_ran": True,
+                        "tests_passed": 0,
+                        "tests_failed": 0,
+                        "tests_errors": 1,
+                        "duration_s": 0.0,
+                        "source_modified_files": [],
+                        "trust": "UNVERIFIED_LOCAL",
+                        "sandboxed": False,
+                        "attested": False,
+                        "promotion_eligible": False,
+                        "error_type": "malformed_runner_result",
+                    }
+                compact = {
+                    "passed": result["passed"],
+                    "returncode": result["returncode"],
+                    "timed_out": result["timed_out"],
+                    "no_tests_ran": result["no_tests_ran"],
+                    "tests_passed": result["tests_passed"],
+                    "tests_failed": result["tests_failed"],
+                    "tests_errors": result["tests_errors"],
+                    "duration_s": result["duration_s"],
+                    "tree_sha256": result.get("tree_sha256"),
+                    "output_sha256": result.get("output_sha256"),
+                    "source_modified_files": result["source_modified_files"],
                 }
-            if not self._valid_run(result):
-                result = {
-                    "passed": False,
-                    "returncode": -1,
-                    "timed_out": False,
-                    "no_tests_ran": True,
-                    "error_type": "malformed_runner_result",
-                }
-            outcomes[label] = {
-                "passed": result["passed"],
-                "returncode": result["returncode"],
-                "timed_out": result["timed_out"],
-                "no_tests_ran": result["no_tests_ran"],
-                "tests_passed": result.get("tests_passed", 0),
-                "tests_failed": result.get("tests_failed", 0),
-                "tests_errors": result.get("tests_errors", 0),
-                "duration_s": result.get("duration_s"),
-                "tree_sha256": result.get("tree_sha256"),
-                "output_sha256": result.get("output_sha256"),
-                "trust": result.get("trust", "UNVERIFIED_LOCAL"),
-                "sandboxed": result.get("sandboxed") is True,
-                "attested": result.get("attested") is True,
-                "source_modified_files": result.get("source_modified_files", []),
-            }
+                if result.get("error_type"):
+                    compact["error_type"] = result["error_type"]
+                raw_runs[label].append(compact)
+                attempts.append({"run": index + 1, "subject": label, **compact})
 
+        outcomes = {
+            label: self._summarize_runs(items)
+            for label, items in raw_runs.items()
+        }
         base, candidate = outcomes["baseline"], outcomes["candidate"]
         threshold = float(performance_threshold)
         if candidate["passed"] and not base["passed"]:
             decision = "FUNCTIONAL_IMPROVEMENT_UNVERIFIED"
         elif base["passed"] and not candidate["passed"]:
             decision = "REGRESSION"
+        elif candidate["passed_runs"] > base["passed_runs"]:
+            decision = "PARTIAL_IMPROVEMENT_UNVERIFIED"
         elif base["passed"] and candidate["passed"]:
-            base_time, candidate_time = base.get("duration_s"), candidate.get("duration_s")
+            base_time = base.get("median_duration_s")
+            candidate_time = candidate.get("median_duration_s")
             same_tests = base["tests_passed"] == candidate["tests_passed"]
             if (
-                same_tests
+                repetitions >= 3
+                and same_tests
                 and isinstance(base_time, (int, float))
                 and isinstance(candidate_time, (int, float))
                 and base_time > 0
@@ -486,9 +553,11 @@ class CandidateExperimentEngine:
             "test_hashes": dict(expected_tests),
             "argv": list(argv),
             "timeout": timeout,
+            "repetitions": repetitions,
             "started_at": started,
             "finished_at": time.time(),
             "decision": decision,
+            "attempts": attempts,
             "baseline": base,
             "candidate": candidate,
             "trust": "UNVERIFIED_LOCAL",
