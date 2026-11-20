@@ -126,12 +126,6 @@ class CandidateDiscoveryQueue:
             for row in prior["items"]
             if isinstance(row, dict) and isinstance(row.get("discovery_id"), str)
         }
-        event_index = {
-            (row.get("event_id"), row.get("task_sha256")): row
-            for row in prior["items"]
-            if isinstance(row, dict)
-        }
-
         diagnosis_queue = reflection.get("diagnosis_queue", [])
         if not isinstance(diagnosis_queue, list):
             raise ExperimentError("Reflection diagnosis_queue must be a list.")
@@ -205,7 +199,6 @@ class CandidateDiscoveryQueue:
                 "last_seen_at": time.time(),
             }
             existing[discovery_id] = queue_item
-            event_index[(event_id, task_hash)] = queue_item
             added += 1
 
         items = sorted(
