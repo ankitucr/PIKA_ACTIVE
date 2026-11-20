@@ -214,6 +214,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         from core.phase32_controller import Phase32Controller
         controller = object.__new__(Phase32Controller)
         controller.package_manager = PackageManagerFake()
+        controller.dependency_allowlist = frozenset({"sample-package"})
         controller.dependency_approval = None
         denied = controller._install_dependency({"package": "sample-package"})
         self.assertFalse(denied["success"])
