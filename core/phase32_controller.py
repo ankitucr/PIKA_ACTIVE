@@ -140,7 +140,7 @@ class Phase32Controller:
             }
 
         normalized_package = self._normalize_package_name(package)
-        if normalized_package not in self.dependency_allowlist:
+        if normalized_package not in getattr(self, "dependency_allowlist", frozenset()):
             return {
                 "success": False,
                 "action": "install_dependency",
