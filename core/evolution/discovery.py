@@ -359,8 +359,11 @@ class CandidateDiscoveryQueue:
                 or proposal.get("task_sha256") != item.get("task_sha256")
             ):
                 raise ExperimentError("Native proposal envelope does not match this discovery event and task.")
+            proposal_id = proposal.get("proposal_id")
+            if not isinstance(proposal_id, str) or re.fullmatch(r"[0-9a-f]{32}", proposal_id) is None:
+                raise ExperimentError("Native proposal envelope ID is invalid.")
             envelope_metadata = {
-                "proposal_id": proposal.get("proposal_id"),
+                "proposal_id": proposal_id,
                 "event_id": proposal.get("event_id"),
                 "task_sha256": proposal.get("task_sha256"),
             }
