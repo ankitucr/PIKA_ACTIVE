@@ -22,7 +22,8 @@ from .local_runner import run_candidate
 
 _IGNORE_DIRS = {
     ".git", ".venv", "venv", ".sandbox_venv", "__pycache__", ".pytest_cache",
-    "node_modules", "PIKA_KNOWLEDGE",
+    "node_modules", "PIKA_KNOWLEDGE", "workspace", "data", "downloads",
+    "backups", "logs", "tmp", "temp",
 }
 _IGNORE_FILES = {".env"}
 _MAX_FILES = 5000
@@ -226,8 +227,9 @@ class CandidateExperimentEngine:
                 baseline,
                 workspace,
                 ignore=shutil.ignore_patterns(
-                    ".git", ".venv", "venv", ".sandbox_venv", "__pycache__",
+                    ".git", ".venv*", "venv", ".sandbox_venv", "__pycache__",
                     ".pytest_cache", "node_modules", "PIKA_KNOWLEDGE",
+                    "workspace", "data", "downloads", "backups", "logs", "tmp", "temp",
                     ".env", ".env.*", "*.pem", "*.key",
                 ),
             )
