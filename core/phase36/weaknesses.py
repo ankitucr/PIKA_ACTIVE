@@ -34,6 +34,79 @@ def _method_source(source: str, class_name: str, method_name: str) -> str:
     return ""
 
 
+def _has_pre_execution_fail_closed_gate(source: str) -> bool:
+    """Recognize the explicit Phase 32 guard before snapshots or execution.
+
+    It requires an if-paths-or-commands branch with a direct
+    isolation_unavailable return, before transaction.begin and _execute_once.
+    Merely mentioning a sandbox is not sufficient.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+
+    execute_method = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "Phase32Controller":
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == "execute":
+                    execute_method = child
+                    break
+    if execute_method is None:
+        return False
+
+    for guard in execute_method.body:
+        if not isinstance(guard, ast.If):
+            continue
+        test = guard.test
+        if not isinstance(test, ast.BoolOp) or not isinstance(test.op, ast.Or):
+            continue
+        names = {node.id for node in ast.walk(test) if isinstance(node, ast.Name)}
+        if not {"paths", "commands"}.issubset(names):
+            continue
+
+        valid_return = False
+        for statement in guard.body:
+            if not isinstance(statement, ast.Return) or not isinstance(statement.value, ast.Dict):
+                continue
+            values = {}
+            for key, value in zip(statement.value.keys, statement.value.values):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    values[key.value] = value
+            stage = values.get("stage")
+            error = values.get("error")
+            if (
+                isinstance(stage, ast.Constant)
+                and stage.value == "isolation_unavailable"
+                and isinstance(error, ast.Constant)
+                and isinstance(error.value, str)
+                and "no audited OS sandbox backend" in error.value
+                and "No files or commands were executed" in error.value
+            ):
+                valid_return = True
+                break
+        if not valid_return:
+            continue
+
+        begin_lines = []
+        execute_lines = []
+        for call in ast.walk(execute_method):
+            if not isinstance(call, ast.Call):
+                continue
+            func = call.func
+            if isinstance(func, ast.Attribute) and func.attr == "begin":
+                owner = func.value
+                if isinstance(owner, ast.Attribute) and owner.attr == "transaction":
+                    begin_lines.append(call.lineno)
+            if isinstance(func, ast.Attribute) and func.attr == "_execute_once":
+                execute_lines.append(call.lineno)
+
+        if begin_lines and execute_lines and all(
+            guard.lineno < line for line in begin_lines + execute_lines
+        ):
+            return True
+    return False
 class WeaknessAnalyzer:
     """Deterministic static checks. Findings are hypotheses, not runtime verdicts."""
 
@@ -125,6 +198,7 @@ class WeaknessAnalyzer:
             and "self._execute_once(" in phase32
             and "run_commands(commands)" in workspace_executor
             and "paths = self._file_paths(actions)" in phase32
+            and not _has_pre_execution_fail_closed_gate(phase32)
         ):
             findings.append(Finding(
                 "command_side_effects_outside_snapshot", "critical", "transaction_boundary",
