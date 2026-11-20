@@ -103,6 +103,7 @@ def _phase35_save_repair(
             preconditions=[str(diagnosis.get("root_cause", ""))],
             verification="test_verified", evidence=evidence,
             replay_context=context,
+            evidence_receipt=outcome.get("evidence_receipt"),
         )
         if learning_engine is not None:
             record = learning_engine.learn(

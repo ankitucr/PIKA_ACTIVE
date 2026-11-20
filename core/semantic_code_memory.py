@@ -87,6 +87,7 @@ class SemanticCodeMemory:
         evidence: list[str] | None = None,
         equivalent_group: str | None = None,
         replay_context: dict[str, Any] | None = None,
+        evidence_receipt: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Save one implementation. Verification must be supported by evidence.
 
@@ -100,6 +101,12 @@ class SemanticCodeMemory:
             raise ValueError(f"verification must be one of {sorted(allowed)}")
         if not intent.strip() or not code.strip():
             raise ValueError("intent and code cannot be empty")
+        if evidence_receipt is not None and not isinstance(evidence_receipt, dict):
+            raise ValueError("evidence_receipt must be a dictionary.")
+        receipt_copy = (
+            json.loads(json.dumps(evidence_receipt, allow_nan=False))
+            if evidence_receipt is not None else None
+        )
 
         fingerprint = _digest(code)
         existing = next(
@@ -119,6 +126,8 @@ class SemanticCodeMemory:
             existing["evidence"] = list(dict.fromkeys(
                 existing.get("evidence", []) + (evidence or [])
             ))
+            if receipt_copy is not None:
+                existing["evidence_receipt"] = receipt_copy
             if verification == "failed":
                 existing["verification"] = "failed"
             elif verification == "formally_verified" and evidence:
@@ -143,6 +152,7 @@ class SemanticCodeMemory:
             "evidence": list(evidence or []),
             "equivalent_group": equivalent_group,
             "replay_context": dict(replay_context or {}),
+            "evidence_receipt": receipt_copy,
             "created_at": time.time(),
             "last_seen": time.time(),
             "uses": 0,

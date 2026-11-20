@@ -7,7 +7,7 @@ import pytest
 
 from core.brain import _phase35_save_repair
 from core.phase36.attestor_policy import AttestorTrustPolicy
-from core.phase36.evidence import EvidenceAuthority
+from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.phase36.sandbox import SandboxRunner
 from core.semantic_code_memory import SemanticCodeMemory
 
@@ -176,11 +176,19 @@ def test_phase35_save_accepts_pinned_attestation(tmp_path):
     )
 
     assert saved is True
-    hits = memory.retrieve(
+    # The exact signed receipt must survive persistence so replay can
+    # apply the same pinned-attestor check on every future retrieval.
+    reloaded = SemanticCodeMemory(tmp_path / "memory.json")
+    hits = reloaded.retrieve(
         "Fix calculator multiplication",
         verified_only=True,
     )
-    assert any(item["code"] == candidate for item in hits), hits
+    matching = [item for item in hits if item["code"] == candidate]
+    assert matching, hits
+    assert matching[0]["evidence_receipt"] == receipt
+    assert LearningTrustGate(
+        authority, _policy(signing_key)
+    ).accepts(matching[0]) is True
 
 
 def test_phase35_brain_semantic_filter_requires_pinned_attestor(tmp_path):
