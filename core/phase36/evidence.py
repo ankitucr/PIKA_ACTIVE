@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any
 
 
+SANDBOX_POLICY_ID = "pika-os-sandbox.v1"
+RUN_CONTEXT_SCHEMA = "pika.sandbox-run-context.v1"
+
+
 class EvidenceError(ValueError):
     pass
 
@@ -66,6 +70,30 @@ class EvidenceAuthority:
     def _signature(self, payload: dict[str, Any]) -> str:
         return hmac.new(self._key, self._canonical(payload), hashlib.sha256).hexdigest()
 
+    @classmethod
+    def run_context_digest(
+        cls,
+        *,
+        backend_id: str,
+        integration_type: str,
+        challenge_nonce: str,
+        sandbox_policy_id: str,
+        argv: list[str],
+        timeout: int,
+        source_hashes: dict[str, str],
+    ) -> str:
+        context = {
+            "schema": RUN_CONTEXT_SCHEMA,
+            "backend_id": backend_id,
+            "integration_type": integration_type,
+            "challenge_nonce": challenge_nonce,
+            "sandbox_policy_id": sandbox_policy_id,
+            "argv": list(argv),
+            "timeout": timeout,
+            "source_hashes": dict(source_hashes),
+        }
+        return hashlib.sha256(cls._canonical(context)).hexdigest()
+
     def verify(self, receipt: Any, *, expected_source_hashes: dict[str, str] | None = None) -> bool:
         if not isinstance(receipt, dict):
             return False
@@ -92,6 +120,16 @@ class EvidenceAuthority:
                 return False
             if not isinstance(att.get("attestor_id"), str) or not att["attestor_id"].strip(): return False
             if not isinstance(att.get("verification_id"), str) or not att["verification_id"].strip(): return False
+            integration_type = att.get("integration_type")
+            nonce = att.get("challenge_nonce")
+            policy_id = att.get("sandbox_policy_id")
+            context_digest = att.get("run_context_sha256")
+            if not isinstance(integration_type, str) or not integration_type.strip(): return False
+            if not isinstance(nonce, str) or len(nonce) != 64: return False
+            if policy_id != SANDBOX_POLICY_ID: return False
+            if not isinstance(context_digest, str) or len(context_digest) != 64: return False
+            int(nonce, 16)
+            int(context_digest, 16)
             digest = att.get("measurement_sha256")
             if not isinstance(digest, str) or len(digest) != 64: return False
             int(digest, 16)
@@ -103,6 +141,9 @@ class EvidenceAuthority:
                     return False
                 int(digest, 16)
             if not isinstance(payload.get("argv"), list) or not payload["argv"] or any(not isinstance(x, str) or not x for x in payload["argv"]):
+                return False
+            timeout = payload.get("timeout")
+            if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 900:
                 return False
             hashes = payload.get("source_hashes")
             if not isinstance(hashes, dict) or not hashes:
@@ -118,6 +159,19 @@ class EvidenceAuthority:
                 return False
             if finished < started or finished > time.time() + 60:
                 return False
+            if att.get("verified_at") > started + 30 or started - att.get("verified_at") > 300:
+                return False
+            context_digest = self.run_context_digest(
+                backend_id=payload["backend_id"],
+                integration_type=integration_type,
+                challenge_nonce=nonce,
+                sandbox_policy_id=policy_id,
+                argv=payload["argv"],
+                timeout=timeout,
+                source_hashes=hashes,
+            )
+            if not hmac.compare_digest(context_digest, att["run_context_sha256"]):
+                return False
             expected = self._signature(payload)
             return hmac.compare_digest(signature, expected)
         except (TypeError, ValueError, OverflowError):
@@ -126,12 +180,21 @@ class EvidenceAuthority:
     def _issue_from_sandbox(self, result: dict[str, Any], runner_token: object) -> dict[str, Any]:
         if runner_token is not _RUNNER_TOKEN:
             raise EvidenceError("Only the configured SandboxRunner can issue evidence.")
-        required = ("argv", "exit_code", "started_at", "finished_at", "test_count",
+        required = ("argv", "timeout", "exit_code", "started_at", "finished_at", "test_count",
                     "source_hashes", "stdout", "stderr", "backend_id", "backend_attestation", "sandboxed")
         if not isinstance(result, dict) or any(k not in result for k in required):
             raise EvidenceError("Sandbox result is incomplete.")
-        if result["sandboxed"] is not True or result["exit_code"] != 0 or int(result["test_count"]) < 1:
+        if result["sandboxed"] is not True or result["exit_code"] != 0:
             raise EvidenceError("Only successful OS-sandboxed test runs can issue trusted evidence.")
+        if isinstance(result["timeout"], bool) or not isinstance(result["timeout"], int) or not 1 <= result["timeout"] <= 900:
+            raise EvidenceError("Sandbox timeout is invalid.")
+        if isinstance(result["test_count"], bool) or not isinstance(result["test_count"], int) or result["test_count"] < 1:
+            raise EvidenceError("At least one test must have run.")
+        if (not isinstance(result["argv"], list) or not result["argv"]
+                or any(not isinstance(x, str) or not x for x in result["argv"])):
+            raise EvidenceError("Sandbox argv is invalid.")
+        if not isinstance(result["source_hashes"], dict) or not result["source_hashes"]:
+            raise EvidenceError("Source hashes are required.")
         stdout = result["stdout"] if isinstance(result["stdout"], str) else str(result["stdout"])
         stderr = result["stderr"] if isinstance(result["stderr"], str) else str(result["stderr"])
         payload = {
@@ -142,6 +205,7 @@ class EvidenceAuthority:
             "backend_attestation": dict(result["backend_attestation"]),
             "sandboxed": True,
             "argv": [str(x) for x in result["argv"]],
+            "timeout": result["timeout"],
             "exit_code": 0,
             "started_at": float(result["started_at"]),
             "finished_at": float(result["finished_at"]),
