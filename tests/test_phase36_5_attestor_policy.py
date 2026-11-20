@@ -1,60 +1,36 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import time
-
 import pytest
 
 from core.phase36.attestor_policy import AttestorTrustPolicy
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
+from core.phase36.sandbox import SandboxUnavailable
 from core.phase36.governance import PromotionGate
-from core.phase36.sandbox import SandboxRunner, SandboxUnavailable
+from core.phase36.sandbox import SandboxRunner
 
 
 class TestBackend:
     backend_id = "phase36-5-test-backend"
-
     def __init__(self):
         self.calls = 0
 
-    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id=None):
+    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
         self.calls += 1
-        result = {
-            "exit_code": 0,
-            "test_count": 1,
-            "stdout": "1 passed",
-            "stderr": "",
-            "sandboxed": True,
-            "started_at": time.time(),
-            "finished_at": time.time(),
-        }
-        if sandbox_policy_id is not None:
-            result.update({
-                "executed_argv": list(argv),
-                "executed_timeout": timeout,
+        return {"executed_argv": list(argv), "executed_timeout": timeout,
                 "sandbox_policy_id": sandbox_policy_id,
                 "executed_source_hashes": dict(source_hashes),
-            })
-        return result
+                "exit_code": 0, "test_count": 1, "stdout": "1 passed",
+                "stderr": "", "sandboxed": True,
+                "started_at": time.time(), "finished_at": time.time()}
 
 
 class UnsignedTestAttestor:
     def attest_backend(self, descriptor):
-        return {
-            **descriptor,
-            "attestor_id": "TEST_ONLY_NOT_PRODUCTION",
-            "measurement_sha256": hashlib.sha256(b"test").hexdigest(),
-            "verified_at": time.time(),
-            "verification_id": "test-attestation",
-        }
-
-
-def _runner(authority, backend, attestor, policy=None):
-    parameters = inspect.signature(SandboxRunner.__init__).parameters
-    if "attestor_policy" in parameters:
-        return SandboxRunner(authority, backend, attestor, policy)
-    return SandboxRunner(authority, backend, attestor)
+        return {**descriptor, "attestor_id": "TEST_ONLY_NOT_PRODUCTION",
+                "measurement_sha256": hashlib.sha256(b"test").hexdigest(),
+                "verified_at": time.time(), "verification_id": "test-attestation"}
 
 
 def test_no_pinned_attestor_means_no_trust():
@@ -80,33 +56,19 @@ def test_unsigned_test_receipt_cannot_be_promoted_or_replayed(tmp_path):
     source.write_text("assert True\n")
     authority = EvidenceAuthority(tmp_path)
     backend = TestBackend()
-    empty_policy = AttestorTrustPolicy()
-    runner = _runner(authority, backend, UnsignedTestAttestor(), empty_policy)
-
-    if "attestor_policy" in inspect.signature(SandboxRunner.__init__).parameters:
-        with pytest.raises(SandboxUnavailable):
-            runner.run_test(
-                ["pytest", "-q", "sample.py"],
-                cwd=tmp_path,
-                source_paths=["sample.py"],
-            )
-        assert backend.calls == 0
-        assert LearningTrustGate(authority).accepts(
-            {"evidence_receipt": {"payload": {}, "signature": "0" * 64}}
-        ) is False
-    else:
-        receipt = runner.run_test(
+    runner = SandboxRunner(
+        authority, backend, UnsignedTestAttestor(), AttestorTrustPolicy()
+    )
+    with pytest.raises(SandboxUnavailable, match="pinned Ed25519"):
+        runner.run_test(
             ["pytest", "-q", "sample.py"],
             cwd=tmp_path,
             source_paths=["sample.py"],
-        )["evidence_receipt"]
-        hashes = {"sample.py": hashlib.sha256(source.read_bytes()).hexdigest()}
-        decision = PromotionGate(authority).assess(
-            evidence_receipt=receipt, human_approved=True, regression_passed=True,
-            rollback_verified=True, source_hashes=hashes, critical_findings=0)
-        assert decision.allowed is False
-        assert "independently_trusted_attestation_required" in decision.reasons
-        assert LearningTrustGate(authority).accepts({"evidence_receipt": receipt}) is False
+        )
+    assert backend.calls == 0
+    assert LearningTrustGate(authority).accepts(
+        {"evidence_receipt": {"payload": {}, "signature": "0" * 64}}
+    ) is False
 
 
 def test_invalid_public_key_configuration_is_ignored():
@@ -127,15 +89,16 @@ def test_ed25519_attestation_is_accepted_only_when_pinned(tmp_path):
 
     class SignedAttestor:
         def attest_backend(self, descriptor):
-            record = {
-                "schema": AttestorTrustPolicy.SCHEMA,
-                "attestor_id": "native-os-attestor",
-                **descriptor,
-                "measurement_sha256": hashlib.sha256(b"measured-backend").hexdigest(),
-                "verified_at": time.time(),
-                "verification_id": "native-verification-001",
-                "signature_algorithm": "ed25519",
-            }
+            record = {"schema": AttestorTrustPolicy.SCHEMA,
+                      "attestor_id": "native-os-attestor",
+                      "backend_id": descriptor["backend_id"],
+                      "integration_type": descriptor["integration_type"],
+                      "challenge_nonce": descriptor["challenge_nonce"],
+                      "run_context_sha256": descriptor["run_context_sha256"],
+                      "sandbox_policy_id": descriptor["sandbox_policy_id"],
+                      "measurement_sha256": hashlib.sha256(b"measured-backend").hexdigest(),
+                      "verified_at": time.time(), "verification_id": "native-verification-001",
+                      "signature_algorithm": "ed25519"}
             record["signature_hex"] = private_key.sign(
                 AttestorTrustPolicy.canonical_message(record)).hex()
             return record
@@ -143,7 +106,7 @@ def test_ed25519_attestation_is_accepted_only_when_pinned(tmp_path):
     policy = AttestorTrustPolicy({"native-os-attestor": {
         "public_key_hex": public_key.hex(),
         "backend_ids": ["phase36-5-test-backend"]}})
-    runner = _runner(authority, TestBackend(), SignedAttestor(), policy)
+    runner = SandboxRunner(authority, TestBackend(), SignedAttestor(), policy)
     receipt = runner.run_test(["pytest", "-q", "sample.py"], cwd=tmp_path,
                               source_paths=["sample.py"])["evidence_receipt"]
     attestation = receipt["payload"]["backend_attestation"]
