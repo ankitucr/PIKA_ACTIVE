@@ -42,7 +42,8 @@ def _stage(engine, root, tmp_path, source):
 
 class FakeRunner:
     def __init__(self, baseline_passed: bool, candidate_passed: bool):
-        self.outcomes = [baseline_passed, candidate_passed]
+        self.baseline_passed = baseline_passed
+        self.candidate_passed = candidate_passed
         self.calls = []
 
     def __call__(self, source_dir, argv, **kwargs):
@@ -51,7 +52,7 @@ class FakeRunner:
             "argv": list(argv),
             **kwargs,
         })
-        passed = self.outcomes.pop(0)
+        passed = self.candidate_passed if Path(source_dir).name == "workspace" else self.baseline_passed
         return {
             "passed": passed,
             "returncode": 0 if passed else 1,
@@ -148,7 +149,7 @@ def test_candidate_regression_is_detected_and_never_promoted(tmp_path):
     assert result["decision"] == "REGRESSION"
     assert result["baseline"]["passed"] is True
     assert result["candidate"]["passed"] is False
-    assert len(runner.calls) == 2
+    assert len(runner.calls) == 6
     assert all(call["record"] is False for call in runner.calls)
 
 
