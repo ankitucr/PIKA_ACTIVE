@@ -311,7 +311,7 @@ class CandidateExperimentEngine:
         self,
         candidate_id: str,
         *,
-        argv: list[str] | tuple[str, ...] = ("python", "-m", "pytest", "-q"),
+        argv: list[str] | tuple[str, ...] | None = None,
         timeout: int = 120,
         python: str | Path | None = None,
         performance_threshold: float = 0.10,
@@ -348,6 +348,16 @@ class CandidateExperimentEngine:
             raise ExperimentError("Baseline source changed after staging; experiment is stale.")
         if staged_sha != metadata.get("candidate_sha256"):
             raise ExperimentError("Candidate source changed after staging; experiment is invalid.")
+
+        if argv is None:
+            argv = ["python", "-m", "pytest", "-q", *metadata.get("test_paths", [])]
+        if (
+            not isinstance(argv, (list, tuple))
+            or len(argv) < 4
+            or list(argv[:3]) != ["python", "-m", "pytest"]
+            or any(not isinstance(item, str) or not item for item in argv)
+        ):
+            raise ExperimentError("Phase 37 experiments require an explicit pytest argv.")
 
         expected_tests = metadata.get("test_hashes")
         if not isinstance(expected_tests, dict) or not expected_tests:
