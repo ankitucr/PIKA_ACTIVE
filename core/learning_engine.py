@@ -178,7 +178,7 @@ class LearningEngine:
             "solution": solution,
             "verification": verification,
             "success": bool(success),
-            "trusted": bool(success and self._verified(verification)),
+            "trusted": bool(success and self._has_trusted_evidence(verification)),
             "source": source,
             "metadata": metadata,
             "replay_context": {
