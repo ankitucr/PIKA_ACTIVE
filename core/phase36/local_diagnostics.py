@@ -19,6 +19,7 @@ from typing import Any, Callable
 from .staging import CandidateStagingManager
 from core.evolution.local_runner import run_candidate as _run_candidate
 from .failure_analysis import NativeFailureAnalyzer
+from .failure_context import FailureContextExtractor
 
 SOURCE_DIRS = (
     "core", "tools", "agents", "memory", "learning", "models",
@@ -166,6 +167,7 @@ class LocalCandidateDiagnostics:
             raise ValueError("project_root must be an existing directory.")
         self.manager = CandidateStagingManager(self.root)
         self.runner = runner or _run_candidate
+        self.failure_context = FailureContextExtractor(self.root)
 
     def run(self, candidate_id: str, *, test_path: str, timeout: int = 120,
             context_paths: list[str] | None = None,
@@ -261,6 +263,15 @@ class LocalCandidateDiagnostics:
                 "output_tail": ev.get("output_tail", ""),
                 "failure_analysis": NativeFailureAnalyzer.analyze(
                     ev.get("output_tail", ""), runner=ev, test_path=test_path
+                ),
+                "failure_context": self.failure_context.collect(
+                    ev.get("output_tail", ""),
+                    test_path=test_path,
+                    overlay_root=candidate_dir,
+                    overlay_paths=[
+                        row.get("path") for row in manifest.get("files", [])
+                        if isinstance(row, dict) and isinstance(row.get("path"), str)
+                    ],
                 ),
                 "source_modified_files": ev.get("source_modified_files", []),
                 "limits": ev.get("limits", {}),
