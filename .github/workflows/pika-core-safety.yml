@@ -20,6 +20,7 @@ on:
       - "pytest.ini"
       - "requirements.txt"
       - ".github/workflows/pika-core-safety.yml"
+      - ".github/workflows/pika-isolated-candidate-ci.yml"
   pull_request:
     branches: [main]
     paths:
@@ -39,6 +40,7 @@ on:
       - "pytest.ini"
       - "requirements.txt"
       - ".github/workflows/pika-core-safety.yml"
+      - ".github/workflows/pika-isolated-candidate-ci.yml"
 
 permissions:
   contents: read
