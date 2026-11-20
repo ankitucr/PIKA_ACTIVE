@@ -203,7 +203,7 @@ class VerifiedExperimentMemory:
             try:
                 expected = hashlib.sha256(_canonical(payload)).hexdigest()
             except (TypeError, ValueError) as exc:
-                raise VerifiedMemoryError(f\"Invalid canonical payload at line {number}.\") from exc
+                raise VerifiedMemoryError(f"Invalid canonical payload at line {number}.") from exc
             if row.get('payload_sha256') != expected:
                 raise VerifiedMemoryError(f"Journal hash mismatch at line {number}.")
             identity = (payload.get('experiment_id'), payload.get('report_sha256'))
