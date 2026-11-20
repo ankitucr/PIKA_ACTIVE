@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from .evidence import SANDBOX_POLICY_ID
+
 
 class AttestorTrustPolicy:
     """Verify detached Ed25519 attestations against explicitly pinned keys.
@@ -49,6 +51,10 @@ class AttestorTrustPolicy:
             "schema": attestation.get("schema"),
             "attestor_id": attestation.get("attestor_id"),
             "backend_id": attestation.get("backend_id"),
+            "integration_type": attestation.get("integration_type"),
+            "challenge_nonce": attestation.get("challenge_nonce"),
+            "run_context_sha256": attestation.get("run_context_sha256"),
+            "sandbox_policy_id": attestation.get("sandbox_policy_id"),
             "measurement_sha256": attestation.get("measurement_sha256"),
             "verified_at": attestation.get("verified_at"),
             "verification_id": attestation.get("verification_id"),
@@ -74,6 +80,20 @@ class AttestorTrustPolicy:
             return False
         if attestation.get("schema") != self.SCHEMA:
             return False
+        integration_type = attestation.get("integration_type")
+        nonce = attestation.get("challenge_nonce")
+        run_context = attestation.get("run_context_sha256")
+        if not isinstance(integration_type, str) or not integration_type.strip():
+            return False
+        if attestation.get("sandbox_policy_id") != SANDBOX_POLICY_ID:
+            return False
+        for value in (nonce, run_context):
+            if not isinstance(value, str) or len(value) != 64:
+                return False
+            try:
+                int(value, 16)
+            except ValueError:
+                return False
         digest = attestation.get("measurement_sha256")
         if not isinstance(digest, str) or len(digest) != 64:
             return False
