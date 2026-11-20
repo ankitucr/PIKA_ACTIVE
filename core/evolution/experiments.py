@@ -108,6 +108,19 @@ def _manifest_sha256(manifest: dict[str, str]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _copy_source_tree(source: Path, destination: Path) -> None:
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns(
+            ".git", ".venv*", "venv", ".sandbox_venv", "__pycache__",
+            ".pytest_cache", "node_modules", "PIKA_KNOWLEDGE",
+            "workspace", "data", "downloads", "backups", "logs", "tmp", "temp",
+            ".env", ".env.*", "*.pem", "*.key",
+        ),
+    )
+
+
 def _json_write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -226,20 +239,15 @@ class CandidateExperimentEngine:
 
         candidate_id = uuid.uuid4().hex
         candidate_root = self.candidates / candidate_id
+        baseline_workspace = candidate_root / "baseline"
         workspace = candidate_root / "workspace"
         candidate_root.mkdir(parents=True, exist_ok=False)
 
         try:
-            shutil.copytree(
-                baseline,
-                workspace,
-                ignore=shutil.ignore_patterns(
-                    ".git", ".venv*", "venv", ".sandbox_venv", "__pycache__",
-                    ".pytest_cache", "node_modules", "PIKA_KNOWLEDGE",
-                    "workspace", "data", "downloads", "backups", "logs", "tmp", "temp",
-                    ".env", ".env.*", "*.pem", "*.key",
-                ),
-            )
+            _copy_source_tree(baseline, baseline_workspace)
+            _copy_source_tree(baseline, workspace)
+            if _tree_manifest(baseline_workspace) != manifest:
+                raise ExperimentError("Baseline changed while staging its immutable experiment snapshot.")
             target_file = workspace.joinpath(*target_path.parts)
             target_file.parent.mkdir(parents=True, exist_ok=True)
             temp = target_file.with_name(target_file.name + ".phase37.tmp")
@@ -264,6 +272,7 @@ class CandidateExperimentEngine:
                 "schema": "pika.phase37.candidate.v1",
                 "candidate_id": candidate_id,
                 "baseline_root": str(baseline),
+                "baseline_workspace": str(baseline_workspace),
                 "target": target_key,
                 "base_sha256": base_sha,
                 "candidate_sha256": candidate_sha,
@@ -404,11 +413,16 @@ class CandidateExperimentEngine:
             raise ExperimentError("Candidate metadata identity/schema mismatch.")
 
         baseline = Path(metadata["baseline_root"]).resolve(strict=True)
+        baseline_workspace = Path(metadata["baseline_workspace"]).resolve(strict=True)
         workspace = Path(metadata["workspace"]).resolve(strict=True)
+        baseline_workspace.relative_to(candidate_root)
         workspace.relative_to(candidate_root)
         target = _safe_relative(metadata["target"], suffix=".py")
         baseline_manifest = _tree_manifest(baseline)
+        baseline_snapshot_manifest = _tree_manifest(baseline_workspace)
         workspace_manifest = _tree_manifest(workspace)
+        if baseline_snapshot_manifest != baseline_manifest:
+            raise ExperimentError("Baseline experiment snapshot was modified after staging.")
         if _manifest_sha256(baseline_manifest) != metadata.get("baseline_tree_sha256"):
             raise ExperimentError("Baseline source tree changed after staging; experiment is stale.")
         expected_workspace = dict(baseline_manifest)
@@ -466,7 +480,7 @@ class CandidateExperimentEngine:
         for index in range(repetitions):
             order = ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")
             for label in order:
-                source_root = baseline if label == "baseline" else workspace
+                source_root = baseline_workspace if label == "baseline" else workspace
                 try:
                     result = self.runner(source_root, list(argv), **run_kwargs)
                 except Exception as exc:
