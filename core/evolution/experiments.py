@@ -95,6 +95,12 @@ def _tree_manifest(root: Path) -> dict[str, str]:
     return manifest
 
 
+
+def _manifest_sha256(manifest: dict[str, str]) -> str:
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _json_write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -251,6 +257,8 @@ class CandidateExperimentEngine:
                 "target": target_key,
                 "base_sha256": base_sha,
                 "candidate_sha256": candidate_sha,
+                "baseline_tree_sha256": _manifest_sha256(manifest),
+                "candidate_tree_sha256": _manifest_sha256(staged_manifest),
                 "test_paths": normalized_tests,
                 "test_hashes": test_hashes,
                 "workspace": str(workspace),
@@ -354,6 +362,16 @@ class CandidateExperimentEngine:
         workspace = Path(metadata["workspace"]).resolve(strict=True)
         workspace.relative_to(candidate_root)
         target = _safe_relative(metadata["target"], suffix=".py")
+        baseline_manifest = _tree_manifest(baseline)
+        workspace_manifest = _tree_manifest(workspace)
+        if _manifest_sha256(baseline_manifest) != metadata.get("baseline_tree_sha256"):
+            raise ExperimentError("Baseline source tree changed after staging; experiment is stale.")
+        expected_workspace = dict(baseline_manifest)
+        expected_workspace[target.as_posix()] = metadata.get("candidate_sha256")
+        if workspace_manifest != expected_workspace:
+            raise ExperimentError("Candidate workspace changed outside the declared target.")
+        if _manifest_sha256(workspace_manifest) != metadata.get("candidate_tree_sha256"):
+            raise ExperimentError("Candidate workspace manifest digest mismatch.")
         current = _path_without_symlinks(baseline, target)
         staged = _path_without_symlinks(workspace, target)
         current_sha = hashlib.sha256(current.read_bytes()).hexdigest()
