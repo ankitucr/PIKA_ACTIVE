@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--expected-base-sha256")
     parser.add_argument("--rationale", default="")
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--python")
     args = parser.parse_args()
     evolution = EvolutionController(args.root)
@@ -69,6 +70,7 @@ def main():
             args.candidate_id,
             timeout=args.timeout,
             python=args.python,
+            repetitions=args.repetitions,
         )
 
     print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
