@@ -196,6 +196,23 @@ def test_non_target_dependency_change_invalidates_whole_baseline_tree(tmp_path):
     assert runner.calls == []
 
 
+
+def test_baseline_snapshot_is_immutable_after_staging(tmp_path):
+    root = _project(tmp_path / "repo")
+    runner = FakeRunner(False, True)
+    engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
+    baseline_snapshot = (
+        tmp_path / "knowledge" / "PHASE37_EXPERIMENTS" / "candidates"
+        / staged["candidate_id"] / "baseline" / "core" / "calc.py"
+    )
+    baseline_snapshot.write_text("def add(a, b): return 123\\n", encoding="utf-8")
+
+    with pytest.raises(ExperimentError, match="Baseline experiment snapshot was modified"):
+        engine.evaluate_candidate(staged["candidate_id"])
+    assert runner.calls == []
+
+
 def test_candidate_workspace_extra_file_is_rejected(tmp_path):
     root = _project(tmp_path / "repo")
     runner = FakeRunner(False, True)
@@ -223,7 +240,7 @@ def test_modified_candidate_is_rejected_before_runner_call(tmp_path):
     )
     candidate_source.write_text("def add(a, b):\n    return 999\n")
 
-    with pytest.raises(ExperimentError, match="Candidate source changed"):
+    with pytest.raises(ExperimentError, match="Candidate workspace changed outside the declared target"):
         engine.evaluate_candidate(staged["candidate_id"])
     assert runner.calls == []
 
