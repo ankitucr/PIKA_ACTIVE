@@ -72,8 +72,11 @@ class EvolutionController:
         rationale="",
         baseline_root=None,
     ):
-        candidate_path = Path(candidate_file).expanduser().resolve(strict=True)
-        if not candidate_path.is_file() or candidate_path.is_symlink():
+        candidate_entry = Path(candidate_file).expanduser()
+        if candidate_entry.is_symlink():
+            raise ValueError("Candidate file must not be a symlink.")
+        candidate_path = candidate_entry.resolve(strict=True)
+        if not candidate_path.is_file():
             raise ValueError("Candidate file must be a regular non-symlink file.")
         candidate_text = candidate_path.read_text(encoding="utf-8")
         return self.experiments.stage_candidate(
