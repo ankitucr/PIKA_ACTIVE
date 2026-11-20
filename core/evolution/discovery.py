@@ -283,6 +283,8 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Discovery item already has staged candidates.")
         if not isinstance(proposal, dict) or proposal.get("success") is not True:
             raise ExperimentError("A successful native repair proposal is required.")
+        if proposal.get("provider") != "pika-native":
+            raise ExperimentError("Only a proposal from the PIKA native repair generator can enter this queue.")
         if (
             proposal.get("source_executed") is not False
             or proposal.get("live_source_modified") is not False
@@ -353,6 +355,14 @@ class CandidateDiscoveryQueue:
                 test_paths=normalized_tests,
                 expected_base_sha256=source_sha,
                 rationale=rationale,
+                provenance={
+                    "discovery_id": discovery_id,
+                    "event_id": item.get("event_id"),
+                    "task_sha256": item.get("task_sha256"),
+                    "provider": proposal.get("provider"),
+                    "generation_mode": proposal.get("generation_mode"),
+                    "diagnostic_classification": item.get("diagnostic_classification"),
+                },
             )
             candidate_ids.append(staged["candidate_id"])
 
