@@ -151,7 +151,7 @@ def test_candidate_regression_is_detected_and_never_promoted(tmp_path):
     assert result["candidate"]["passed"] is False
     assert len(runner.calls) == 6
     assert [Path(call["source_dir"]).name for call in runner.calls] == [
-        "repo", "workspace", "workspace", "repo", "repo", "workspace"
+        "baseline", "workspace", "workspace", "baseline", "baseline", "workspace"
     ]
     assert all(call["record"] is False for call in runner.calls)
 
@@ -236,7 +236,7 @@ def test_changed_test_file_invalidates_candidate_experiment(tmp_path):
     changed_test = root / "tests" / "test_calc.py"
     changed_test.write_text("def test_changed(): assert True\n")
 
-    with pytest.raises(ExperimentError, match="byte-identical"):
+    with pytest.raises(ExperimentError, match="Baseline source tree changed"):
         engine.evaluate_candidate(staged["candidate_id"])
     assert runner.calls == []
 
