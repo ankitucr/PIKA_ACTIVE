@@ -5,8 +5,8 @@ import pytest
 from core.evolution.verified_memory import VerifiedExperimentMemory, VerifiedMemoryError
 
 def make_report(path: Path):
-    run = {'passed': True, 'returncode': 0, 'timed_out': False, 'no_tests_ran': False, 'tests_passed': 3, 'tests_failed': 0, 'tests_errors': 0, 'duration_s': 0.2}
-    report = {'schema': 'pika.phase37.experiment.v1', 'experiment_id': 'e1', 'candidate_id': 'c1', 'target': 'core/a.py', 'baseline_sha256': 'a'*64, 'candidate_sha256': 'b'*64, 'test_hashes': {'tests/test_a.py': 'c'*64}, 'decision': 'FUNCTIONAL_IMPROVEMENT_UNVERIFIED', 'repetitions': 3, 'baseline': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'candidate': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'trust': 'UNVERIFIED_LOCAL', 'sandboxed': False, 'attested': False, 'replay_allowed': False, 'promotion': 'BLOCKED', 'promotion_allowed': False}
+    run = {'passed': True, 'returncode': 0, 'timed_out': False, 'no_tests_ran': False, 'tests_passed': 3, 'tests_failed': 0, 'tests_errors': 0, 'duration_s': 0.2, 'source_modified_files': []}
+    report = {'schema': 'pika.phase37.experiment.v1', 'experiment_id': 'e1', 'candidate_id': 'c1', 'target': 'core/a.py', 'baseline_sha256': 'a'*64, 'candidate_sha256': 'b'*64, 'test_hashes': {'tests/test_a.py': 'c'*64}, 'decision': 'NO_SIGNIFICANT_IMPROVEMENT', 'repetitions': 3, 'baseline': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'candidate': {'runs': [run, run, run], 'run_count': 3, 'passed_runs': 3}, 'trust': 'UNVERIFIED_LOCAL', 'sandboxed': False, 'attested': False, 'replay_allowed': False, 'promotion': 'BLOCKED', 'promotion_allowed': False}
     path.write_text(json.dumps(report), encoding='utf-8')
     return report
 
@@ -44,3 +44,30 @@ def test_detects_tampering(tmp_path):
     report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge'); memory.record(report)
     row = json.loads(memory.journal.read_text()); row['payload']['decision'] = 'TRUSTED'; memory.journal.write_text(json.dumps(row)+'\n')
     assert memory.verify()['valid'] is False
+
+
+def test_recovers_projection_after_journal_was_written(tmp_path, monkeypatch):
+    report = tmp_path/'report.json'
+    make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    original_add = memory.memory.add
+    def fail_once(*args, **kwargs):
+        raise OSError('simulated projection interruption')
+    monkeypatch.setattr(memory.memory, 'add', fail_once)
+    with pytest.raises(OSError):
+        memory.record(report)
+    assert memory.verify() == {'valid': True, 'entries': 1}
+    monkeypatch.setattr(memory.memory, 'add', original_add)
+    result = memory.record(report)
+    assert result['already_recorded'] is True
+    assert len(memory.memory.recent(100)) == 1
+    assert memory.ledger.verify()['valid'] is True
+
+
+def test_rejects_decision_that_contradicts_passing_runs(tmp_path):
+    report = tmp_path/'report.json'
+    value = make_report(report)
+    value['decision'] = 'REGRESSION'
+    report.write_text(json.dumps(value), encoding='utf-8')
+    with pytest.raises(VerifiedMemoryError):
+        VerifiedExperimentMemory(tmp_path/'knowledge').record(report)
