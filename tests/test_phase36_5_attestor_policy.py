@@ -11,7 +11,7 @@ from core.phase36.governance import PromotionGate
 from core.phase36.sandbox import SandboxRunner
 
 
-class TestBackend:
+class FakeSandboxBackend:
     backend_id = "phase36-5-test-backend"
     def __init__(self):
         self.calls = 0
@@ -55,7 +55,7 @@ def test_unsigned_test_receipt_cannot_be_promoted_or_replayed(tmp_path):
     source = tmp_path / "sample.py"
     source.write_text("assert True\n")
     authority = EvidenceAuthority(tmp_path)
-    backend = TestBackend()
+    backend = FakeSandboxBackend()
     runner = SandboxRunner(
         authority, backend, UnsignedTestAttestor(), AttestorTrustPolicy()
     )
@@ -106,7 +106,7 @@ def test_ed25519_attestation_is_accepted_only_when_pinned(tmp_path):
     policy = AttestorTrustPolicy({"native-os-attestor": {
         "public_key_hex": public_key.hex(),
         "backend_ids": ["phase36-5-test-backend"]}})
-    runner = SandboxRunner(authority, TestBackend(), SignedAttestor(), policy)
+    runner = SandboxRunner(authority, FakeSandboxBackend(), SignedAttestor(), policy)
     receipt = runner.run_test(["pytest", "-q", "sample.py"], cwd=tmp_path,
                               source_paths=["sample.py"])["evidence_receipt"]
     attestation = receipt["payload"]["backend_attestation"]
