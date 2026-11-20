@@ -48,6 +48,65 @@ class LearningEngine:
         if trust_gate is not None and not isinstance(trust_gate, LearningTrustGate):
             raise TypeError("trust_gate must be a LearningTrustGate or None")
         self.trust_gate = trust_gate
+        if hasattr(self, "data"):
+            self._revalidate_trust_metadata(self.data)
+
+    def _revalidate_trust_metadata(self, data: dict[str, Any]) -> None:
+        """Recompute trusted flags and solution counters from signed receipts."""
+        trusted_by_solution: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        experiences = data.get("experiences", [])
+        patterns = data.get("patterns", [])
+
+        for experience in experiences if isinstance(experiences, list) else []:
+            if not isinstance(experience, dict):
+                continue
+            trusted = bool(
+                experience.get("success")
+                and self._has_trusted_evidence(
+                    experience.get("verification", {})
+                )
+            )
+            experience["trusted"] = trusted
+            if not trusted:
+                continue
+            key = (
+                str(experience.get("problem_pattern", "")),
+                self.normalize(experience.get("solution", "")),
+            )
+            trusted_by_solution.setdefault(key, []).append(experience)
+
+        for pattern in patterns if isinstance(patterns, list) else []:
+            if not isinstance(pattern, dict):
+                continue
+            problem_pattern = str(pattern.get("problem_pattern", ""))
+            solutions = pattern.get("solutions", [])
+            if not isinstance(solutions, list):
+                pattern["solutions"] = []
+                continue
+            for solution in solutions:
+                if not isinstance(solution, dict):
+                    continue
+                key = (
+                    problem_pattern,
+                    self.normalize(solution.get("solution", "")),
+                )
+                matching = trusted_by_solution.get(key, [])
+                solution["verified_count"] = len(matching)
+                if matching:
+                    latest = max(
+                        matching,
+                        key=lambda item: float(item.get("timestamp", 0) or 0),
+                    )
+                    verification = latest.get("verification", {})
+                    receipt = (
+                        verification.get("evidence_receipt")
+                        if isinstance(verification, dict) else None
+                    )
+                    solution["evidence_receipt"] = (
+                        dict(receipt) if isinstance(receipt, dict) else None
+                    )
+                else:
+                    solution["evidence_receipt"] = None
 
     # ---------------------------------------------------------
     # STORAGE
@@ -78,33 +137,9 @@ class LearningEngine:
             if not isinstance(data["patterns"], list):
                 data["patterns"] = []
 
-            # Migrate old trust flags at load time. A persisted Boolean or
-            # verified_count is not authority; each record must still carry
-            # a valid receipt under the currently pinned attestor policy.
-            for experience in data["experiences"]:
-                if isinstance(experience, dict):
-                    experience["trusted"] = bool(
-                        experience.get("success")
-                        and self._has_trusted_evidence(
-                            experience.get("verification", {})
-                        )
-                    )
-
-            for pattern in data["patterns"]:
-                if not isinstance(pattern, dict):
-                    continue
-                solutions = pattern.get("solutions", [])
-                if not isinstance(solutions, list):
-                    pattern["solutions"] = []
-                    continue
-                for solution in solutions:
-                    if not isinstance(solution, dict):
-                        continue
-                    if not self._receipt_is_trusted(
-                        solution.get("evidence_receipt")
-                    ):
-                        solution["verified_count"] = 0
-
+            # Migrate old trust flags and counters through the currently
+            # configured evidence gate. No caller-persisted Boolean is authority.
+            self._revalidate_trust_metadata(data)
             return data
 
         except Exception:
