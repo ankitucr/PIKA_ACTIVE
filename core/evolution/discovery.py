@@ -375,6 +375,15 @@ class CandidateDiscoveryQueue:
             proposal_id = proposal.get("proposal_id")
             if not isinstance(proposal_id, str) or re.fullmatch(r"[0-9a-f]{32}", proposal_id) is None:
                 raise ExperimentError("Native proposal envelope ID is invalid.")
+            unsigned_envelope = {
+                key: value for key, value in proposal.items()
+                if key != "proposal_id"
+            }
+            expected_proposal_id = hashlib.sha256(
+                _canonical(unsigned_envelope)
+            ).hexdigest()[:32]
+            if expected_proposal_id != proposal_id:
+                raise ExperimentError("Native proposal envelope content hash mismatch.")
             envelope_metadata = {
                 "proposal_id": proposal_id,
                 "event_id": proposal.get("event_id"),
