@@ -34,10 +34,12 @@ class SandboxRunner:
         authority: EvidenceAuthority,
         backend: Any = None,
         attestation_verifier: Any = None,
+        attestor_policy: Any = None,
     ):
         self.authority = authority
         self.backend = backend
         self.attestation_verifier = attestation_verifier
+        self.attestor_policy = attestor_policy
 
     @property
     def available(self) -> bool:
@@ -46,6 +48,8 @@ class SandboxRunner:
             and callable(getattr(self.backend, "run_test", None))
             and self.attestation_verifier is not None
             and callable(getattr(self.attestation_verifier, "attest_backend", None))
+            and self.attestor_policy is not None
+            and callable(getattr(self.attestor_policy, "verify", None))
         )
 
     @staticmethod
@@ -182,6 +186,15 @@ class SandboxRunner:
             or now - stamp > 300
         ):
             raise SandboxUnavailable("Backend attestation stale or invalid.")
+
+        try:
+            trusted = self.attestor_policy.verify(dict(record)) is True
+        except Exception:
+            trusted = False
+        if not trusted:
+            raise SandboxUnavailable(
+                "Backend attestation signature is not trusted by the pinned Ed25519 policy."
+            )
 
         return dict(record)
 
