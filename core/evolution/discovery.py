@@ -89,10 +89,10 @@ class CandidateDiscoveryQueue:
         self.ledger = experiments.ledger
 
     def _load(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return {"schema": SCHEMA, "updated_at": None, "items": []}
         if self.path.is_symlink():
             raise ExperimentError("Discovery queue symlink is not allowed.")
+        if not self.path.exists():
+            return {"schema": SCHEMA, "updated_at": None, "items": []}
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -151,6 +151,8 @@ class CandidateDiscoveryQueue:
             diag = by_event.get(event_id, {})
             task_hash = item.get("task_sha256") or diag.get("task_sha256")
             if not isinstance(task_hash, str) or len(task_hash) != 64:
+                task_hash = None
+            elif any(char not in "0123456789abcdef" for char in task_hash.lower()):
                 task_hash = None
             discovery_id = self._event_key(event_id, task_hash)
             fingerprints = diag.get("repeated_issue_fingerprints", [])
@@ -316,6 +318,8 @@ class CandidateDiscoveryQueue:
                 raise ExperimentError("Native candidate source must be non-empty text.")
             if len(candidate_text.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
                 raise ExperimentError("Native candidate exceeds the staging size limit.")
+            if candidate_text == old_text:
+                raise ExperimentError("Native candidate is identical to the current source.")
             try:
                 ast.parse(candidate_text, filename=target.as_posix())
             except SyntaxError as exc:
