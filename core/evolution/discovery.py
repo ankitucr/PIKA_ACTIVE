@@ -29,7 +29,7 @@ def _bounded_text(value: Any, limit: int = 120) -> str | None:
     if not isinstance(value, str):
         return None
     text = re.sub(
-        r"(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^\\s,;]+",
+        r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+",
         r"\\1=[REDACTED]",
         value,
     )
