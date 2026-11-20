@@ -1,19 +1,32 @@
 from __future__ import annotations
+
+import ast
 import hashlib
 import json
+import os
 import re
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .ledger import Ledger
 from .memory import ExperienceMemory
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^\\s,;]+"),
+    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]+"),
 )
+_LITERAL_SECRET_PATTERNS = (
+    re.compile(r"""(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*['"][^'"]{8,}['"]"""),
+    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]{20,}"),
+)
+_NATIVE_GENERATION_MODES = frozenset({
+    "native_deterministic_rule",
+    "validated_structured_worker_proposal",
+})
+_MAX_PROPOSAL_BYTES = 500_000
+
 
 def _safe_name(value: Any, limit: int = 80) -> str | None:
     if not isinstance(value, str):
@@ -24,14 +37,71 @@ def _safe_name(value: Any, limit: int = 80) -> str | None:
     text = re.sub(r"[^A-Za-z0-9_.:/+-]", "_", text)
     return text[:limit] or None
 
+
 def _dict(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
+
+def _safe_python_path(value: Any) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\\\" in value
+        or "\\x00" in value
+    ):
+        return None
+    path = PurePosixPath(value)
+    if (
+        path.is_absolute()
+        or path.as_posix() != value
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or path.suffix != ".py"
+    ):
+        return None
+    return path.as_posix()
+
+
+def _contains_literal_secret(value: str) -> bool:
+    return any(pattern.search(value) for pattern in _LITERAL_SECRET_PATTERNS)
+
+
+def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
+    temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(temp, flags, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, ensure_ascii=False, allow_nan=False)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    finally:
+        try:
+            temp.unlink()
+        except FileNotFoundError:
+            pass
+
+
 class ExecutionObserver:
-    """Records bounded Brain execution metadata; observations are untrusted."""
+    """Records bounded Brain metadata and inert native proposals; observations remain untrusted."""
+
     def __init__(self, knowledge_dir: str | Path):
         knowledge = Path(knowledge_dir).expanduser().resolve()
         knowledge.mkdir(parents=True, exist_ok=True)
+        self.knowledge = knowledge
+        self.proposal_dir = knowledge / "PHASE37_NATIVE_PROPOSALS"
         self.memory = ExperienceMemory(knowledge / "EXPERIENCE_MEMORY.jsonl")
         self.ledger = Ledger(knowledge / "EVOLUTION_LEDGER.jsonl")
 
@@ -39,7 +109,9 @@ class ExecutionObserver:
         task_text = str(task or "")
         return {
             "event_id": uuid.uuid4().hex,
-            "task_sha256": hashlib.sha256(task_text.encode("utf-8", errors="replace")).hexdigest(),
+            "task_sha256": hashlib.sha256(
+                task_text.encode("utf-8", errors="replace")
+            ).hexdigest(),
             "task_chars": len(task_text),
             "started_perf": time.perf_counter(),
         }
@@ -61,23 +133,198 @@ class ExecutionObserver:
             "tool_used": _safe_name(result.get("tool_used")),
             "result_success": result.get("success") is True,
             "evaluation_passed": evaluation.get("passed") is True,
-            "issue_count": len(evaluation.get("issues", [])) if isinstance(evaluation.get("issues"), list) else 0,
+            "issue_count": len(evaluation.get("issues", []))
+            if isinstance(evaluation.get("issues"), list) else 0,
             "issue_texts": [
-                t for t in (_safe_name(x, 60) for x in (evaluation.get("issues") if isinstance(evaluation.get("issues"), list) else []) if isinstance(x, str)) if t
+                text for text in (
+                    _safe_name(value, 60)
+                    for value in (
+                        evaluation.get("issues")
+                        if isinstance(evaluation.get("issues"), list) else []
+                    )
+                    if isinstance(value, str)
+                ) if text
             ][:5],
             "worker_error": _safe_name(result.get("error"), 60),
-            "status_code": result.get("status_code") if isinstance(result.get("status_code"), int) and not isinstance(result.get("status_code"), bool) else None,
+            "status_code": result.get("status_code")
+            if isinstance(result.get("status_code"), int)
+            and not isinstance(result.get("status_code"), bool) else None,
             "quality_issue_codes": [
-                _safe_name(x, 100) for x in evaluation_checks.get("quality_issue_codes", [])
-                if isinstance(x, str)
+                _safe_name(value, 100)
+                for value in evaluation_checks.get("quality_issue_codes", [])
+                if isinstance(value, str)
             ][:20],
-            "error_type": _safe_name(diagnosis.get("error_type") or result.get("error_type")),
+            "error_type": _safe_name(
+                diagnosis.get("error_type") or result.get("error_type")
+            ),
             "recovery_action": _safe_name(recovery.get("action")),
             "workspace_execution_success": workspace.get("success") if workspace else None,
+            "native_proposal_ready": (
+                _dict(result.get("phase33_generation")).get("success") is True
+            ),
         }
 
+    def _capture_native_proposals(
+        self,
+        token: dict[str, Any],
+        attempts: list[Any],
+        *,
+        outcome_status: str,
+    ) -> list[dict[str, Any]]:
+        if outcome_status == "SUCCEEDED":
+            return []
+        event_id = token.get("event_id")
+        task_hash = token.get("task_sha256")
+        if not isinstance(event_id, str) or re.fullmatch(r"[0-9a-f]{32}", event_id) is None:
+            return []
+        if (
+            not isinstance(task_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", task_hash) is None
+        ):
+            return []
+
+        captured: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for attempt in attempts[-12:]:
+            attempt_result = _dict(_dict(attempt).get("result"))
+            proposal = _dict(attempt_result.get("phase33_generation"))
+            if proposal.get("success") is not True:
+                continue
+            if proposal.get("provider") != "pika-native":
+                continue
+            generation_mode = proposal.get("generation_mode")
+            if generation_mode not in _NATIVE_GENERATION_MODES:
+                continue
+            if (
+                proposal.get("source_executed") is not False
+                or proposal.get("live_source_modified") is not False
+                or proposal.get("execution_allowed") is not False
+                or proposal.get("promotion_allowed") is not False
+                or proposal.get("trust") != "UNVERIFIED_PROPOSAL"
+            ):
+                continue
+
+            target = _safe_python_path(proposal.get("target_path"))
+            test_path = _safe_python_path(proposal.get("test_path"))
+            old_text = proposal.get("old_text")
+            candidates = proposal.get("candidates")
+            if not target or not test_path or test_path == target:
+                continue
+            if (
+                not isinstance(old_text, str)
+                or not old_text
+                or len(old_text.encode("utf-8")) > _MAX_PROPOSAL_BYTES
+                or not isinstance(candidates, list)
+                or not 1 <= len(candidates) <= 3
+                or any(not isinstance(value, str) or not value for value in candidates)
+                or len(set(candidates)) != len(candidates)
+            ):
+                continue
+            if _contains_literal_secret(old_text) or any(
+                _contains_literal_secret(value) for value in candidates
+            ):
+                continue
+
+            try:
+                ast.parse(old_text, filename=target)
+                for candidate in candidates:
+                    if len(candidate.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
+                        raise ValueError("candidate_too_large")
+                    if candidate == old_text:
+                        raise ValueError("candidate_identical_to_source")
+                    ast.parse(candidate, filename=target)
+            except (SyntaxError, ValueError):
+                continue
+
+            diagnosis = _dict(proposal.get("diagnosis"))
+            clean_proposal = {
+                "success": True,
+                "stage": "native_proposal_ready",
+                "provider": "pika-native",
+                "generation_mode": generation_mode,
+                "target_path": target,
+                "old_text": old_text,
+                "test_path": test_path,
+                "candidates": list(candidates),
+                "diagnosis": {
+                    "error_type": _safe_name(diagnosis.get("error_type"), 100)
+                },
+                "trust": "UNVERIFIED_PROPOSAL",
+                "source_executed": False,
+                "live_source_modified": False,
+                "execution_allowed": False,
+                "promotion_allowed": False,
+            }
+            envelope = {
+                "schema": "pika.phase37.native-proposal-envelope.v1",
+                "event_id": event_id,
+                "task_sha256": task_hash,
+                "attempt": _dict(attempt).get("attempt"),
+                "proposal": clean_proposal,
+            }
+            canonical = json.dumps(
+                envelope, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            ).encode("utf-8")
+            proposal_id = hashlib.sha256(canonical).hexdigest()[:32]
+            if proposal_id in seen:
+                continue
+            seen.add(proposal_id)
+            path = self.proposal_dir / f"{event_id}_{proposal_id}.json"
+            if path.exists() and path.is_symlink():
+                continue
+            if path.exists():
+                try:
+                    existing = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if existing != envelope:
+                    continue
+            else:
+                try:
+                    _atomic_private_json(path, envelope)
+                except OSError:
+                    continue
+
+            source_sha = hashlib.sha256(old_text.encode("utf-8")).hexdigest()
+            candidate_hashes = [
+                hashlib.sha256(value.encode("utf-8")).hexdigest()
+                for value in candidates
+            ]
+            try:
+                self.ledger.append("phase37_native_proposal_captured", {
+                    "proposal_id": proposal_id,
+                    "event_id": event_id,
+                    "task_sha256": task_hash,
+                    "target": target,
+                    "source_sha256": source_sha,
+                    "candidate_sha256": candidate_hashes,
+                    "test_path": test_path,
+                    "provider": "pika-native",
+                    "generation_mode": generation_mode,
+                    "trust": "UNVERIFIED_PROPOSAL",
+                    "promotion": "BLOCKED",
+                })
+            except Exception:
+                pass
+            captured.append({
+                "proposal_id": proposal_id,
+                "path": str(path),
+                "target": target,
+                "candidate_count": len(candidates),
+                "generation_mode": generation_mode,
+                "trust": "UNVERIFIED_PROPOSAL",
+                "promotion": "BLOCKED",
+            })
+            if len(captured) >= 3:
+                break
+        return captured
+
     def finish(
-        self, token: dict[str, Any], result: Any = None, *,
+        self,
+        token: dict[str, Any],
+        result: Any = None,
+        *,
         exception: BaseException | None = None,
         elapsed_seconds: float | None = None,
     ) -> dict[str, Any]:
@@ -89,10 +336,14 @@ class ExecutionObserver:
         attempt_summaries = [self._attempt_summary(x) for x in attempts[-12:]]
         if elapsed_seconds is None:
             elapsed_seconds = max(
-                0.0, time.perf_counter() - float(token.get("started_perf", time.perf_counter()))
+                0.0,
+                time.perf_counter() - float(token.get("started_perf", time.perf_counter())),
             )
 
-        evaluation_passed = evaluation.get("passed") if isinstance(evaluation.get("passed"), bool) else None
+        evaluation_passed = (
+            evaluation.get("passed")
+            if isinstance(evaluation.get("passed"), bool) else None
+        )
         result_success = result_dict.get("success") is True
         if exception is not None:
             outcome_status, success, category = "ERROR", False, "error"
@@ -103,12 +354,19 @@ class ExecutionObserver:
         else:
             outcome_status, success, category = "INCOMPLETE", None, "incomplete"
 
+        native_proposals = self._capture_native_proposals(
+            token, attempts, outcome_status=outcome_status
+        )
+
         evaluation_checks = _dict(evaluation.get("checks"))
         quality_codes = evaluation_checks.get("quality_issue_codes", [])
         if not isinstance(quality_codes, list):
             quality_codes = []
         quality_codes = list(dict.fromkeys(
-            code for code in (_safe_name(x, 100) for x in quality_codes if isinstance(x, str)) if code
+            code for code in (
+                _safe_name(value, 100) for value in quality_codes
+                if isinstance(value, str)
+            ) if code
         ))[:20]
 
         error_types = []
@@ -151,15 +409,19 @@ class ExecutionObserver:
             "strategy": _safe_name(result_dict.get("strategy")),
             "error_types": error_types,
             "exception_type": type(exception).__name__ if exception is not None else None,
-            "phase32_seen": any(bool(_dict(_dict(x).get("result")).get("workspace_execution")) for x in attempts),
+            "phase32_seen": any(
+                bool(_dict(_dict(x).get("result")).get("workspace_execution"))
+                for x in attempts
+            ),
             "phase33_seen": any(
                 bool(_dict(_dict(x).get("result")).get("phase33_repair"))
                 or bool(_dict(_dict(x).get("result")).get("phase33_generation"))
                 for x in attempts
             ),
+            "native_proposal_count": len(native_proposals),
             "phase34_seen": bool(result_dict.get("phase34_repair")),
             "phase35_seen": bool(result_dict.get("phase35_memory_repair")),
-            "origin": "test" if __import__("os").environ.get("PYTEST_CURRENT_TEST") else "live",
+            "origin": "test" if os.environ.get("PYTEST_CURRENT_TEST") else "live",
             "raw_task_stored": False,
             "raw_output_stored": False,
             "trust": "UNVERIFIED",
@@ -168,7 +430,9 @@ class ExecutionObserver:
         try:
             memory_row = self.memory.add(category, observation, source="PIKABrain.think")
             observation_hash = hashlib.sha256(
-                json.dumps(observation, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                json.dumps(
+                    observation, sort_keys=True, separators=(",", ":")
+                ).encode("utf-8")
             ).hexdigest()
             ledger_row = self.ledger.append("brain_execution_observed", {
                 "event_id": observation["event_id"],
@@ -176,6 +440,7 @@ class ExecutionObserver:
                 "observation_sha256": observation_hash,
                 "memory_trust": "UNVERIFIED",
                 "outcome_status": outcome_status,
+                "native_proposal_count": len(native_proposals),
             })
             return {
                 "recorded": True,
@@ -186,6 +451,7 @@ class ExecutionObserver:
                 "replay_allowed": False,
                 "ledger_recorded": bool(ledger_row),
                 "latency_ms": observation["latency_ms"],
+                "native_proposals": native_proposals,
             }
         except Exception as exc:
             return {
@@ -196,4 +462,5 @@ class ExecutionObserver:
                 "error_type": type(exc).__name__,
                 "memory_trust": "UNKNOWN",
                 "replay_allowed": False,
+                "native_proposals": native_proposals,
             }
