@@ -85,3 +85,7 @@ backups/
 /PIKA_KNOWLEDGE/LATENCY_PROFILE.json
 /PIKA_KNOWLEDGE/STRATEGY_RELIABILITY.jsonl
 /PIKA_KNOWLEDGE/EVALUATION_COVERAGE.json
+
+# Historical source snapshots must remain local, never part of the active package
+*.phase*-before-*
+*.before-*
