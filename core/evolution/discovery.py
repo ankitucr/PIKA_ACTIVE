@@ -11,6 +11,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import time
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -27,7 +28,13 @@ _MAX_PROPOSAL_BYTES = 500_000
 def _bounded_text(value: Any, limit: int = 120) -> str | None:
     if not isinstance(value, str):
         return None
-    return " ".join(value.split())[:limit] or None
+    text = re.sub(
+        r"(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^\\s,;]+",
+        r"\\1=[REDACTED]",
+        value,
+    )
+    text = re.sub(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", text)
+    return " ".join(text.split())[:limit] or None
 
 
 def _canonical(value: Any) -> bytes:
@@ -154,6 +161,8 @@ class CandidateDiscoveryQueue:
                 task_hash = None
             elif any(char not in "0123456789abcdef" for char in task_hash.lower()):
                 task_hash = None
+            else:
+                task_hash = task_hash.lower()
             discovery_id = self._event_key(event_id, task_hash)
             fingerprints = diag.get("repeated_issue_fingerprints", [])
             if not isinstance(fingerprints, list):
@@ -178,7 +187,10 @@ class CandidateDiscoveryQueue:
             if previous is not None:
                 previous["last_seen_at"] = time.time()
                 previous["diagnostic_classification"] = diag.get("event_classification")
-                previous["repeated_issue_fingerprints"] = fingerprints[:8]
+                previous["issue_fingerprints"] = safe_fingerprints
+                previous["repeated_issue_fingerprints"] = [
+                    value for value in fingerprints if isinstance(value, str)
+                ][:8]
                 previous["attempt_classifications"] = classifications[:12]
                 refreshed += 1
                 continue
@@ -191,8 +203,10 @@ class CandidateDiscoveryQueue:
                 "agent": _bounded_text(item.get("agent"), 80),
                 "strategy": _bounded_text(item.get("strategy"), 80),
                 "error_types": [
-                    value[:100] for value in item.get("error_types", [])
+                    safe for value in item.get("error_types", [])
                     if isinstance(value, str)
+                    for safe in [_bounded_text(value, 100)]
+                    if safe
                 ][:5] if isinstance(item.get("error_types"), list) else [],
                 "issue_fingerprints": safe_fingerprints,
                 "diagnostic_classification": diag.get("event_classification"),
@@ -303,6 +317,8 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Native proposal has no source-bound old_text.")
         if not isinstance(candidates, list) or not 1 <= len(candidates) <= _MAX_CANDIDATES:
             raise ExperimentError("Native proposal must contain one to three candidates.")
+        if any(not isinstance(value, str) for value in candidates):
+            raise ExperimentError("Native candidate source must be text.")
         if len(set(candidates)) != len(candidates):
             raise ExperimentError("Native proposal contains duplicate candidates.")
 
@@ -316,7 +332,7 @@ class CandidateDiscoveryQueue:
         if len(set(normalized_tests)) != len(normalized_tests):
             raise ExperimentError("Pinned test paths must be unique.")
         for candidate_text in candidates:
-            if not isinstance(candidate_text, str) or not candidate_text:
+            if not candidate_text:
                 raise ExperimentError("Native candidate source must be non-empty text.")
             if len(candidate_text.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
                 raise ExperimentError("Native candidate exceeds the staging size limit.")
