@@ -52,3 +52,7 @@ The current Termux device has no audited OS sandbox backend. The GitHub reposito
 ## Operator attestor contract
 
 A host integration may implement attest_backend(descriptor), but it must independently measure the actual backend and policy rather than merely sign caller-provided fields. It signs the complete schema-v2 record using an Ed25519 private key kept outside the PIKA repository and workspace. Only the corresponding public key and the exact backend ID are installed in the owner-only host trust configuration.
+
+## Trusted validation baseline
+
+PR validation runs the protected-by-workflow test baseline from the current main branch independently from candidate-provided tests. Candidate tests are additional standard-CI coverage; they do not replace the trusted baseline used by the isolated runner.
