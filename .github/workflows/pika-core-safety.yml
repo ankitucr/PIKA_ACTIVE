@@ -18,6 +18,14 @@ on:
       - "config/**"
       - "remote_bridge/**"
       - "pytest.ini"
+      - "requirements.txt"
+      - ".github/workflows/pika-core-safety.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "core/**"
+      - "tests/**"
+      - "pika_live.py"
       - "main.py"
       - "pika.py"
       - "agents/**"
@@ -29,14 +37,6 @@ on:
       - "config/**"
       - "remote_bridge/**"
       - "pytest.ini"
-      - "requirements.txt"
-      - ".github/workflows/pika-core-safety.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "core/**"
-      - "tests/**"
-      - "pika_live.py"
       - "requirements.txt"
       - ".github/workflows/pika-core-safety.yml"
 
@@ -71,7 +71,7 @@ jobs:
           python -m pip install -r requirements.txt pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
 
       - name: Compile all first-party Python
-        run: python -m compileall -q core agents tests pika_live.py
+        run: python -m compileall -q core agents tests pika_live.py main.py pika.py remote_bridge
 
       - name: Prepare best-effort local diagnostic venv (not an OS sandbox)
         run: python -m core.evolution.local_runner setup
@@ -96,3 +96,29 @@ jobs:
           python -m pytest -q tests \
             --ignore=tests/test_pika_real_cohere_repair.py \
             --ignore=tests/test_pika_brain_real_repair.py
+
+      - name: Run legacy root-level regression suite
+        run: |
+          python -m pytest -q \
+            --ignore=test_api_workers.py \
+            --ignore=test_pika_api.py
+
+      - name: Run read-only Phase 36 architecture audit
+        run: |
+          python -m core.phase36 --output /tmp/pika-phase36-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/pika-phase36-audit.json").read_text())
+          assert report.get("mode") == "read_only"
+          governance = report.get("governance", {})
+          assert governance.get("source_modified") is False
+          assert governance.get("project_code_executed") is False
+          assert governance.get("automatic_promotion_enabled") is False
+          assert governance.get("approval_required_for_promotion") is True
+          print(json.dumps({
+              "source_summary": report.get("source_summary"),
+              "finding_count": len(report.get("findings", [])),
+              "governance": governance,
+          }, indent=2))
+          PY
