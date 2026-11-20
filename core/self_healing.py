@@ -28,6 +28,10 @@ class SelfHealingEngine:
     8. Roll back every failed candidate.
     9. Stop after a bounded number of candidates.
 
+    Candidate execution is currently fail-closed until an audited OS sandbox
+    is configured, so this class intentionally has no retry-count setting.
+
+
     Candidate generation is deliberately external.
     This keeps the healing engine independent from
     any particular LLM/provider.
@@ -36,7 +40,6 @@ class SelfHealingEngine:
     def __init__(
         self,
         workspace_root: str | Path,
-        max_retries: int = 2,
         max_candidates: int = 3,
         learning_memory_path: str | Path | None = None,
     ):
@@ -44,11 +47,6 @@ class SelfHealingEngine:
             Path(workspace_root)
             .expanduser()
             .resolve()
-        )
-
-        self.max_retries = max(
-            0,
-            int(max_retries),
         )
 
         self.max_candidates = max(
