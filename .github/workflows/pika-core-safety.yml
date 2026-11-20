@@ -51,6 +51,9 @@ jobs:
       - name: Compile all first-party Python
         run: python -m compileall -q core agents tests pika_live.py
 
+      - name: Prepare best-effort local diagnostic venv (not an OS sandbox)
+        run: python -m core.evolution.local_runner setup
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \

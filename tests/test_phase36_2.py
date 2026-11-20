@@ -268,12 +268,25 @@ class Phase362IntegratedTests(unittest.TestCase):
                       if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                       and node.name == "_phase35_save_repair")
         body = ast.get_source_segment(brain.read_text(encoding="utf-8"), target)
-        self.assertIn('authority.verify(outcome.get("evidence_receipt"))', body)
+        self.assertIn("trust_gate = LearningTrustGate(authority, attestor_policy)", body)
+        self.assertIn(
+            'if not trust_gate.accepts({"evidence_receipt": outcome.get("evidence_receipt")}):',
+            body,
+        )
 
     def test_brain_semantic_memory_replay_requires_signed_receipt(self):
         brain = Path(__file__).resolve().parents[1] / "core" / "brain.py"
         source = brain.read_text(encoding="utf-8")
-        self.assertEqual(source.count('self.evidence_authority.verify(item.get("evidence_receipt"))'), 2)
+        self.assertIn("self.learning_trust_gate.accepts(", source)
+        self.assertIn(
+            '{"evidence_receipt": item.get("evidence_receipt")}', source
+        )
+        evidence = (
+            Path(__file__).resolve().parents[1]
+            / "core" / "phase36" / "evidence.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("if not self.authority.verify(receipt):", evidence)
+        self.assertIn("return verifier(attestation) is True", evidence)
 
 
 if __name__ == "__main__":
