@@ -87,6 +87,8 @@ def test_controller_can_stage_native_proposal_from_discovery_item(tmp_path, monk
     discovery_id = refreshed["discovery_ids"][0]
     proposal = {
         "success": True,
+        "provider": "pika-native",
+        "generation_mode": "validated_structured_worker_proposal",
         "target_path": "core/calc.py",
         "old_text": old_text,
         "test_path": "tests/test_calc.py",
