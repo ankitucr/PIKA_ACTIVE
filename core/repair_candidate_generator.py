@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agents.api_load_balancer import APILoadBalancer
-
 
 class RepairCandidateGenerator:
     """
@@ -15,7 +13,11 @@ class RepairCandidateGenerator:
       1. Inspect the failed Phase 32 worker plan.
       2. Identify a safe changed Python target.
       3. Identify the test command when available.
-      4. Ask Cohere for a bounded set of replacement candidates.
+      4. Ask an explicitly injected worker for bounded replacement candidates.
+
+    This is an optional worker adapter. It never selects or creates an external
+    API provider implicitly; the active Brain uses NativeRepairCandidateGenerator.
+
       5. Validate the returned repair context.
 
     It NEVER edits the workspace.
@@ -35,7 +37,12 @@ class RepairCandidateGenerator:
             min(int(max_candidates), self.MAX_CANDIDATES),
         )
 
-        self.worker = worker or APILoadBalancer()
+        if worker is None:
+            raise ValueError(
+                "An explicit repair worker is required. "
+                "Choose a local worker or explicitly inject an external provider adapter."
+            )
+        self.worker = worker
 
         self.root = (
             Path(workspace_root).expanduser().resolve()
