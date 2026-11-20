@@ -178,7 +178,7 @@ def test_stale_baseline_is_rejected_before_any_runner_call(tmp_path):
     staged = _stage(engine, root, tmp_path, "def add(a, b):\n    return a + b\n")
     (root / "core" / "calc.py").write_text("def add(a, b):\n    return a * b\n")
 
-    with pytest.raises(ExperimentError, match="Baseline source changed"):
+    with pytest.raises(ExperimentError, match="Baseline source tree changed"):
         engine.evaluate_candidate(staged["candidate_id"])
     assert runner.calls == []
 
@@ -328,7 +328,10 @@ def test_malformed_runner_success_cannot_be_counted_as_candidate_pass(tmp_path):
 
     assert result["decision"] == "NO_VERIFIED_IMPROVEMENT"
     assert result["candidate"]["passed"] is False
-    assert result["candidate"]["error_type"] == "malformed_runner_result"
+    assert all(
+        run.get("error_type") == "malformed_runner_result"
+        for run in result["candidate"]["runs"]
+    )
 
 
 def test_experiment_summary_and_ledger_record_candidate_lifecycle(tmp_path):
@@ -356,7 +359,7 @@ def test_controller_integrates_stage_evaluate_and_status(tmp_path):
     root = _project(tmp_path / "repo")
     candidate_file = tmp_path / "candidate_calc.py"
     candidate_file.write_text(
-        "def add(a, b):\\n    return a + b\\n",
+        "def add(a, b):\n    return a + b\n",
         encoding="utf-8",
     )
     evolution = EvolutionController(root)
@@ -386,7 +389,7 @@ def test_expected_base_sha256_prevents_stale_candidate_staging(tmp_path):
         engine.stage_candidate(
             root,
             "core/calc.py",
-            "def add(a, b): return a + b\\n",
+            "def add(a, b): return a + b\n",
             test_paths=["tests/test_calc.py"],
             expected_base_sha256="0" * 64,
         )
