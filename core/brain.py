@@ -15,7 +15,7 @@ from core.phase34_learning_repair import Phase34LearningRepair
 from core.semantic_code_memory import SemanticCodeMemory
 from core.learning_engine import LearningEngine
 from core.pika_code_learning import PikaCodeLearning
-from core.phase36.evidence import EvidenceAuthority
+from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.evolution.retry_guard import assess_retry_progress
 
 
@@ -23,7 +23,8 @@ from core.evolution.retry_guard import assess_retry_progress
 # PHASE35_VERIFIED_LOOP_V3
 def _phase35_save_repair(
     memory, task, candidates, outcome, diagnosis,
-    replay_context=None, learning_engine=None, evidence_authority=None
+    replay_context=None, learning_engine=None, evidence_authority=None,
+    attestor_policy=None
 ):
     """Save repairs only with matching successful execution evidence."""
     if not isinstance(outcome, dict) or outcome.get("success") is not True:
@@ -35,8 +36,9 @@ def _phase35_save_repair(
             authority = EvidenceAuthority(Path(__file__).resolve().parents[1])
         except Exception:
             return False
-    if not authority.verify(outcome.get("evidence_receipt")):
-        print("[PHASE36] No valid source-bound sandbox evidence; trusted learning save blocked.")
+    trust_gate = LearningTrustGate(authority, attestor_policy)
+    if not trust_gate.accepts({"evidence_receipt": outcome.get("evidence_receipt")}):
+        print("[PHASE36] No independently trusted sandbox evidence; trusted learning save blocked.")
         return False
 
     repair = outcome.get("repair")
@@ -142,6 +144,7 @@ class PIKABrain:
         critic=None,
         semantic_code_memory=None,
         learning_engine=None,
+        attestor_policy=None,
     ):
         self.router = router
         self.memory = memory
@@ -171,6 +174,10 @@ class PIKABrain:
             project_root / "data" / "learning_engine.json"
         )
         self.evidence_authority = EvidenceAuthority(project_root)
+        self.attestor_policy = attestor_policy
+        self.learning_trust_gate = LearningTrustGate(
+            self.evidence_authority, self.attestor_policy
+        )
         # PIKA_GITHUB_KNOWLEDGE_INTEGRATION_V1
         self.github_knowledge = PikaCodeLearning(project_root)
         self.github_knowledge.index_corpus()
@@ -227,6 +234,19 @@ class PIKABrain:
                     ),
                 )
             )
+
+
+    def _filter_trusted_semantic_records(self, records):
+        """Return only memory records with a valid receipt and pinned attestor."""
+        if not isinstance(records, list):
+            return []
+        return [
+            item for item in records
+            if isinstance(item, dict)
+            and self.learning_trust_gate.accepts(
+                {"evidence_receipt": item.get("evidence_receipt")}
+            )
+        ]
 
 
     # =========================================================
@@ -909,7 +929,8 @@ class PIKABrain:
                                         phase33_diagnosis,
                                          replay_context=first_context,
                                          learning_engine=self.learning_engine,
-                                         evidence_authority=self.evidence_authority)
+                                         evidence_authority=self.evidence_authority,
+                                         attestor_policy=self.attestor_policy)
                                     result["success"] = True
                                     result["error"] = None
                                     result["output"] = (
@@ -947,10 +968,7 @@ class PIKABrain:
                             early_hits = []
                             print("[PIKA PHASE 35] memory lookup failed safely:", exc)
 
-                        early_hits = [
-                            item for item in early_hits
-                            if self.evidence_authority.verify(item.get("evidence_receipt"))
-                        ]
+                        early_hits = self._filter_trusted_semantic_records(early_hits)
                         for variant in early_hits:
                             saved = variant.get("replay_context", {}) or {}
                             target = saved.get("target_path")
@@ -1025,10 +1043,7 @@ class PIKABrain:
                                     verified_only=True,
                                     limit=3,
                                 )
-                                semantic_hits = [
-                                    item for item in semantic_hits
-                                    if self.evidence_authority.verify(item.get("evidence_receipt"))
-                                ]
+                                semantic_hits = self._filter_trusted_semantic_records(semantic_hits)
                                 for variant in semantic_hits:
                                     saved = variant.get("replay_context", {}) or {}
                                     context_matches = (
@@ -1091,6 +1106,7 @@ class PIKABrain:
                                     phase33_diagnosis,
                                      learning_engine=self.learning_engine,
                                      evidence_authority=self.evidence_authority,
+                                     attestor_policy=self.attestor_policy,
                                 )
                                 result["success"] = True
                                 result["error"] = None
