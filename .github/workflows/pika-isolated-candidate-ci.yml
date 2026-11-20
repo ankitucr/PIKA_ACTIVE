@@ -110,7 +110,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pika-image"
           cp trusted/requirements.txt "$RUNNER_TEMP/pika-image/requirements.txt"
           cat > "$RUNNER_TEMP/pika-image/Dockerfile" <<'DOCKER'
-          ARG PYTHON_VERSION
+          ARG PYTHON_VERSION=3.12
           FROM python:${PYTHON_VERSION}-slim
           ENV PYTHONDONTWRITEBYTECODE=1 \
               PYTHONUNBUFFERED=1 \
@@ -152,12 +152,14 @@ jobs:
           trap cleanup EXIT
 
           docker start "$CID" >/dev/null
-          docker cp "$RUNNER_TEMP/pika-candidate.tar" "$CID:/tmp/pika-candidate.tar"
+          # Stream the archive through stdin into the writable /work tmpfs.
+          # docker cp cannot reliably target a tmpfs path in a read-only rootfs.
+          docker exec -i "$CID" sh -c 'tar -xf - -C /work' < "$RUNNER_TEMP/pika-candidate.tar"
 
           set +e
           docker exec "$CID" sh -c '
             set -eu
-            tar -xf /tmp/pika-candidate.tar -C /work
+            test -d /work/core
             cd /work
 
             echo "===== CANDIDATE SOURCE COMPILE ====="
