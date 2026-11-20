@@ -102,12 +102,25 @@ class EvolutionController:
         )
 
     def evaluate_candidate(self, candidate_id, *, timeout=120, python=None, repetitions=3):
-        return self.experiments.evaluate_candidate(
+        result = self.experiments.evaluate_candidate(
             candidate_id,
             timeout=timeout,
             python=python,
             repetitions=repetitions,
         )
+        report_path = result.get("report_path") if isinstance(result, dict) else None
+        if result.get("success") is True and report_path:
+            try:
+                result["memory_record"] = self.verified_memory.record(report_path)
+            except Exception as exc:
+                # Keep the diagnostic report available; the operator can retry
+                # the idempotent projection with record-experiment-memory.
+                result["memory_record"] = {
+                    "success": False,
+                    "error_type": type(exc).__name__,
+                    "retry_command": "record-experiment-memory",
+                }
+        return result
 
     def record_experiment_memory(self, report_path):
         return self.verified_memory.record(report_path)
