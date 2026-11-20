@@ -352,6 +352,21 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Discovery item does not exist.")
         if item.get("state") == "CANDIDATES_STAGED":
             raise ExperimentError("Discovery item already has staged candidates.")
+        envelope_metadata: dict[str, Any] = {}
+        if isinstance(proposal, dict) and proposal.get("schema") == "pika.phase37.native-proposal-envelope.v1":
+            if (
+                proposal.get("event_id") != item.get("event_id")
+                or proposal.get("task_sha256") != item.get("task_sha256")
+            ):
+                raise ExperimentError("Native proposal envelope does not match this discovery event and task.")
+            envelope_metadata = {
+                "proposal_id": proposal.get("proposal_id"),
+                "event_id": proposal.get("event_id"),
+                "task_sha256": proposal.get("task_sha256"),
+            }
+            proposal = proposal.get("proposal")
+        elif isinstance(proposal, dict) and "schema" in proposal:
+            raise ExperimentError("Unsupported native proposal envelope schema.")
         if not isinstance(proposal, dict) or proposal.get("success") is not True:
             raise ExperimentError("A successful native repair proposal is required.")
         if proposal.get("provider") != "pika-native":
@@ -449,6 +464,7 @@ class CandidateDiscoveryQueue:
                     "discovery_id": discovery_id,
                     "event_id": item.get("event_id"),
                     "task_sha256": item.get("task_sha256"),
+                    "proposal_id": envelope_metadata.get("proposal_id"),
                     "provider": proposal.get("provider"),
                     "generation_mode": proposal.get("generation_mode"),
                     "diagnostic_classification": item.get("diagnostic_classification"),
@@ -458,6 +474,7 @@ class CandidateDiscoveryQueue:
 
         item["state"] = "CANDIDATES_STAGED"
         item["candidate_ids"] = candidate_ids
+        item["proposal_id"] = envelope_metadata.get("proposal_id")
         item["target"] = target.as_posix()
         item["source_sha256"] = source_sha
         item["test_paths"] = list(normalized_tests)
