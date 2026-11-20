@@ -22,6 +22,12 @@ class AttestorTrustPolicy:
 
     def __init__(self, trusted_attestors: Mapping[str, Mapping[str, Any]] | None = None,
                  *, max_age_seconds: int = 300):
+        if (
+            isinstance(max_age_seconds, bool)
+            or not isinstance(max_age_seconds, int)
+            or not 30 <= max_age_seconds <= 3600
+        ):
+            raise ValueError("max_age_seconds must be an integer from 30 to 3600.")
         self.max_age_seconds = max_age_seconds
         self._trusted: dict[str, dict[str, Any]] = {}
         if isinstance(trusted_attestors, Mapping):
@@ -58,6 +64,7 @@ class AttestorTrustPolicy:
             "measurement_sha256": attestation.get("measurement_sha256"),
             "verified_at": attestation.get("verified_at"),
             "verification_id": attestation.get("verification_id"),
+            "signature_algorithm": attestation.get("signature_algorithm"),
         }
 
     @classmethod
