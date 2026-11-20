@@ -37,9 +37,26 @@ def test_rejects_corrupt_existing_journal_before_writing_memory(tmp_path):
     assert not memory.memory.path.exists()
 
 
-def test_rejects_duplicate_evidence(tmp_path):
-    report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge'); memory.record(report)
-    with pytest.raises(VerifiedMemoryError): memory.record(report)
+def test_repeat_record_is_idempotent(tmp_path):
+    report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    first = memory.record(report)
+    second = memory.record(report)
+    assert first['already_recorded'] is False
+    assert second['already_recorded'] is True
+    assert memory.verify() == {'valid': True, 'entries': 1}
+    assert len(memory.memory.recent(100)) == 1
+    ledger_rows = [row for row in memory.ledger.rows() if row.get('event_type') == 'phase37_experiment_memory_recorded']
+    assert len(ledger_rows) == 1
+
+
+def test_rejects_experiment_id_collision_with_changed_report(tmp_path):
+    report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    memory.record(report)
+    changed = make_report(report)
+    changed['target'] = 'core/other.py'
+    report.write_text(json.dumps(changed), encoding='utf-8')
+    with pytest.raises(VerifiedMemoryError, match='collision'):
+        memory.record(report)
 
 def test_detects_tampering(tmp_path):
     report = tmp_path/'report.json'; make_report(report); memory = VerifiedExperimentMemory(tmp_path/'knowledge'); memory.record(report)
