@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from .evidence import SANDBOX_POLICY_ID
+
 
 class AttestorTrustPolicy:
     """Verify detached Ed25519 attestations against explicitly pinned keys.
@@ -15,11 +17,17 @@ class AttestorTrustPolicy:
     the worker or proposed repair. Empty or missing configuration trusts nobody.
     Test/fake identities are reserved and rejected.
     """
-    SCHEMA = "pika.os-attestation.v1"
+    SCHEMA = "pika.os-attestation.v2"
     RESERVED_PREFIXES = ("test", "fake", "mock", "stub")
 
     def __init__(self, trusted_attestors: Mapping[str, Mapping[str, Any]] | None = None,
                  *, max_age_seconds: int = 300):
+        if (
+            isinstance(max_age_seconds, bool)
+            or not isinstance(max_age_seconds, int)
+            or not 30 <= max_age_seconds <= 3600
+        ):
+            raise ValueError("max_age_seconds must be an integer from 30 to 3600.")
         self.max_age_seconds = max_age_seconds
         self._trusted: dict[str, dict[str, Any]] = {}
         if isinstance(trusted_attestors, Mapping):
@@ -49,9 +57,14 @@ class AttestorTrustPolicy:
             "schema": attestation.get("schema"),
             "attestor_id": attestation.get("attestor_id"),
             "backend_id": attestation.get("backend_id"),
+            "integration_type": attestation.get("integration_type"),
+            "challenge_nonce": attestation.get("challenge_nonce"),
+            "run_context_sha256": attestation.get("run_context_sha256"),
+            "sandbox_policy_id": attestation.get("sandbox_policy_id"),
             "measurement_sha256": attestation.get("measurement_sha256"),
             "verified_at": attestation.get("verified_at"),
             "verification_id": attestation.get("verification_id"),
+            "signature_algorithm": attestation.get("signature_algorithm"),
         }
 
     @classmethod
@@ -74,6 +87,20 @@ class AttestorTrustPolicy:
             return False
         if attestation.get("schema") != self.SCHEMA:
             return False
+        integration_type = attestation.get("integration_type")
+        nonce = attestation.get("challenge_nonce")
+        run_context = attestation.get("run_context_sha256")
+        if not isinstance(integration_type, str) or not integration_type.strip():
+            return False
+        if attestation.get("sandbox_policy_id") != SANDBOX_POLICY_ID:
+            return False
+        for value in (nonce, run_context):
+            if not isinstance(value, str) or len(value) != 64:
+                return False
+            try:
+                int(value, 16)
+            except ValueError:
+                return False
         digest = attestation.get("measurement_sha256")
         if not isinstance(digest, str) or len(digest) != 64:
             return False
