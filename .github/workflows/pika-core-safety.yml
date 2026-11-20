@@ -51,6 +51,7 @@ jobs:
             tests/test_phase36_7_staging.py \
             tests/test_phase36_8_ledger_presence.py \
             tests/test_phase36_failure_analysis.py \
+            tests/test_phase36_failure_context.py \
             tests/test_phase36_local_diagnostics.py \
             tests/test_pika_brain_native_generator_integration.py \
             tests/test_live_runtime_think_handoff.py
