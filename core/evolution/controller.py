@@ -13,6 +13,7 @@ from .repair import RepairCoordinator
 from .experiments import CandidateExperimentEngine
 from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
+from .verified_memory import VerifiedExperimentMemory
 
 
 class EvolutionController:
@@ -26,6 +27,7 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
+        self.verified_memory = VerifiedExperimentMemory(self.knowledge)
         self.discovery = CandidateDiscoveryQueue(
             self.knowledge, self.root, self.experiments
         )
@@ -43,6 +45,7 @@ class EvolutionController:
             "phase37": {
                 **self.experiments.summary(),
                 "discovery": self.discovery.summary(),
+                "experiment_memory": self.verified_memory.verify(),
             },
             "safety": {
                 "live_source_writes": False,
@@ -105,6 +108,12 @@ class EvolutionController:
             python=python,
             repetitions=repetitions,
         )
+
+    def record_experiment_memory(self, report_path):
+        return self.verified_memory.record(report_path)
+
+    def verify_experiment_memory(self):
+        return self.verified_memory.verify()
 
     def refresh_candidate_discovery(self):
         """Refresh the Phase 37 queue from live reflection and diagnostic signatures."""
