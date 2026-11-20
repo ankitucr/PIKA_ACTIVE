@@ -154,13 +154,13 @@ jobs:
           docker start "$CID" >/dev/null
           # Stream the archive through stdin into the writable /work tmpfs.
           # docker cp cannot reliably target a tmpfs path in a read-only rootfs.
-          docker exec -i "$CID" sh -c 'tar -xf - -C /work' < "$RUNNER_TEMP/pika-candidate.tar"
+          docker exec -i "$CID" sh -c 'mkdir -p /work/source && tar -xf - -C /work/source' < "$RUNNER_TEMP/pika-candidate.tar"
 
           set +e
           docker exec "$CID" sh -c '
             set -eu
-            test -d /work/core
-            cd /work
+            test -d /work/source/core
+            cd /work/source
 
             echo "===== CANDIDATE SOURCE COMPILE ====="
             python -m compileall -q core agents tests pika_live.py main.py pika.py remote_bridge
