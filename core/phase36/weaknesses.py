@@ -222,7 +222,8 @@ class WeaknessAnalyzer:
             ))
 
         dependency_install_is_gated = (
-            "normalized_package not in self.dependency_allowlist" in phase32
+            "dependency_allowlist = getattr(self" in phase32
+            and "if normalized_package not in dependency_allowlist" in phase32
             and "if self.dependency_approval is None" in phase32
             and "if approved is not True" in phase32
         )
