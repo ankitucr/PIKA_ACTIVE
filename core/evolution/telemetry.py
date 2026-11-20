@@ -14,12 +14,12 @@ from .ledger import Ledger
 from .memory import ExperienceMemory
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^\\s,;]+"),
-    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+"),
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
 )
 _LITERAL_SECRET_PATTERNS = (
-    re.compile(r"""(?i)(api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*['"][^'"]{8,}['"]"""),
-    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]{20,}"),
+    re.compile(r"""(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*['"][^'"]{8,}['"]"""),
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{20,}"),
 )
 _NATIVE_GENERATION_MODES = frozenset({
     "native_deterministic_rule",
@@ -46,8 +46,8 @@ def _safe_python_path(value: Any) -> str | None:
     if (
         not isinstance(value, str)
         or not value
-        or "\\\\" in value
-        or "\\x00" in value
+        or "\\" in value
+        or "\x00" in value
     ):
         return None
     path = PurePosixPath(value)
@@ -79,7 +79,7 @@ def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream, indent=2, ensure_ascii=False, allow_nan=False)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp, path)
