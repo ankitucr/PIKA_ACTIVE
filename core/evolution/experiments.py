@@ -228,7 +228,7 @@ class CandidateExperimentEngine:
             if not isinstance(provenance, dict) or len(provenance) > 8:
                 raise ExperimentError("Candidate provenance must be a small metadata object.")
             allowed_provenance = {
-                "discovery_id", "event_id", "task_sha256",
+                "discovery_id", "event_id", "task_sha256", "proposal_id",
                 "provider", "generation_mode", "diagnostic_classification",
             }
             clean_provenance = {}
