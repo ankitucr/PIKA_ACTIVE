@@ -9,6 +9,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import statistics
 import time
@@ -39,7 +40,11 @@ def _safe_relative(value: str, *, suffix: str | None = None) -> PurePosixPath:
     if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
         raise ExperimentError("Path must be a non-empty relative POSIX path.")
     path = PurePosixPath(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if (
+        path.is_absolute()
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or path.as_posix() != value
+    ):
         raise ExperimentError("Absolute, traversal, and ambiguous paths are rejected.")
     if suffix and path.suffix != suffix:
         raise ExperimentError(f"Path must end in {suffix}.")
@@ -203,6 +208,8 @@ class CandidateExperimentEngine:
         if hashlib.sha256(encoded).hexdigest() == base_sha:
             raise ExperimentError("Candidate is identical to the current baseline.")
 
+        if not isinstance(test_paths, (list, tuple)):
+            raise ExperimentError("test_paths must be a list or tuple of relative Python paths.")
         normalized_tests: list[str] = []
         for item in test_paths:
             rel = _safe_relative(item, suffix=".py").as_posix()
@@ -371,7 +378,7 @@ class CandidateExperimentEngine:
         performance_threshold: float = 0.10,
         repetitions: int = 3,
     ) -> dict[str, Any]:
-        if not isinstance(candidate_id, str) or not __import__("re").fullmatch(r"[0-9a-f]{32}", candidate_id):
+        if not isinstance(candidate_id, str) or not re.fullmatch(r"[0-9a-f]{32}", candidate_id):
             raise ExperimentError("Invalid candidate ID.")
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 900:
             raise ExperimentError("timeout must be between 1 and 900 seconds.")
