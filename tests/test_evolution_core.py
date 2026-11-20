@@ -9,7 +9,9 @@ from core.evolution.memory import ExperienceMemory
 def test_cycle_creates_state(tmp_path):
  (tmp_path/"core").mkdir(); (tmp_path/"core"/"a.py").write_text("x=1")
  r=EvolutionController(tmp_path).cycle()
- assert r["success"] and r["state"]["execution"]=="DISABLED_UNTIL_EXTERNAL_SANDBOX"
+ assert r["success"] and r["state"]["execution"]=="LOCAL_CANDIDATE_DIAGNOSTICS_ONLY"
+ assert r["state"]["promotion"]=="BLOCKED_PENDING_INDEPENDENT_EVIDENCE"
+ assert r["phase37"]["promotion"]=="BLOCKED"
  assert (tmp_path/"PIKA_KNOWLEDGE"/"GOAL_QUEUE.json").exists()
 
 def test_ledger_tamper_detected(tmp_path):
