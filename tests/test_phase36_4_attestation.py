@@ -34,6 +34,10 @@ class Backend:
     def run_test(self, **kwargs):
         self.calls += 1
         return {
+            "executed_argv": list(kwargs["argv"]),
+            "executed_timeout": kwargs["timeout"],
+            "sandbox_policy_id": kwargs["sandbox_policy_id"],
+            "executed_source_hashes": dict(kwargs["source_hashes"]),
             "exit_code": 0,
             "test_count": 1,
             "stdout": "1 passed",
