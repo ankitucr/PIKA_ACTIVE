@@ -28,18 +28,28 @@ class PIKALiveRuntime:
         evolution: EvolutionController | None = None,
         staging: CandidateStagingManager | None = None,
         diagnostics: LocalCandidateDiagnostics | None = None,
+        attestor_policy: Any = None,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise ValueError(f"PIKA project root does not exist: {self.root}")
         self.brain = brain
         self.memory = memory
+        self.attestor_policy = (
+            attestor_policy if attestor_policy is not None
+            else getattr(brain, "attestor_policy", None)
+        )
         self.evolution = evolution or EvolutionController(self.root)
         self.staging = staging or CandidateStagingManager(self.root)
         self.diagnostics = diagnostics or LocalCandidateDiagnostics(self.root)
 
     @classmethod
-    def build(cls, root: str | Path | None = None) -> "PIKALiveRuntime":
+    def build(
+        cls,
+        root: str | Path | None = None,
+        *,
+        attestor_policy: Any = None,
+    ) -> "PIKALiveRuntime":
         project_root = Path(root or Path(__file__).resolve().parents[1]).expanduser().resolve()
         os.environ.setdefault("PIKA_KNOWLEDGE_DIR", str(project_root / "PIKA_KNOWLEDGE"))
 
@@ -61,8 +71,12 @@ class PIKALiveRuntime:
             experience=ExperienceEngine(),
             tool_runtime=create_tool_runtime(project_root / "workspace"),
             max_retries=2,
+            attestor_policy=attestor_policy,
         )
-        return cls(project_root, brain=brain, memory=memory)
+        return cls(
+            project_root, brain=brain, memory=memory,
+            attestor_policy=attestor_policy,
+        )
 
     def _live_observations(self) -> list[dict[str, Any]]:
         import json
@@ -189,6 +203,24 @@ class PIKALiveRuntime:
         result["live_analysis"] = work_report
         return result
 
+    def attestor_status(self) -> dict[str, Any]:
+        policy = self.attestor_policy
+        verify = getattr(policy, "verify", None)
+        raw_ids = getattr(policy, "trusted_attestor_ids", ())
+        if isinstance(raw_ids, (tuple, list, set, frozenset)):
+            ids = sorted({value for value in raw_ids if isinstance(value, str) and value})
+        else:
+            ids = []
+        configured = bool(ids) and callable(verify)
+        return {
+            "configured": configured,
+            "mode": "PINNED_ED25519" if configured else "DENY_ALL",
+            "trusted_attestor_ids": ids if configured else [],
+            "learning_replay": "ATTESTOR_GATED" if configured else "BLOCKED_NO_PINNED_ATTESTORS",
+            "execution": "BLOCKED_UNTIL_AUDITED_OS_SANDBOX",
+            "promotion": "BLOCKED_UNTIL_INDEPENDENT_EVIDENCE_AND_APPROVAL",
+        }
+
     def status(self) -> dict[str, Any]:
         base = self.evolution.status()
         memory = self.memory
@@ -210,6 +242,7 @@ class PIKALiveRuntime:
             },
             "external_llm": False,
             "model_api": False,
+            "attestor_trust": self.attestor_status(),
             "self_repair": {
                 "candidate_generation": "available_when_Brain_detects_supported_failure",
                 "candidate_staging": "enabled_without_live_source_writes",

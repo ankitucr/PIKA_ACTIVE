@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from core.live_runtime import PIKALiveRuntime
+from core.phase36.attestor_policy import load_attestor_trust_policy
 
 
 def _dump(value: Any, *, limit: int = 12000) -> None:
@@ -62,6 +63,7 @@ def _print_status(runtime: PIKALiveRuntime) -> None:
     from core.native_cognition import NativeCognitionEngine
     print("Native learning:")
     _dump(NativeCognitionEngine(runtime.root).status(), limit=3000)
+    print("Attestor trust:", data.get("attestor_trust"))
     print("Self-repair:", data.get("self_repair"))
     print("Safety:", data.get("safety"))
 
@@ -262,14 +264,27 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description="PIKA continuous live brain")
     parser.add_argument("task", nargs="*", help="Optional one-shot task; omit to start the interactive live session")
     parser.add_argument("--root", default=str(Path(__file__).resolve().parent))
+    parser.add_argument(
+        "--attestor-config",
+        default=os.getenv("PIKA_ATTESTOR_CONFIG"),
+        help="Optional host-managed JSON file with pinned Ed25519 public keys; omitted means deny-all trust.",
+    )
     parser.add_argument("--heartbeat", type=int, default=int(os.getenv("PIKA_HEARTBEAT_SECONDS", "300")))
     args = parser.parse_args()
     if args.heartbeat < 30:
         parser.error("--heartbeat must be at least 30 seconds")
 
     root = Path(args.root).expanduser().resolve()
+    attestor_policy = None
+    if args.attestor_config:
+        try:
+            attestor_policy = load_attestor_trust_policy(args.attestor_config)
+        except Exception as exc:
+            parser.error(f"Attestor configuration rejected: {type(exc).__name__}: {exc}")
+
     print("[PIKA] Initializing live architecture...")
-    runtime = PIKALiveRuntime.build(root)
+    print("[PIKA] Attestor trust:", "PINNED" if attestor_policy else "DENY-ALL (no host config)")
+    runtime = PIKALiveRuntime.build(root, attestor_policy=attestor_policy)
     try:
         result = await asyncio.to_thread(runtime.evolve)
         print("[PIKA] Initial evolution cycle complete:", result.get("state", {}).get("last_cycle"))

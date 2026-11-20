@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import time
+from pathlib import Path
 from typing import Any, Mapping
 
 
@@ -108,3 +111,117 @@ class AttestorTrustPolicy:
     @property
     def trusted_attestor_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._trusted))
+
+
+
+class AttestorConfigError(ValueError):
+    """Raised when an external pinned-attestor configuration is unsafe or invalid."""
+
+
+def _reject_duplicate_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise AttestorConfigError(f"Duplicate configuration key: {key}")
+        result[key] = value
+    return result
+
+
+def load_attestor_trust_policy(config_path: str | Path) -> AttestorTrustPolicy:
+    """Load pinned public keys from an explicitly supplied host-managed file.
+
+    The file contains public keys only. It must not be placed in the workspace.
+    Missing, malformed, symlinked, or broadly writable files fail closed.
+    """
+    if not isinstance(config_path, (str, Path)) or not str(config_path).strip():
+        raise AttestorConfigError("An explicit attestor config path is required.")
+
+    supplied = Path(config_path).expanduser()
+    absolute = Path(os.path.abspath(supplied))
+    current = absolute
+    while True:
+        if current.is_symlink():
+            raise AttestorConfigError("Symlinks are forbidden in the attestor config path.")
+        if current.parent == current:
+            break
+        current = current.parent
+
+    try:
+        resolved = absolute.resolve(strict=True)
+        metadata = resolved.stat()
+    except OSError as exc:
+        raise AttestorConfigError(f"Attestor config is unavailable: {type(exc).__name__}") from exc
+
+    if not stat.S_ISREG(metadata.st_mode):
+        raise AttestorConfigError("Attestor config must be a regular file.")
+    if metadata.st_size <= 0 or metadata.st_size > 65536:
+        raise AttestorConfigError("Attestor config size must be between 1 and 65536 bytes.")
+
+    if os.name == "posix":
+        get_uid = getattr(os, "geteuid", None)
+        if callable(get_uid) and metadata.st_uid != get_uid():
+            raise AttestorConfigError("Attestor config must be owned by the current user.")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise AttestorConfigError("Attestor config permissions must be owner-only (0600).")
+        parent_mode = stat.S_IMODE(resolved.parent.stat().st_mode)
+        if parent_mode & 0o022:
+            raise AttestorConfigError("Attestor config directory must not be group/world writable.")
+
+    try:
+        raw = resolved.read_text(encoding="utf-8")
+        data = json.loads(raw, object_pairs_hook=_reject_duplicate_json_keys)
+    except AttestorConfigError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise AttestorConfigError(f"Attestor config cannot be parsed: {type(exc).__name__}") from exc
+
+    if not isinstance(data, dict):
+        raise AttestorConfigError("Attestor config root must be a JSON object.")
+    if set(data) != {"schema", "max_age_seconds", "attestors"}:
+        raise AttestorConfigError("Attestor config must contain exactly schema, max_age_seconds, and attestors.")
+    if data.get("schema") != "pika.attestor-trust.v1":
+        raise AttestorConfigError("Unsupported attestor config schema.")
+
+    max_age = data.get("max_age_seconds")
+    if isinstance(max_age, bool) or not isinstance(max_age, int) or not 30 <= max_age <= 3600:
+        raise AttestorConfigError("max_age_seconds must be an integer from 30 to 3600.")
+
+    entries = data.get("attestors")
+    if not isinstance(entries, dict) or not entries:
+        raise AttestorConfigError("At least one pinned attestor is required.")
+
+    validated: dict[str, dict[str, Any]] = {}
+    for attestor_id, config in entries.items():
+        if (not isinstance(attestor_id, str) or not attestor_id
+                or attestor_id != attestor_id.strip()
+                or attestor_id.casefold().startswith(AttestorTrustPolicy.RESERVED_PREFIXES)):
+            raise AttestorConfigError("Attestor IDs must be non-empty, trimmed, and non-test identities.")
+        if not isinstance(config, dict) or set(config) != {"public_key_hex", "backend_ids"}:
+            raise AttestorConfigError(f"Invalid fields for attestor: {attestor_id}")
+
+        key_hex = config.get("public_key_hex")
+        if not isinstance(key_hex, str) or len(key_hex) != 64:
+            raise AttestorConfigError(f"Ed25519 public key must be 32-byte hex: {attestor_id}")
+        try:
+            key_bytes = bytes.fromhex(key_hex)
+        except ValueError as exc:
+            raise AttestorConfigError(f"Invalid public key encoding: {attestor_id}") from exc
+        if len(key_bytes) != 32:
+            raise AttestorConfigError(f"Ed25519 public key must be 32 bytes: {attestor_id}")
+
+        backend_ids = config.get("backend_ids")
+        if (not isinstance(backend_ids, list) or not backend_ids
+                or len(backend_ids) > 32
+                or any(not isinstance(x, str) or not x or x != x.strip() for x in backend_ids)
+                or len(set(backend_ids)) != len(backend_ids)):
+            raise AttestorConfigError(f"backend_ids must be a unique non-empty string list: {attestor_id}")
+
+        validated[attestor_id] = {
+            "public_key_hex": key_bytes.hex(),
+            "backend_ids": backend_ids,
+        }
+
+    policy = AttestorTrustPolicy(validated, max_age_seconds=max_age)
+    if len(policy.trusted_attestor_ids) != len(validated):
+        raise AttestorConfigError("One or more attestor entries were rejected.")
+    return policy
