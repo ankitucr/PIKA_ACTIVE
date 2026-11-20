@@ -218,6 +218,10 @@ class SandboxRunner:
         root = Path(cwd).expanduser().resolve(strict=True)
         if not root.is_dir():
             raise ValueError("cwd must be an existing directory.")
+        if not self.available:
+            raise SandboxUnavailable(
+                "No independently attested OS sandbox integration; execution blocked."
+            )
         hashes = self._hash_sources(root, source_paths)
 
         # Attest only after the exact run inputs have been fixed and hashed.
