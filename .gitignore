@@ -21,10 +21,18 @@ backups/
 /data/.phase36_trust.key
 /remote_bridge/.token
 
-# Private runtime state
+# Private runtime state; allow only required package source files
 /memory/
 /workspace/
 /data/
+!/memory/
+memory/*
+!/memory/__init__.py
+!/memory/manager.py
+!/workspace/
+workspace/*
+!/workspace/__init__.py
+!/workspace/manager.py
 
 # Local generated reports
 PIKA_*_AUDIT.txt
