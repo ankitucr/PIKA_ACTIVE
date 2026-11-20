@@ -25,16 +25,51 @@ _MAX_CANDIDATES = 3
 _MAX_PROPOSAL_BYTES = 500_000
 
 
+_DIAGNOSTIC_CLASSES = frozenset({
+    "MIXED_TIMEOUT_AND_CODE_OUTPUT_FAILURE",
+    "NETWORK_OR_PROVIDER_TIMEOUT",
+    "CODE_OUTPUT_CONTRACT_FAILURE",
+    "OUTPUT_PARSE_FAILURE",
+    "INCOMPLETE_EVALUATION_EVIDENCE",
+    "WORKER_FAILURE_UNCLASSIFIED",
+    "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED",
+    "NO_FAILURE_SIGNATURE_IN_ATTEMPTS",
+})
+_ATTEMPT_CLASSES = frozenset({
+    "NETWORK_OR_PROVIDER_TIMEOUT",
+    "CODE_OUTPUT_CONTRACT_FAILURE",
+    "OUTPUT_PARSE_FAILURE",
+    "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED",
+    "WORKER_FAILURE_UNCLASSIFIED",
+    "ATTEMPT_SUCCEEDED",
+    "INSUFFICIENT_ATTEMPT_EVIDENCE",
+})
+
+
 def _bounded_text(value: Any, limit: int = 120) -> str | None:
     if not isinstance(value, str):
         return None
     text = re.sub(
         r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+",
-        r"\\1=[REDACTED]",
+        r"\1=[REDACTED]",
         value,
     )
-    text = re.sub(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", text)
+    text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", text)
     return " ".join(text.split())[:limit] or None
+
+
+def _safe_fingerprint(value: Any) -> str | None:
+    text = _bounded_text(value, 160)
+    if not text:
+        return None
+    normalized = re.sub(r"[^a-z0-9_.-]+", "_", text.lower()).strip("_")
+    return normalized[:160] or None
+
+
+def _safe_classification(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return value if value in _DIAGNOSTIC_CLASSES else None
 
 
 def _canonical(value: Any) -> bytes:
@@ -150,67 +185,87 @@ class CandidateDiscoveryQueue:
                 continue
             event_id = item.get("event_id")
             outcome = item.get("outcome")
-            if not isinstance(event_id, str) or not event_id.strip():
+            if (
+                not isinstance(event_id, str)
+                or not event_id
+                or len(event_id) > 120
+                or re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", event_id) is None
+            ):
                 continue
             if outcome not in {"FAILED", "ERROR", "INCOMPLETE"}:
                 continue
 
             diag = by_event.get(event_id, {})
             task_hash = item.get("task_sha256") or diag.get("task_sha256")
-            if not isinstance(task_hash, str) or len(task_hash) != 64:
-                task_hash = None
-            elif any(char not in "0123456789abcdef" for char in task_hash.lower()):
+            if (
+                not isinstance(task_hash, str)
+                or len(task_hash) != 64
+                or any(char not in "0123456789abcdef" for char in task_hash.lower())
+            ):
                 task_hash = None
             else:
                 task_hash = task_hash.lower()
             discovery_id = self._event_key(event_id, task_hash)
-            fingerprints = diag.get("repeated_issue_fingerprints", [])
-            if not isinstance(fingerprints, list):
-                fingerprints = []
-            classifications = [
-                row.get("classification")
-                for row in diag.get("attempt_classifications", [])
-                if isinstance(row, dict) and isinstance(row.get("classification"), str)
-            ] if isinstance(diag.get("attempt_classifications"), list) else []
-            all_fingerprints = set(value for value in fingerprints if isinstance(value, str))
-            attempts = diag.get("attempt_classifications", [])
-            if isinstance(attempts, list):
-                for attempt in attempts:
-                    if isinstance(attempt, dict) and isinstance(attempt.get("issue_fingerprints"), list):
-                        all_fingerprints.update(
-                            value for value in attempt["issue_fingerprints"]
-                            if isinstance(value, str)
-                        )
-            safe_fingerprints = sorted(all_fingerprints)[:12]
+
+            raw_fingerprints = diag.get("repeated_issue_fingerprints", [])
+            if not isinstance(raw_fingerprints, list):
+                raw_fingerprints = []
+            safe_fingerprints = {
+                safe for value in raw_fingerprints
+                if (safe := _safe_fingerprint(value)) is not None
+            }
+
+            raw_attempts = diag.get("attempt_classifications", [])
+            if not isinstance(raw_attempts, list):
+                raw_attempts = []
+            classifications = []
+            for attempt in raw_attempts:
+                if not isinstance(attempt, dict):
+                    continue
+                classification = attempt.get("classification")
+                if classification in _ATTEMPT_CLASSES and classification not in classifications:
+                    classifications.append(classification)
+                raw_issue_fingerprints = attempt.get("issue_fingerprints", [])
+                if isinstance(raw_issue_fingerprints, list):
+                    safe_fingerprints.update(
+                        safe for value in raw_issue_fingerprints
+                        if (safe := _safe_fingerprint(value)) is not None
+                    )
+            safe_fingerprints = sorted(safe_fingerprints)[:12]
+            diagnostic_classification = _safe_classification(
+                diag.get("event_classification")
+            )
 
             previous = existing.get(discovery_id)
             if previous is not None:
                 previous["last_seen_at"] = time.time()
-                previous["diagnostic_classification"] = diag.get("event_classification")
+                previous["diagnostic_classification"] = diagnostic_classification
                 previous["issue_fingerprints"] = safe_fingerprints
-                previous["repeated_issue_fingerprints"] = [
-                    value for value in fingerprints if isinstance(value, str)
-                ][:8]
+                previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
                 refreshed += 1
                 continue
 
+            raw_error_types = item.get("error_types", [])
+            if not isinstance(raw_error_types, list):
+                raw_error_types = []
+            error_types = []
+            for value in raw_error_types:
+                safe = _bounded_text(value, 100)
+                if safe and safe not in error_types:
+                    error_types.append(safe)
+
             queue_item = {
                 "discovery_id": discovery_id,
-                "event_id": event_id[:120],
+                "event_id": event_id,
                 "task_sha256": task_hash,
                 "outcome": outcome,
                 "agent": _bounded_text(item.get("agent"), 80),
                 "strategy": _bounded_text(item.get("strategy"), 80),
-                "error_types": [
-                    safe for value in item.get("error_types", [])
-                    if isinstance(value, str)
-                    for safe in [_bounded_text(value, 100)]
-                    if safe
-                ][:5] if isinstance(item.get("error_types"), list) else [],
+                "error_types": error_types[:5],
                 "issue_fingerprints": safe_fingerprints,
-                "diagnostic_classification": diag.get("event_classification"),
-                "repeated_issue_fingerprints": fingerprints[:8],
+                "diagnostic_classification": diagnostic_classification,
+                "repeated_issue_fingerprints": safe_fingerprints[:8],
                 "attempt_classifications": classifications[:12],
                 "source_backed_root_cause_verified": False,
                 "state": "SOURCE_REVIEW_REQUIRED",
@@ -221,7 +276,7 @@ class CandidateDiscoveryQueue:
             }
             existing[discovery_id] = queue_item
             added += 1
-
+        
         items = sorted(
             existing.values(),
             key=lambda row: (row.get("created_at", 0), row.get("discovery_id", "")),
