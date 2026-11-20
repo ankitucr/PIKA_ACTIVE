@@ -73,6 +73,37 @@ class LearningEngine:
             data.setdefault("version", self.VERSION)
             data.setdefault("experiences", [])
             data.setdefault("patterns", [])
+            if not isinstance(data["experiences"], list):
+                data["experiences"] = []
+            if not isinstance(data["patterns"], list):
+                data["patterns"] = []
+
+            # Migrate old trust flags at load time. A persisted Boolean or
+            # verified_count is not authority; each record must still carry
+            # a valid receipt under the currently pinned attestor policy.
+            for experience in data["experiences"]:
+                if isinstance(experience, dict):
+                    experience["trusted"] = bool(
+                        experience.get("success")
+                        and self._has_trusted_evidence(
+                            experience.get("verification", {})
+                        )
+                    )
+
+            for pattern in data["patterns"]:
+                if not isinstance(pattern, dict):
+                    continue
+                solutions = pattern.get("solutions", [])
+                if not isinstance(solutions, list):
+                    pattern["solutions"] = []
+                    continue
+                for solution in solutions:
+                    if not isinstance(solution, dict):
+                        continue
+                    if not self._receipt_is_trusted(
+                        solution.get("evidence_receipt")
+                    ):
+                        solution["verified_count"] = 0
 
             return data
 
