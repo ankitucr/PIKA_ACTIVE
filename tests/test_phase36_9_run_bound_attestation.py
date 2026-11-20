@@ -9,6 +9,20 @@ from core.phase36.attestor_policy import AttestorTrustPolicy
 from core.phase36.evidence import SANDBOX_POLICY_ID, EvidenceAuthority
 from core.phase36.sandbox import SandboxRunner
 
+_SERIALIZATION = pytest.importorskip("cryptography.hazmat.primitives.serialization")
+_ED25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
+_TEST_PRIVATE_KEY = _ED25519.Ed25519PrivateKey.generate()
+_TEST_PUBLIC_KEY = _TEST_PRIVATE_KEY.public_key().public_bytes(
+    encoding=_SERIALIZATION.Encoding.Raw,
+    format=_SERIALIZATION.PublicFormat.Raw,
+)
+_TEST_POLICY = AttestorTrustPolicy({
+    "native-phase36-9-test-attestor": {
+        "public_key_hex": _TEST_PUBLIC_KEY.hex(),
+        "backend_ids": ["pika-phase36-9-test-backend"],
+    }
+})
+
 
 class BoundBackend:
     backend_id = "pika-phase36-9-test-backend"
@@ -32,13 +46,19 @@ class BoundBackend:
 
 class EchoAttestor:
     def attest_backend(self, descriptor):
-        return {
+        record = {
+            "schema": AttestorTrustPolicy.SCHEMA,
+            "attestor_id": "native-phase36-9-test-attestor",
             **descriptor,
-            "attestor_id": "TEST_ONLY_RUN_BOUND",
             "measurement_sha256": hashlib.sha256(b"measured-backend").hexdigest(),
             "verified_at": time.time(),
-            "verification_id": "test-run-bound",
+            "verification_id": f"test-run-bound-{descriptor['challenge_nonce'][:12]}",
+            "signature_algorithm": "ed25519",
         }
+        record["signature_hex"] = _TEST_PRIVATE_KEY.sign(
+            AttestorTrustPolicy.canonical_message(record)
+        ).hex()
+        return record
 
 
 def test_run_context_digest_changes_with_every_security_relevant_input():
@@ -70,7 +90,7 @@ def test_receipt_rejects_modified_command_source_and_timeout(tmp_path):
     source = tmp_path / "sample.py"
     source.write_text("assert True\n", encoding="utf-8")
     authority = EvidenceAuthority(tmp_path)
-    runner = SandboxRunner(authority, BoundBackend(), EchoAttestor())
+    runner = SandboxRunner(authority, BoundBackend(), EchoAttestor(), _TEST_POLICY)
     receipt = runner.run_test(
         ["pytest", "-q", "sample.py"],
         cwd=tmp_path,
@@ -97,7 +117,7 @@ def test_v1_receipts_are_not_accepted_as_v2_evidence(tmp_path):
     source.write_text("assert True\n", encoding="utf-8")
     authority = EvidenceAuthority(tmp_path)
     receipt = SandboxRunner(
-        authority, BoundBackend(), EchoAttestor()
+        authority, BoundBackend(), EchoAttestor(), _TEST_POLICY
     ).run_test(
         ["pytest", "-q", "sample.py"],
         cwd=tmp_path,
@@ -152,7 +172,7 @@ def test_attestor_policy_rejects_run_context_tampering(tmp_path):
         }
     })
     receipt = SandboxRunner(
-        authority, BoundBackend(), SignedAttestor()
+        authority, BoundBackend(), SignedAttestor(), policy
     ).run_test(
         ["pytest", "-q", "sample.py"],
         cwd=tmp_path,
