@@ -78,6 +78,8 @@ class EvolutionController:
         candidate_path = candidate_entry.resolve(strict=True)
         if not candidate_path.is_file():
             raise ValueError("Candidate file must be a regular non-symlink file.")
+        if candidate_path.stat().st_size > 500_000:
+            raise ValueError("Candidate file exceeds the 500 KB Phase 37 limit.")
         candidate_text = candidate_path.read_text(encoding="utf-8")
         return self.experiments.stage_candidate(
             baseline_root or self.root,
