@@ -22,6 +22,15 @@ ISOLATION = "local_venv_best_effort"
 _KEEP_ENV = ("PATH", "PREFIX", "LD_PRELOAD", "LANG", "LC_ALL")
 _ALLOWED_MODULES = {"pytest", "unittest"}
 _SECRET = re.compile(r"(?i)(api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*\S+|bearer\s+\S+")
+DIAGNOSTIC_OUTPUT_LIMIT = 30_000
+
+
+def _safe_output_tail(output: Any) -> str:
+    """Retain bounded failure context while redacting common credential patterns."""
+    text = output if isinstance(output, str) else str(output or "")
+    return _SECRET.sub("[REDACTED]", text[-DIAGNOSTIC_OUTPUT_LIMIT:])
+
+
 _IGNORE = shutil.ignore_patterns("__pycache__", ".git", ".venv", ".pytest_cache", "*.pyc")
 _SITECUSTOMIZE = "\n".join([
     "import socket",
@@ -184,7 +193,7 @@ def run_candidate(source_dir: Any, argv: Any, *, timeout: int = 120, python: Any
             "source_hashes": before,
             "tree_sha256": hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest(),
             "output_sha256": hashlib.sha256(out.encode("utf-8", "replace")).hexdigest(),
-            "output_tail": _SECRET.sub("[REDACTED]", out[-500:]),
+            "output_tail": _safe_output_tail(out),
             "limits": {
                 "cpu_s": timeout + 5,
                 "mem_mb": None if _is_android_runtime() else mem_mb,

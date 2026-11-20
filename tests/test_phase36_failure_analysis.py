@@ -54,3 +54,33 @@ def test_unknown_failure_does_not_invent_root_cause():
     assert result["failure_kind"] == "test_failure_unknown"
     assert result["message"] == ""
     assert result["repair_generation_authorized"] is False
+
+
+
+def test_local_runner_keeps_bounded_traceback_context_and_redacts_secrets():
+    from core.evolution.local_runner import (
+        DIAGNOSTIC_OUTPUT_LIMIT,
+        _safe_output_tail,
+    )
+
+    traceback = (
+        "Traceback (most recent call last):\n"
+        '  File "candidate.py", line 4, in run\n'
+        "ValueError: precise failure detail\n"
+    )
+    raw = ("ordinary output line\n" * 800) + traceback + (
+        "post-trace summary noise\n" * 80
+    ) + "COHERE_API_KEY=do-not-store-this-value\n"
+
+    excerpt = _safe_output_tail(raw)
+    result = NativeFailureAnalyzer.analyze(
+        excerpt,
+        runner={"passed": False, "returncode": 1},
+    )
+
+    assert len(excerpt) <= DIAGNOSTIC_OUTPUT_LIMIT
+    assert "Traceback (most recent call last)" in excerpt
+    assert "do-not-store-this-value" not in excerpt
+    assert result["failure_kind"] == "runtime_exception"
+    assert result["exception_type"] == "ValueError"
+    assert any("Traceback" in line for line in result["evidence_lines"])
