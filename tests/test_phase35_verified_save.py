@@ -17,9 +17,13 @@ from core.phase34_learning_repair import Phase34LearningRepair
 class TestBackend:
     backend_id = "phase35-learning-test-backend"
 
-    def run_test(self, *, argv, cwd, timeout, source_hashes):
+    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
         now = time.time()
         return {
+            "executed_argv": list(argv),
+            "executed_timeout": timeout,
+            "sandbox_policy_id": sandbox_policy_id,
+            "executed_source_hashes": dict(source_hashes),
             "exit_code": 0,
             "test_count": 1,
             "stdout": "1 passed",
@@ -36,7 +40,7 @@ def _signed_attestor(private_key):
             record = {
                 "schema": AttestorTrustPolicy.SCHEMA,
                 "attestor_id": "phase35-pinned-test-attestor",
-                "backend_id": descriptor["backend_id"],
+                **descriptor,
                 "measurement_sha256": hashlib.sha256(b"measured-backend").hexdigest(),
                 "verified_at": time.time(),
                 "verification_id": "phase35-test-verification",
@@ -77,7 +81,10 @@ def _receipt(tmp_path, private_key):
         encoding="utf-8",
     )
     key = private_key or ed25519.Ed25519PrivateKey.generate()
-    runner = SandboxRunner(authority, TestBackend(), _signed_attestor(key))
+    policy = _policy(key)
+    runner = SandboxRunner(
+        authority, TestBackend(), _signed_attestor(key), policy
+    )
     receipt = runner.run_test(
         ["python", "-m", "pytest", "-q", "sample.py"],
         cwd=tmp_path,
