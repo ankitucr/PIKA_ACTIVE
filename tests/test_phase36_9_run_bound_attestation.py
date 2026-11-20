@@ -6,7 +6,7 @@ import time
 import pytest
 
 from core.phase36.attestor_policy import AttestorTrustPolicy
-from core.phase36.evidence import SANDBOX_POLICY_ID, EvidenceAuthority
+from core.phase36.evidence import SANDBOX_POLICY_ID, EvidenceAuthority, EvidenceError
 from core.phase36.sandbox import SandboxRunner
 
 _SERIALIZATION = pytest.importorskip("cryptography.hazmat.primitives.serialization")
@@ -202,3 +202,68 @@ def test_attestor_policy_rejects_invalid_freshness_configuration():
         AttestorTrustPolicy(max_age_seconds=True)
     with pytest.raises(ValueError):
         AttestorTrustPolicy(max_age_seconds=10)
+
+
+def test_backend_cannot_claim_different_executed_source_hashes(tmp_path):
+    source = tmp_path / "sample.py"
+    source.write_text("assert True\\n", encoding="utf-8")
+
+    class MismatchingBackend(BoundBackend):
+        def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
+            self.calls += 1
+            return {
+                "executed_argv": list(argv),
+                "executed_timeout": timeout,
+                "sandbox_policy_id": sandbox_policy_id,
+                "executed_source_hashes": {"sample.py": "0" * 64},
+                "exit_code": 0,
+                "test_count": 1,
+                "stdout": "1 passed",
+                "stderr": "",
+                "sandboxed": True,
+            }
+
+    backend = MismatchingBackend()
+    runner = SandboxRunner(
+        EvidenceAuthority(tmp_path), backend, EchoAttestor(), _TEST_POLICY
+    )
+    with pytest.raises(EvidenceError, match="executed source hashes"):
+        runner.run_test(
+            ["pytest", "-q", "sample.py"],
+            cwd=tmp_path,
+            source_paths=["sample.py"],
+        )
+    assert backend.calls == 1
+
+
+def test_source_drift_during_backend_run_prevents_receipt(tmp_path):
+    source = tmp_path / "sample.py"
+    source.write_text("assert True\\n", encoding="utf-8")
+
+    class MutatingBackend(BoundBackend):
+        def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
+            self.calls += 1
+            source.write_text("assert False\\n", encoding="utf-8")
+            return {
+                "executed_argv": list(argv),
+                "executed_timeout": timeout,
+                "sandbox_policy_id": sandbox_policy_id,
+                "executed_source_hashes": dict(source_hashes),
+                "exit_code": 0,
+                "test_count": 1,
+                "stdout": "1 passed",
+                "stderr": "",
+                "sandboxed": True,
+            }
+
+    backend = MutatingBackend()
+    runner = SandboxRunner(
+        EvidenceAuthority(tmp_path), backend, EchoAttestor(), _TEST_POLICY
+    )
+    with pytest.raises(EvidenceError, match="changed while"):
+        runner.run_test(
+            ["pytest", "-q", "sample.py"],
+            cwd=tmp_path,
+            source_paths=["sample.py"],
+        )
+    assert backend.calls == 1
