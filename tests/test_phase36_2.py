@@ -169,7 +169,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        result = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        result = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor(), _FAKE_ATTESTOR_POLICY).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         receipt = result["evidence_receipt"]
         receipt["payload"]["exit_code"] = 1
@@ -193,7 +193,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor(), _FAKE_ATTESTOR_POLICY).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         decision = PromotionGate(authority).assess(
             evidence_receipt=run["evidence_receipt"], human_approved=True,
@@ -205,7 +205,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor(), _FAKE_ATTESTOR_POLICY).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         hashes = {"test_sample.py": hashlib.sha256(test.read_bytes()).hexdigest()}
         gate = PromotionGate(authority)
@@ -290,7 +290,7 @@ class Phase362IntegratedTests(unittest.TestCase):
         test = self.root / "test_sample.py"
         test.write_text("assert True\n")
         authority = EvidenceAuthority(self.root)
-        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor()).run_test(
+        run = SandboxRunner(authority, FakeSandboxBackend(), FakeBackendAttestor(), _FAKE_ATTESTOR_POLICY).run_test(
             ["python", "test_sample.py"], cwd=self.root, source_paths=["test_sample.py"])
         trusted = {"solution": "SAFE", "evidence_receipt": run["evidence_receipt"]}
         legacy = {"solution": "UNTRUSTED", "verification": {"test_passed": True, "independent_test": True}}
