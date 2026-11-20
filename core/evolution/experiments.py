@@ -204,6 +204,7 @@ class CandidateExperimentEngine:
         test_paths: list[str],
         expected_base_sha256: str | None = None,
         rationale: str = "",
+        provenance: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         baseline = Path(baseline_root).expanduser().resolve(strict=True)
         manifest = _tree_manifest(baseline)
@@ -220,6 +221,26 @@ class CandidateExperimentEngine:
             parsed = ast.parse(candidate_text, filename=target_key)
         except SyntaxError as exc:
             raise ExperimentError(f"Candidate syntax rejected: {exc.msg}") from exc
+
+        if provenance is None:
+            clean_provenance = {}
+        else:
+            if not isinstance(provenance, dict) or len(provenance) > 8:
+                raise ExperimentError("Candidate provenance must be a small metadata object.")
+            allowed_provenance = {
+                "discovery_id", "event_id", "task_sha256",
+                "provider", "generation_mode", "diagnostic_classification",
+            }
+            clean_provenance = {}
+            for key, value in provenance.items():
+                if key not in allowed_provenance:
+                    raise ExperimentError(f"Unsupported candidate provenance field: {key}")
+                if value is not None and (
+                    not isinstance(value, str) or len(value) > 160
+                    or "\\n" in value or "\\r" in value
+                ):
+                    raise ExperimentError(f"Invalid candidate provenance value: {key}")
+                clean_provenance[key] = value
 
         base_sha = manifest[target_key]
         if expected_base_sha256 is not None and expected_base_sha256 != base_sha:
@@ -288,6 +309,7 @@ class CandidateExperimentEngine:
                 "test_hashes": test_hashes,
                 "workspace": str(workspace),
                 "rationale": str(rationale)[:4000],
+                "provenance": clean_provenance,
                 "top_level_nodes": len(parsed.body),
                 "created_at": time.time(),
                 "state": "STAGED",
@@ -302,6 +324,7 @@ class CandidateExperimentEngine:
                 "base_sha256": base_sha,
                 "candidate_sha256": candidate_sha,
                 "test_paths": normalized_tests,
+                "provenance": clean_provenance,
                 "trust": "UNVERIFIED_LOCAL",
             })
         except Exception:
@@ -580,6 +603,7 @@ class CandidateExperimentEngine:
             "baseline_sha256": metadata["base_sha256"],
             "candidate_sha256": metadata["candidate_sha256"],
             "test_hashes": dict(expected_tests),
+            "provenance": dict(metadata.get("provenance", {})),
             "argv": list(argv),
             "timeout": timeout,
             "repetitions": repetitions,
