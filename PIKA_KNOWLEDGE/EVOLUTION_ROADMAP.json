@@ -87,7 +87,9 @@
         "Baseline-versus-candidate regression experiments using the local diagnostic runner",
         "Functional and performance comparison with explicit regression detection",
         "Append-only experiment reports and reproducible test/source provenance",
-        "Explicit promotion decision remains blocked until production attestation is deployed"
+        "Explicit promotion decision remains blocked until production attestation is deployed",
+        "Automatic evidence-backed experiment memory from each candidate evaluation",
+        "Idempotent, recoverable memory and ledger projections with report/payload hashes"
       ],
       "exit_criteria": [
         "Candidate staging changes only the declared file and records the exact baseline hash",
@@ -97,7 +99,7 @@
         "Every local run is labelled UNVERIFIED_LOCAL, unattested and not promotion eligible",
         "A later OS-isolated run can consume the same candidate and test manifest without changing the candidate identity"
       ],
-      "next": "37.2",
+      "next": "37.3",
       "sub_milestones": [
         {
           "id": "37.0",
@@ -113,18 +115,30 @@
         {
           "id": "37.1",
           "name": "Failure-Driven Candidate Discovery",
-          "status": "in_progress",
+          "status": "completed",
           "outcomes": [
             "Live failure reflection joined with diagnostic signatures",
             "Stable discovery IDs bound to event and task hashes",
             "Raw issue text excluded from the queue",
             "Native proposal staging bound to exact source and pinned tests"
           ]
+        },
+        {
+          "id": "37.2",
+          "name": "Evidence-Backed Experiment Memory",
+          "status": "in_progress",
+          "outcomes": [
+            "Automatically capture local candidate experiment reports into durable memory",
+            "Validate per-run outcomes, summaries, source/test hashes and decision consistency",
+            "Bind report and payload hashes into an append-only journal",
+            "Recover interrupted memory/ledger projections idempotently",
+            "Preserve UNVERIFIED trust and block replay/promotion"
+          ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-20T22:19:00+05:30",
-  "current_milestone": "37.1",
-  "next_milestone": "37.2"
+  "updated_at": "2026-11-21T00:00:00+05:30",
+  "current_milestone": "37.2",
+  "next_milestone": "37.3"
 }
