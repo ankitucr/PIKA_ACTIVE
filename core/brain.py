@@ -188,9 +188,13 @@ class PIKABrain:
             self.learning_engine = learning_engine
             if isinstance(self.learning_engine, LearningEngine):
                 self.learning_engine.set_trust_gate(self.learning_trust_gate)
-        # PIKA_GITHUB_KNOWLEDGE_INTEGRATION_V1
-        self.github_knowledge = PikaCodeLearning(project_root)
-        self.github_knowledge.index_corpus()
+        # Code-corpus indexing is an explicit lifecycle operation. Brain
+        # construction and normal retrieval must not walk a large corpus or
+        # write index/event files unexpectedly.
+        self.github_knowledge = PikaCodeLearning(
+            project_root,
+            auto_index_on_retrieve=False,
+        )
 
         # PIKA_NATIVE_KNOWLEDGE_BRAIN_V2: structured engineering evidence in the same Brain.
         self.native_engineering_knowledge = None
@@ -247,6 +251,15 @@ class PIKABrain:
                 )
             )
 
+
+    def index_code_knowledge(self, *, force: bool = False) -> dict[str, Any]:
+        """Explicitly build/update the advisory public-code knowledge index.
+
+        This is an operator/lifecycle action, not a Brain constructor side effect.
+        Indexed public source remains untrusted reference material and is never
+        imported or executed by this operation.
+        """
+        return self.github_knowledge.index_corpus(force=force)
 
     def _filter_trusted_semantic_records(self, records):
         """Return only memory records with a valid receipt and pinned attestor."""
