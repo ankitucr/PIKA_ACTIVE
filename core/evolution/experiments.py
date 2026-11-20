@@ -134,6 +134,35 @@ class CandidateExperimentEngine:
         self.runner = runner or run_candidate
         self.ledger = Ledger(self.knowledge / "EVOLUTION_LEDGER.jsonl")
 
+    def summary(self) -> dict[str, Any]:
+        candidate_count = 0
+        experiment_count = 0
+        decisions: dict[str, int] = {}
+        for path in self.candidates.glob("*/candidate.json"):
+            if path.is_file() and not path.is_symlink():
+                candidate_count += 1
+        for path in self.runs.glob("*.json"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                row = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if row.get("schema") != "pika.phase37.experiment.v1":
+                continue
+            experiment_count += 1
+            decision = row.get("decision")
+            if isinstance(decision, str):
+                decisions[decision] = decisions.get(decision, 0) + 1
+        return {
+            "candidate_count": candidate_count,
+            "experiment_count": experiment_count,
+            "decisions": dict(sorted(decisions.items())),
+            "execution_mode": "LOCAL_VENV_DIAGNOSTIC_ONLY",
+            "candidate_trust": "UNVERIFIED_LOCAL",
+            "promotion": "BLOCKED",
+        }
+
     def stage_candidate(
         self,
         baseline_root: str | Path,
