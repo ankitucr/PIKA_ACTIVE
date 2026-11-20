@@ -117,6 +117,7 @@ def _phase35_save_repair(
                     "test": repair["test"],
                     "test_passed": True, "syntax": True,
                     "execution": True, "evidence": evidence,
+                    "evidence_receipt": outcome.get("evidence_receipt"),
                 },
                 success=True, source="pika_phase33",
                 metadata={"accepted_candidate_verified": True},
@@ -233,6 +234,8 @@ class PIKABrain:
                         / "data"
                         / "learning_engine.json"
                     ),
+                    attestor_policy=self.attestor_policy,
+                    evidence_authority=self.evidence_authority,
                 )
             )
 

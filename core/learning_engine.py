@@ -271,6 +271,11 @@ class LearningEngine:
                     found = item
                     break
 
+            verification = record.get("verification", {})
+            receipt = (
+                verification.get("evidence_receipt")
+                if isinstance(verification, dict) else None
+            )
             if found is None:
                 found = {
                     "method": method,
@@ -279,6 +284,7 @@ class LearningEngine:
                     "failure_count": 0,
                     "verified_count": 0,
                     "last_used": time.time(),
+                    "evidence_receipt": dict(receipt) if isinstance(receipt, dict) else None,
                     "replay_context": {
                         "target_path": record.get(
                             "replay_context", {}
@@ -300,6 +306,8 @@ class LearningEngine:
 
             if record.get("trusted"):
                 found["verified_count"] += 1
+                if isinstance(receipt, dict):
+                    found["evidence_receipt"] = dict(receipt)
 
             found["last_used"] = time.time()
 

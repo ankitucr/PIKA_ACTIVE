@@ -27,6 +27,9 @@ class Phase34LearningRepair:
         self,
         workspace_root: str | Path,
         memory_path: str | Path | None = None,
+        *,
+        attestor_policy: Any = None,
+        evidence_authority: EvidenceAuthority | None = None,
     ):
         self.root = (
             Path(workspace_root)
@@ -39,8 +42,10 @@ class Phase34LearningRepair:
             memory_path=memory_path,
         )
         project_root = Path(__file__).resolve().parents[1]
-        self.evidence_authority = EvidenceAuthority(project_root)
-        self.trust_gate = LearningTrustGate(self.evidence_authority)
+        self.evidence_authority = evidence_authority or EvidenceAuthority(project_root)
+        self.trust_gate = LearningTrustGate(
+            self.evidence_authority, attestor_policy
+        )
 
     def lookup_candidates(
         self,

@@ -10,6 +10,8 @@ from core.phase36.attestor_policy import AttestorTrustPolicy
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.phase36.sandbox import SandboxRunner
 from core.semantic_code_memory import SemanticCodeMemory
+from core.learning_engine import LearningEngine
+from core.phase34_learning_repair import Phase34LearningRepair
 
 
 class TestBackend:
@@ -208,3 +210,67 @@ def test_phase35_brain_semantic_filter_requires_pinned_attestor(tmp_path):
 
     brain.learning_trust_gate = LearningTrustGate(authority, _policy(signing_key))
     assert brain._filter_trusted_semantic_records([record]) == [record]
+
+
+
+def test_phase34_replay_preserves_receipt_and_requires_pinned_attestor(tmp_path):
+    ed25519 = pytest.importorskip(
+        "cryptography.hazmat.primitives.asymmetric.ed25519"
+    )
+    signing_key = ed25519.Ed25519PrivateKey.generate()
+    authority, receipt = _receipt(tmp_path, signing_key)
+    memory_path = tmp_path / "learning.json"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    engine = LearningEngine(memory_path)
+
+    task = "Fix calculator multiplication"
+    error_type = "code_error"
+    root_cause = "multiplication operator is incorrect"
+    error_message = "expected product but received sum"
+    context = {
+        "target_path": "calculator.py",
+        "old_text": "return a - b",
+        "test_path": "test_calculator.py",
+    }
+    learned = engine.learn(
+        task=task,
+        error_type=error_type,
+        root_cause=root_cause,
+        error_message=error_message,
+        method="phase33-verified-repair",
+        solution="return a * b",
+        verification={
+            "independent_test": True,
+            "test_passed": True,
+            "evidence_receipt": receipt,
+        },
+        success=True,
+        replay_context=context,
+    )
+    assert learned["trusted"] is True
+
+    unpinned = Phase34LearningRepair(
+        workspace,
+        memory_path=memory_path,
+        evidence_authority=authority,
+    )
+    query = {
+        "task": task,
+        "error_type": error_type,
+        "root_cause": root_cause,
+        "error_message": error_message,
+    }
+    assert unpinned.lookup_candidates(**query) == []
+
+    pinned_policy = _policy(signing_key)
+    pinned = Phase34LearningRepair(
+        workspace,
+        memory_path=memory_path,
+        attestor_policy=pinned_policy,
+        evidence_authority=authority,
+    )
+    candidates = pinned.lookup_candidates(**query)
+    assert len(candidates) == 1, candidates
+    assert candidates[0]["evidence_receipt"] == receipt
+    assert pinned.trust_gate.accepts(candidates[0]) is True
