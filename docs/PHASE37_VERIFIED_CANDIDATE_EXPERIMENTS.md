@@ -54,7 +54,7 @@ Every outcome is `UNVERIFIED_LOCAL`, `sandboxed=false`, `attested=false`, `repla
 
 ## Current Phase 37 boundary
 
-This phase provides the repeatable experimentation loop. Candidate generation can come from the existing native repair planner or a separately reviewed candidate file. It does not automatically modify live source, promote candidate code, or mark local results as trusted learning memory. The next increment (37.1) should connect evidence-backed reflection/goal proposals to a multi-candidate discovery queue and produce candidates from the actual failure context, while reusing this exact experiment manifest and report format.
+Phase 37.0 provides the repeatable experimentation loop. Phase 37.1 connects live-only reflection and read-only diagnostic signatures to a stable discovery queue, then binds native repair proposals to the exact source text, event/task identity and pinned regression tests. It still does not modify live source, promote candidate code, or mark local results as trusted learning memory.
 
 
 ## Phase 37.1: failure-driven discovery queue
