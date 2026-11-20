@@ -85,17 +85,17 @@ jobs:
           cp -a trusted/tests composite/tests
           cp trusted/pytest.ini composite/pytest.ini
           cp trusted/requirements.txt composite/requirements.txt
-          find trusted -maxdepth 1 -type f \\( -name 'test_*.py' -o -name 'phase*_test.py' \\) \\
-            -exec cp -f {} composite/ \\;
+          find trusted -maxdepth 1 -type f \( -name 'test_*.py' -o -name 'phase*_test.py' \) \
+            -exec cp -f {} composite/ \;
 
           # Never execute repository hooks or candidate-controlled CI files.
           rm -rf composite/.git composite/.github composite/.venv composite/.sandbox_venv
           rm -f composite/.env composite/.env.local composite/sitecustomize.py composite/conftest.py
 
           # Refuse accidentally tracked credentials before creating the archive.
-          if find composite -type f \\( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \\) | grep -q .; then
+          if find composite -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \) | grep -q .; then
             echo "Potential credential file found in candidate checkout; refusing execution."
-            find composite -type f \\( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \\) -print
+            find composite -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.token' \) -print
             exit 1
           fi
 
@@ -112,19 +112,19 @@ jobs:
           cat > "$RUNNER_TEMP/pika-image/Dockerfile" <<'DOCKER'
           ARG PYTHON_VERSION
           FROM python:${PYTHON_VERSION}-slim
-          ENV PYTHONDONTWRITEBYTECODE=1 \\
-              PYTHONUNBUFFERED=1 \\
-              PIP_DISABLE_PIP_VERSION_CHECK=1 \\
+          ENV PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONUNBUFFERED=1 \
+              PIP_DISABLE_PIP_VERSION_CHECK=1 \
               HOME=/tmp
-          COPY requirements.txt /opt/pika/requirements.txt
-          RUN python -m pip install --no-cache-dir --upgrade pip \\
-              && python -m pip install --no-cache-dir -r /opt/pika/requirements.txt \\
+          COPY requirements.txt /tmp/requirements.txt
+          RUN python -m pip install --no-cache-dir --upgrade pip \
+              && python -m pip install --no-cache-dir -r /tmp/requirements.txt \
                  pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
           WORKDIR /work
           DOCKER
-          docker build --pull \\
-            --build-arg PYTHON_VERSION="${{ matrix.python-version }}" \\
-            -t "pika-isolated-ci:${{ matrix.python-version }}" \\
+          docker build --pull \
+            --build-arg PYTHON_VERSION="${{ matrix.python-version }}" \
+            -t "pika-isolated-ci:${{ matrix.python-version }}" \
             "$RUNNER_TEMP/pika-image"
 
       - name: Run candidate in disposable network-isolated container
@@ -132,21 +132,21 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="pika-isolated-ci:${{ matrix.python-version }}"
-          CID=$(docker create \\
-            --network none \\
-            --read-only \\
-            --cap-drop ALL \\
-            --security-opt no-new-privileges \\
-            --pids-limit 128 \\
-            --memory 3g \\
-            --cpus 2 \\
-            --shm-size 64m \\
-            --ulimit nofile=1024:1024 \\
-            --ulimit nproc=128:128 \\
-            --user 65532:65532 \\
-            --tmpfs /work:rw,nosuid,nodev,mode=1777,size=1536m \\
-            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=512m \\
-            --workdir /work \\
+          CID=$(docker create \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 128 \
+            --memory 3g \
+            --cpus 2 \
+            --shm-size 64m \
+            --ulimit nofile=1024:1024 \
+            --ulimit nproc=128:128 \
+            --user 65532:65532 \
+            --tmpfs /work:rw,nosuid,nodev,mode=1777,size=1536m \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=512m \
+            --workdir /work \
             "$IMAGE" sh -c 'sleep 1800')
           cleanup() { docker rm -f "$CID" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
@@ -168,15 +168,15 @@ jobs:
             PIP_NO_INDEX=1 python -m core.evolution.local_runner setup
 
             echo "===== TRUSTED FIRST-PARTY TEST SUITE ====="
-            python -m pytest -q -p no:cacheprovider tests \\
-              --ignore=tests/test_pika_real_cohere_repair.py \\
+            python -m pytest -q -p no:cacheprovider tests \
+              --ignore=tests/test_pika_real_cohere_repair.py \
               --ignore=tests/test_pika_brain_real_repair.py
 
             echo "===== TRUSTED ROOT-LEVEL REGRESSION SUITE ====="
-            python -m pytest -q -p no:cacheprovider \\
-              --ignore=test_api_workers.py \\
-              --ignore=test_pika_api.py \\
-              --ignore=tests/test_pika_real_cohere_repair.py \\
+            python -m pytest -q -p no:cacheprovider \
+              --ignore=test_api_workers.py \
+              --ignore=test_pika_api.py \
+              --ignore=tests/test_pika_real_cohere_repair.py \
               --ignore=tests/test_pika_brain_real_repair.py
 
             echo "===== LOCAL RUNNER SELFTEST (NOT ATTESTATION) ====="
