@@ -1,7 +1,7 @@
 {
   "schema": "pika.evolution_roadmap.v1",
   "north_star": "True Evolution through Verified Self-Improvement",
-  "strategy": "Four integrated milestones. Implement multiple related capabilities together, but preserve evidence, isolation, and rollback gates.",
+  "strategy": "Integrated milestones. Phase 37 starts measurable candidate evolution from observed failures and goals, with identical baseline/candidate tests, repeatable diagnostics, provenance and rollback-ready staging. Production promotion still requires independent evidence.",
   "milestones": [
     {
       "id": "36.6",
