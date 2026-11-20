@@ -185,11 +185,11 @@ def test_stale_baseline_is_rejected_before_any_runner_call(tmp_path):
 
 def test_non_target_dependency_change_invalidates_whole_baseline_tree(tmp_path):
     root = _project(tmp_path / "repo")
-    (root / "core" / "helper.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    (root / "core" / "helper.py").write_text("VALUE = 1\n", encoding="utf-8")
     runner = FakeRunner(False, True)
     engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
-    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
-    (root / "core" / "helper.py").write_text("VALUE = 2\\n", encoding="utf-8")
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\n")
+    (root / "core" / "helper.py").write_text("VALUE = 2\n", encoding="utf-8")
 
     with pytest.raises(ExperimentError, match="Baseline source tree changed"):
         engine.evaluate_candidate(staged["candidate_id"])
@@ -201,12 +201,12 @@ def test_baseline_snapshot_is_immutable_after_staging(tmp_path):
     root = _project(tmp_path / "repo")
     runner = FakeRunner(False, True)
     engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
-    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\n")
     baseline_snapshot = (
         tmp_path / "knowledge" / "PHASE37_EXPERIMENTS" / "candidates"
         / staged["candidate_id"] / "baseline" / "core" / "calc.py"
     )
-    baseline_snapshot.write_text("def add(a, b): return 123\\n", encoding="utf-8")
+    baseline_snapshot.write_text("def add(a, b): return 123\n", encoding="utf-8")
 
     with pytest.raises(ExperimentError, match="Baseline experiment snapshot was modified"):
         engine.evaluate_candidate(staged["candidate_id"])
@@ -217,12 +217,12 @@ def test_candidate_workspace_extra_file_is_rejected(tmp_path):
     root = _project(tmp_path / "repo")
     runner = FakeRunner(False, True)
     engine = CandidateExperimentEngine(tmp_path / "knowledge", runner=runner)
-    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\\n")
+    staged = _stage(engine, root, tmp_path, "def add(a, b): return a + b\n")
     candidate_root = (
         tmp_path / "knowledge" / "PHASE37_EXPERIMENTS" / "candidates"
         / staged["candidate_id"] / "workspace"
     )
-    (candidate_root / "unexpected.py").write_text("SHOULD_NOT_RUN = True\\n")
+    (candidate_root / "unexpected.py").write_text("SHOULD_NOT_RUN = True\n")
 
     with pytest.raises(ExperimentError, match="outside the declared target"):
         engine.evaluate_candidate(staged["candidate_id"])
