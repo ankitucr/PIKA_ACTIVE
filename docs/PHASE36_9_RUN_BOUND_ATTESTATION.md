@@ -26,12 +26,14 @@ The local evidence receipt is upgraded to pika.evidence.v2; the backend attestat
 3. Hash every source/test file.
 4. Create a fresh challenge and run-context digest.
 5. Ask the configured independent attestor to sign that exact context.
-6. Require an exact descriptor match before invoking the backend.
+6. Verify the detached Ed25519 signature against the pinned trust policy before invoking the backend.
 7. Execute only through the configured OS sandbox backend.
-8. Issue a local HMAC receipt containing the run-bound attestation and test result.
-9. On replay or promotion, verify the receipt and then verify the pinned Ed25519 signature.
+8. Require the measured backend to confirm the exact argv, timeout, sandbox policy and source hashes it actually consumed.
+9. Re-hash host source files after execution and reject receipt issuance if they drifted.
+10. Issue a local HMAC receipt containing the run-bound attestation and test result.
+11. On replay or promotion, verify the receipt and then verify the pinned Ed25519 signature.
 
-A previous attestation cannot be reused for a new run because the challenge nonce changes. Changing argv, timeout, a source hash, integration type or sandbox policy changes the signed run-context digest.
+A previous attestation cannot be reused for a new run because the challenge nonce changes. Changing argv, timeout, a source hash, integration type or sandbox policy changes the signed run-context digest. An absent, stale, malformed, unsigned or unpinned attestation blocks the backend call. A backend response with mismatched executed inputs or source drift produces no receipt.
 
 ## What this does not provide
 
