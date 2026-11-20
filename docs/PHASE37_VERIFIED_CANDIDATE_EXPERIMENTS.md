@@ -55,3 +55,26 @@ Every outcome is `UNVERIFIED_LOCAL`, `sandboxed=false`, `attested=false`, `repla
 ## Current Phase 37 boundary
 
 This phase provides the repeatable experimentation loop. Candidate generation can come from the existing native repair planner or a separately reviewed candidate file. It does not automatically modify live source, promote candidate code, or mark local results as trusted learning memory. The next increment (37.1) should connect evidence-backed reflection/goal proposals to a multi-candidate discovery queue and produce candidates from the actual failure context, while reusing this exact experiment manifest and report format.
+
+
+## Phase 37.1: failure-driven discovery queue
+
+Every evolution cycle now joins the live-only reflection diagnosis queue with the read-only diagnostic signature analysis and refreshes `PIKA_KNOWLEDGE/CANDIDATE_DISCOVERY_QUEUE.json`.
+
+A discovery item is keyed by the execution event ID and task hash. It records outcome, bounded error classifications and normalized issue fingerprints. Raw worker issue text is not copied into the queue. The queue explicitly records `source_backed_root_cause_verified=false`; repeated signatures prioritize review but never prove a root cause.
+
+Refresh the queue manually:
+
+```bash
+python -m core.evolution.cli discover-candidates --root .
+```
+
+Inspect the returned discovery IDs and the JSON queue. A source-bound proposal produced by the native repair generator can be staged only when it includes the exact old source text, a relative Python target, one or more explicit test paths, and the inert proposal flags. Stage it with:
+
+```bash
+python -m core.evolution.cli candidate-stage-native --root . \
+  --discovery-id DISCOVERY_ID \
+  --proposal-file /path/to/native-proposal.json
+```
+
+The controller verifies that the proposal's old source text still matches the live baseline before it stages candidates into the Phase 37 experiment engine. The proposal is not executed at discovery or staging time. Candidate experiments remain local diagnostics and are never added to trusted learning memory or promoted automatically.
