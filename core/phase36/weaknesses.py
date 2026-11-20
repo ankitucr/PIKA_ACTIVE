@@ -221,7 +221,13 @@ class WeaknessAnalyzer:
                 "Execute generated code in a disposable low-privilege sandbox with filesystem, network, process and resource limits; until then require explicit approval for untrusted scripts.",
             ))
 
-        if "self.package_manager.install(" in phase32:
+        dependency_install_is_gated = (
+            "dependency_allowlist = getattr(self" in phase32
+            and "if normalized_package not in dependency_allowlist" in phase32
+            and "if self.dependency_approval is None" in phase32
+            and "if approved is not True" in phase32
+        )
+        if "self.package_manager.install(" in phase32 and not dependency_install_is_gated:
             findings.append(Finding(
                 "automatic_dependency_installation", "medium", "autonomy_safety",
                 "Phase 32 can install a dependency automatically during recovery",

@@ -32,10 +32,23 @@ class Phase32Controller:
 
     MAX_INTERNAL_RECOVERY = 2
 
-    def __init__(self, tool_runtime, *, dependency_approval=None):
+    def __init__(
+        self,
+        tool_runtime,
+        *,
+        dependency_approval=None,
+        dependency_allowlist=(),
+    ):
         self.tool_runtime = tool_runtime
-        # Dependency installation is disabled unless an explicit policy approves it.
+        # Package installation requires BOTH an exact allowlist match and an
+        # approval callback that explicitly returns True. Defaults deny all.
         self.dependency_approval = dependency_approval
+        self.dependency_allowlist = frozenset(
+            self._normalize_package_name(package)
+            for package in dependency_allowlist
+            if isinstance(package, str)
+            and PackageManager.validate_package_name(package.strip())
+        )
 
         workspace_root = (
             Path(__file__).resolve().parents[1]
@@ -105,6 +118,10 @@ class Phase32Controller:
             "No failed transaction was committed."
         )
 
+    @staticmethod
+    def _normalize_package_name(package: str) -> str:
+        return package.strip().casefold().replace("_", "-").replace(".", "-")
+
     def _install_dependency(
         self,
         diagnosis: dict[str, Any],
@@ -120,6 +137,17 @@ class Phase32Controller:
                     "Dependency was detected but "
                     "package identity could not be determined."
                 ),
+            }
+
+        normalized_package = self._normalize_package_name(package)
+        dependency_allowlist = getattr(self, "dependency_allowlist", frozenset())
+        if normalized_package not in dependency_allowlist:
+            return {
+                "success": False,
+                "action": "install_dependency",
+                "package": package,
+                "error": "Dependency is not present in the explicit package allowlist.",
+                "verified": False,
             }
 
         if self.dependency_approval is None:
