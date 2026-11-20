@@ -13,8 +13,6 @@ from .repair import RepairCoordinator
 from .experiments import CandidateExperimentEngine
 from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
-from .discovery import CandidateDiscoveryQueue
-from .diagnostic_analysis import analyze_file
 
 
 class EvolutionController:
@@ -28,9 +26,6 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
-        self.discovery = CandidateDiscoveryQueue(
-            self.knowledge, self.root, self.experiments
-        )
         self.discovery = CandidateDiscoveryQueue(
             self.knowledge, self.root, self.experiments
         )
@@ -130,25 +125,6 @@ class EvolutionController:
             discovery_id, proposal, test_paths=test_paths
         )
 
-    def refresh_candidate_discovery(self):
-        """Refresh discovery work items from observed live failures and diagnostics."""
-        reflection = reflect(self.memory.path, live_only=True)
-        diagnostics = analyze_file(self.memory.path)
-        diagnostic_path = self.knowledge / "DIAGNOSTIC_ANALYSIS.json"
-        diagnostic_temp = diagnostic_path.with_suffix(".json.tmp")
-        diagnostic_temp.write_text(
-            json.dumps(diagnostics, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        diagnostic_temp.replace(diagnostic_path)
-        return self.discovery.refresh(reflection, diagnostics)
-
-    def stage_native_proposal(self, discovery_id, proposal, *, test_paths=None):
-        """Bind a native repair proposal to its exact current source and tests."""
-        return self.discovery.stage_native_proposal(
-            discovery_id, proposal, test_paths=test_paths
-        )
-
     def cycle(self):
         inventory, resource_snapshot = self.observe()
         reflection = reflect(self.memory.path, live_only=True)
@@ -177,7 +153,6 @@ class EvolutionController:
             "goals": len(goals["goals"]),
             "phase37_candidates": phase37["candidate_count"],
             "phase37_experiments": phase37["experiment_count"],
-            "phase37_discoveries": phase37["discovery"]["item_count"],
             "phase37_discoveries": phase37["discovery"]["item_count"],
         })
         state = {
