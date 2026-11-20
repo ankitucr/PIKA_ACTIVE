@@ -58,6 +58,7 @@ def _native_proposal(old_text):
         "stage": "native_proposal_ready",
         "provider": "pika-native",
         "generation_mode": "validated_structured_worker_proposal",
+        "generation_mode": "validated_structured_worker_proposal",
         "target_path": "core/calc.py",
         "old_text": old_text,
         "test_path": "tests/test_calc.py",
