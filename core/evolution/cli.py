@@ -21,6 +21,8 @@ def main() -> int:
             "candidate-evaluate",
             "discover-candidates",
             "candidate-stage-native",
+            "record-experiment-memory",
+            "verify-experiment-memory",
         ),
     )
     parser.add_argument("--root", default=".")
@@ -31,6 +33,7 @@ def main() -> int:
     parser.add_argument("--candidate-id")
     parser.add_argument("--discovery-id")
     parser.add_argument("--proposal-file")
+    parser.add_argument("--report-file")
     parser.add_argument("--baseline-root")
     parser.add_argument("--test-path", action="append", default=[])
     parser.add_argument("--expected-base-sha256")
@@ -63,6 +66,12 @@ def main() -> int:
         evolution.ledger.append("experience_recorded", {"category": args.category})
     elif args.command == "discover-candidates":
         result = evolution.refresh_candidate_discovery()
+    elif args.command == "record-experiment-memory":
+        if not args.report_file:
+            parser.error("record-experiment-memory requires --report-file")
+        result = evolution.record_experiment_memory(args.report_file)
+    elif args.command == "verify-experiment-memory":
+        result = evolution.verify_experiment_memory()
     elif args.command == "candidate-stage-native":
         if not args.discovery_id or not args.proposal_file:
             parser.error(
