@@ -297,6 +297,7 @@ class CandidateExperimentEngine:
         if not isinstance(result.get("timed_out"), bool) or not isinstance(result.get("no_tests_ran"), bool):
             return False
         if result["passed"]:
+            duration = result.get("duration_s")
             return (
                 result["returncode"] == 0
                 and not result["timed_out"]
@@ -304,6 +305,16 @@ class CandidateExperimentEngine:
                 and result.get("sandboxed") is False
                 and result.get("attested") is False
                 and result.get("promotion_eligible") is False
+                and result.get("trust") == "UNVERIFIED_LOCAL"
+                and isinstance(result.get("tests_passed"), int)
+                and not isinstance(result.get("tests_passed"), bool)
+                and result["tests_passed"] > 0
+                and result.get("tests_failed", 0) == 0
+                and result.get("tests_errors", 0) == 0
+                and result.get("source_modified_files") == []
+                and isinstance(duration, (int, float))
+                and not isinstance(duration, bool)
+                and duration >= 0
             )
         return True
 
@@ -327,7 +338,10 @@ class CandidateExperimentEngine:
         ):
             raise ExperimentError("performance_threshold must be between 0 and 0.5.")
 
-        candidate_root = (self.candidates / candidate_id).resolve(strict=True)
+        candidate_entry = self.candidates / candidate_id
+        if candidate_entry.is_symlink():
+            raise ExperimentError("Candidate directory symlinks are rejected.")
+        candidate_root = candidate_entry.resolve(strict=True)
         candidate_root.relative_to(self.candidates.resolve(strict=True))
         metadata_path = candidate_root / "candidate.json"
         if metadata_path.is_symlink() or not metadata_path.is_file():
@@ -360,8 +374,14 @@ class CandidateExperimentEngine:
             raise ExperimentError("Phase 37 experiments require an explicit pytest argv.")
 
         expected_tests = metadata.get("test_hashes")
-        if not isinstance(expected_tests, dict) or not expected_tests:
-            raise ExperimentError("Candidate has no pinned test baseline.")
+        declared_test_paths = metadata.get("test_paths")
+        if (
+            not isinstance(expected_tests, dict)
+            or not expected_tests
+            or not isinstance(declared_test_paths, list)
+            or set(expected_tests) != set(declared_test_paths)
+        ):
+            raise ExperimentError("Candidate has no consistent pinned test baseline.")
         for rel, expected_hash in expected_tests.items():
             test_rel = _safe_relative(rel, suffix=".py")
             original_test = _path_without_symlinks(baseline, test_rel)
