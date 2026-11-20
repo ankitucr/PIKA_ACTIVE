@@ -54,4 +54,49 @@ Every outcome is `UNVERIFIED_LOCAL`, `sandboxed=false`, `attested=false`, `repla
 
 ## Current Phase 37 boundary
 
-This phase provides the repeatable experimentation loop. Candidate generation can come from the existing native repair planner or a separately reviewed candidate file. It does not automatically modify live source, promote candidate code, or mark local results as trusted learning memory. The next increment (37.1) should connect evidence-backed reflection/goal proposals to a multi-candidate discovery queue and produce candidates from the actual failure context, while reusing this exact experiment manifest and report format.
+Phase 37.0 provides the repeatable experimentation loop. Phase 37.1 connects live-only reflection and read-only diagnostic signatures to a stable discovery queue, then binds native repair proposals to the exact source text, event/task identity and pinned regression tests. It still does not modify live source, promote candidate code, or mark local results as trusted learning memory.
+
+
+## Phase 37.1: failure-driven discovery queue
+
+Every evolution cycle now joins the live-only reflection diagnosis queue with the read-only diagnostic signature analysis and refreshes `PIKA_KNOWLEDGE/CANDIDATE_DISCOVERY_QUEUE.json`.
+
+A discovery item is keyed by the execution event ID and task hash. It records outcome, bounded error classifications and normalized issue fingerprints. Raw worker issue text is not copied into the queue. The queue explicitly records `source_backed_root_cause_verified=false`; repeated signatures prioritize review but never prove a root cause.
+
+Refresh the queue manually:
+
+```bash
+python -m core.evolution.cli discover-candidates --root .
+```
+
+Inspect the returned discovery IDs and the JSON queue. A source-bound proposal produced by the native repair generator can be staged only when it includes the exact old source text, a relative Python target, one or more explicit test paths, and the inert proposal flags. Stage it with:
+
+```bash
+python -m core.evolution.cli candidate-stage-native --root . \
+  --discovery-id DISCOVERY_ID \
+  --proposal-file /path/to/native-proposal.json
+```
+
+The controller verifies that the proposal's old source text still matches the live baseline before it stages candidates into the Phase 37 experiment engine. The proposal is not executed at discovery or staging time. Candidate experiments remain local diagnostics and are never added to trusted learning memory or promoted automatically.
+
+
+## Automatic capture from the PIKA Brain
+
+When a failed Brain attempt returns a valid `phase33_generation` result from the native repair generator, `ExecutionObserver.finish()` now captures the inert proposal automatically under:
+
+```
+PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/<event_id>_<proposal_id>.json
+```
+
+The directory is created with owner-only permissions and proposal files are written with mode 0600. Each envelope binds the proposal to the Brain execution event ID and task SHA-256. Raw task text and raw worker output are not copied into the proposal envelope. Candidate source and the exact old source text are stored because the experiment engine must compare and stage them; literal secret assignments cause capture to be skipped.
+
+The Brain's `evolution_feedback.native_proposals` result contains the saved proposal path and ID. After refreshing the discovery queue, the matching envelope can be staged using that path:
+
+```bash
+python -m core.evolution.cli discover-candidates --root .
+python -m core.evolution.cli candidate-stage-native --root . \
+  --discovery-id DISCOVERY_ID \
+  --proposal-file PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/EVENT_PROPOSAL.json
+```
+
+Staging verifies the envelope's content hash, event ID and task hash against the selected discovery item before checking the exact source text and pinned tests.

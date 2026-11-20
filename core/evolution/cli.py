@@ -1,15 +1,26 @@
+from __future__ import annotations
+
 import argparse
 import json
+from pathlib import Path
+
 from .controller import EvolutionController
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="PIKA Integrated Evolution Core")
     parser.add_argument(
         "command",
         choices=(
-            "cycle", "status", "observe", "verify-ledger", "remember",
-            "candidate-stage", "candidate-evaluate",
+            "cycle",
+            "status",
+            "observe",
+            "verify-ledger",
+            "remember",
+            "candidate-stage",
+            "candidate-evaluate",
+            "discover-candidates",
+            "candidate-stage-native",
         ),
     )
     parser.add_argument("--root", default=".")
@@ -18,6 +29,8 @@ def main():
     parser.add_argument("--target")
     parser.add_argument("--candidate-file")
     parser.add_argument("--candidate-id")
+    parser.add_argument("--discovery-id")
+    parser.add_argument("--proposal-file")
     parser.add_argument("--baseline-root")
     parser.add_argument("--test-path", action="append", default=[])
     parser.add_argument("--expected-base-sha256")
@@ -48,10 +61,32 @@ def main():
     elif args.command == "remember":
         result = evolution.memory.add(args.category, {"message": args.message})
         evolution.ledger.append("experience_recorded", {"category": args.category})
+    elif args.command == "discover-candidates":
+        result = evolution.refresh_candidate_discovery()
+    elif args.command == "candidate-stage-native":
+        if not args.discovery_id or not args.proposal_file:
+            parser.error(
+                "candidate-stage-native requires --discovery-id and --proposal-file"
+            )
+        proposal_path = Path(args.proposal_file).expanduser()
+        if proposal_path.is_symlink() or not proposal_path.is_file():
+            parser.error("proposal file must be a regular non-symlink file")
+        if proposal_path.stat().st_size > 1_500_000:
+            parser.error("proposal file exceeds the 1.5 MB limit")
+        try:
+            proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            parser.error(f"invalid proposal JSON: {type(exc).__name__}")
+        result = evolution.stage_native_proposal(
+            args.discovery_id,
+            proposal,
+            test_paths=args.test_path or None,
+        )
     elif args.command == "candidate-stage":
         if not args.target or not args.candidate_file or not args.test_path:
             parser.error(
-                "candidate-stage requires --target, --candidate-file, and at least one --test-path"
+                "candidate-stage requires --target, --candidate-file, "
+                "and at least one --test-path"
             )
         result = evolution.stage_candidate(
             args.target,

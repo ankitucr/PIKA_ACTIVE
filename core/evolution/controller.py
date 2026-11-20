@@ -11,6 +11,8 @@ from .planner import plan
 from .factory import ToolFactory
 from .repair import RepairCoordinator
 from .experiments import CandidateExperimentEngine
+from .discovery import CandidateDiscoveryQueue
+from .diagnostic_analysis import analyze_file
 
 
 class EvolutionController:
@@ -24,6 +26,9 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
+        self.discovery = CandidateDiscoveryQueue(
+            self.knowledge, self.root, self.experiments
+        )
 
     def status(self):
         ledger = self.ledger.verify()
@@ -35,7 +40,10 @@ class EvolutionController:
             "mission": self.identity["mission"],
             "python_file_count": inventory.get("python_file_count"),
             "ledger": ledger,
-            "phase37": self.experiments.summary(),
+            "phase37": {
+                **self.experiments.summary(),
+                "discovery": self.discovery.summary(),
+            },
             "safety": {
                 "live_source_writes": False,
                 "live_generated_code_execution": False,
@@ -98,22 +106,54 @@ class EvolutionController:
             repetitions=repetitions,
         )
 
+    def refresh_candidate_discovery(self):
+        """Refresh the Phase 37 queue from live reflection and diagnostic signatures."""
+        reflection = reflect(self.memory.path, live_only=True)
+        diagnostics = analyze_file(self.memory.path)
+        diagnostic_path = self.knowledge / "DIAGNOSTIC_ANALYSIS.json"
+        temp = diagnostic_path.with_suffix(".json.tmp")
+        temp.write_text(
+            json.dumps(diagnostics, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        temp.replace(diagnostic_path)
+        return self.discovery.refresh(reflection, diagnostics)
+
+    def stage_native_proposal(self, discovery_id, proposal, *, test_paths=None):
+        """Stage a native repair proposal against its exact current source and tests."""
+        return self.discovery.stage_native_proposal(
+            discovery_id, proposal, test_paths=test_paths
+        )
+
     def cycle(self):
         inventory, resource_snapshot = self.observe()
         reflection = reflect(self.memory.path, live_only=True)
         goals = plan(inventory, reflection, self.knowledge)
+        diagnostics = analyze_file(self.memory.path)
+        diagnostic_path = self.knowledge / "DIAGNOSTIC_ANALYSIS.json"
+        diagnostic_temp = diagnostic_path.with_suffix(".json.tmp")
+        diagnostic_temp.write_text(
+            json.dumps(diagnostics, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        diagnostic_temp.replace(diagnostic_path)
+        discovery_result = self.discovery.refresh(reflection, diagnostics)
         (self.knowledge / "REFLECTION_REPORT.json").write_text(
             json.dumps(reflection, indent=2), encoding="utf-8"
         )
         (self.knowledge / "GOAL_QUEUE.json").write_text(
             json.dumps(goals, indent=2), encoding="utf-8"
         )
-        phase37 = self.experiments.summary()
+        phase37 = {
+            **self.experiments.summary(),
+            "discovery": self.discovery.summary(),
+        }
         self.ledger.append("evolution_cycle", {
             "failures": reflection["failure_count"],
             "goals": len(goals["goals"]),
             "phase37_candidates": phase37["candidate_count"],
             "phase37_experiments": phase37["experiment_count"],
+            "phase37_discoveries": phase37["discovery"]["item_count"],
         })
         state = {
             "schema": "pika.evolution_state.v2",
@@ -123,6 +163,7 @@ class EvolutionController:
             "python_files": inventory["python_file_count"],
             "goals_proposed": len(goals["goals"]),
             "phase37": phase37,
+            "candidate_discovery": discovery_result["summary"],
             "execution": "LOCAL_CANDIDATE_DIAGNOSTICS_ONLY",
             "candidate_trust": "UNVERIFIED_LOCAL",
             "promotion": "BLOCKED_PENDING_INDEPENDENT_EVIDENCE",
@@ -136,6 +177,7 @@ class EvolutionController:
             "reflection": reflection,
             "plan": goals,
             "phase37": phase37,
+            "discovery": discovery_result,
             "inventory": {
                 "python_files": inventory["python_file_count"],
                 "files": inventory["file_count"],

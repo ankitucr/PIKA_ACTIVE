@@ -97,10 +97,34 @@
         "Every local run is labelled UNVERIFIED_LOCAL, unattested and not promotion eligible",
         "A later OS-isolated run can consume the same candidate and test manifest without changing the candidate identity"
       ],
-      "next": "37.1"
+      "next": "37.2",
+      "sub_milestones": [
+        {
+          "id": "37.0",
+          "name": "Repeatable Candidate Experiments",
+          "status": "completed",
+          "outcomes": [
+            "Hash-pinned baseline and candidate snapshots",
+            "Three paired local diagnostic runs",
+            "Regression and median performance comparison",
+            "Append-only experiment ledger and reports"
+          ]
+        },
+        {
+          "id": "37.1",
+          "name": "Failure-Driven Candidate Discovery",
+          "status": "in_progress",
+          "outcomes": [
+            "Live failure reflection joined with diagnostic signatures",
+            "Stable discovery IDs bound to event and task hashes",
+            "Raw issue text excluded from the queue",
+            "Native proposal staging bound to exact source and pinned tests"
+          ]
+        }
+      ]
     }
   ],
   "updated_at": "2026-11-20T22:19:00+05:30",
-  "current_milestone": "37",
-  "next_milestone": "37.1"
+  "current_milestone": "37.1",
+  "next_milestone": "37.2"
 }
