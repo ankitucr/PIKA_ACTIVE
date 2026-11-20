@@ -28,7 +28,7 @@ class EvidenceAuthority:
     boundary against malicious code already running as the same Termux UID.
     The OS sandbox backend remains the actual isolation boundary.
     """
-    SCHEMA = "pika.evidence.v1"
+    SCHEMA = "pika.evidence.v2"
 
     def __init__(self, project_root: str | Path):
         self.root = Path(project_root).expanduser().resolve()
