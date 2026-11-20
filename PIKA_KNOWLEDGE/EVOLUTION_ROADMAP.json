@@ -1,7 +1,7 @@
 {
   "schema": "pika.evolution_roadmap.v1",
   "north_star": "True Evolution through Verified Self-Improvement",
-  "strategy": "Four integrated milestones. Implement multiple related capabilities together, but preserve evidence, isolation, and rollback gates.",
+  "strategy": "Integrated milestones. Phase 37 starts measurable candidate evolution from observed failures and goals, with identical baseline/candidate tests, repeatable diagnostics, provenance and rollback-ready staging. Production promotion still requires independent evidence.",
   "milestones": [
     {
       "id": "36.6",
@@ -42,7 +42,7 @@
     {
       "id": "36.8",
       "name": "Autonomous Learning & Cognitive Evolution",
-      "status": "planned",
+      "status": "in_progress",
       "outcomes": [
         "Self-reflection and root-cause analysis",
         "Episodic, semantic, procedural, failure, and code memory",
@@ -61,7 +61,7 @@
     {
       "id": "36.9",
       "name": "Recursive Evolution & Adaptive Architecture",
-      "status": "planned",
+      "status": "in_progress",
       "outcomes": [
         "Recursive source and architecture analysis",
         "Dynamic tool and module creation with permission manifests",
@@ -76,9 +76,31 @@
         "Optimizations are benchmarked against a stable baseline",
         "Long-term evaluation detects regressions, forgetting, and capability degradation"
       ]
+    },
+    {
+      "id": "37",
+      "name": "Verified Candidate Evolution",
+      "status": "in_progress",
+      "outcomes": [
+        "Evidence-led candidate discovery from execution reflection and architecture goals",
+        "Hash-pinned candidate staging outside the live source tree",
+        "Baseline-versus-candidate regression experiments using the local diagnostic runner",
+        "Functional and performance comparison with explicit regression detection",
+        "Append-only experiment reports and reproducible test/source provenance",
+        "Explicit promotion decision remains blocked until production attestation is deployed"
+      ],
+      "exit_criteria": [
+        "Candidate staging changes only the declared file and records the exact baseline hash",
+        "Baseline and candidate execute the same byte-identical pinned tests",
+        "Stale baselines, modified candidates, changed tests and malformed runner results are rejected",
+        "A candidate regression is surfaced and never described as an improvement",
+        "Every local run is labelled UNVERIFIED_LOCAL, unattested and not promotion eligible",
+        "A later OS-isolated run can consume the same candidate and test manifest without changing the candidate identity"
+      ],
+      "next": "37.1"
     }
   ],
-  "updated_at": "2026-11-05T18:12:28+00:00",
-  "current_milestone": "36.7",
-  "next_milestone": "36.8"
+  "updated_at": "2026-11-20T22:19:00+05:30",
+  "current_milestone": "37",
+  "next_milestone": "37.1"
 }
