@@ -18,7 +18,10 @@ class TestBackend:
 
     def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
         self.calls += 1
-        return {"exit_code": 0, "test_count": 1, "stdout": "1 passed",
+        return {"executed_argv": list(argv), "executed_timeout": timeout,
+                "sandbox_policy_id": sandbox_policy_id,
+                "executed_source_hashes": dict(source_hashes),
+                "exit_code": 0, "test_count": 1, "stdout": "1 passed",
                 "stderr": "", "sandboxed": True,
                 "started_at": time.time(), "finished_at": time.time()}
 
