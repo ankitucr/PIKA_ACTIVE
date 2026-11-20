@@ -12,7 +12,7 @@ from core.phase36.sandbox import SandboxRunner
 
 class TestBackend:
     backend_id = "phase36-5-test-backend"
-    def run_test(self, *, argv, cwd, timeout, source_hashes):
+    def run_test(self, *, argv, cwd, timeout, source_hashes, sandbox_policy_id):
         return {"exit_code": 0, "test_count": 1, "stdout": "1 passed",
                 "stderr": "", "sandboxed": True,
                 "started_at": time.time(), "finished_at": time.time()}
