@@ -117,7 +117,10 @@ jobs:
               PIP_DISABLE_PIP_VERSION_CHECK=1 \
               HOME=/tmp
           COPY requirements.txt /tmp/requirements.txt
-          RUN python -m pip install --no-cache-dir --upgrade pip \
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends git \
+              && rm -rf /var/lib/apt/lists/* \
+              && python -m pip install --no-cache-dir --upgrade pip \
               && python -m pip install --no-cache-dir -r /tmp/requirements.txt \
                  pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
           WORKDIR /work
