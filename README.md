@@ -54,3 +54,8 @@ A production release requires, at minimum:
 6. No secrets or generated/private runtime material in tracked files.
 
 Until these gates are satisfied, PIKA is a development/test build, not an autonomous production execution service.
+
+
+## Phase 36.7 remote candidate testing
+
+Android/Termux local diagnostics are not an OS sandbox. Same-repository candidate changes are tested in a disposable GitHub-hosted VM plus a network-isolated Docker container. These results are CI evidence only, not production attestation or permission to promote source. See [`docs/PHASE36_7_REMOTE_SANDBOX.md`](docs/PHASE36_7_REMOTE_SANDBOX.md).
