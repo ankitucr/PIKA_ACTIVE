@@ -215,6 +215,48 @@ def test_discovery_rejects_non_native_proposal_provider(tmp_path):
     assert queue.summary()["candidate_count"] == 0
 
 
+def test_generation_mode_must_identify_a_supported_native_path(tmp_path):
+    root = _project(tmp_path / "repo")
+    old_text = (root / "core" / "calc.py").read_text(encoding="utf-8")
+    knowledge = tmp_path / "knowledge"
+    queue = CandidateDiscoveryQueue(
+        knowledge, root, CandidateExperimentEngine(knowledge)
+    )
+    discovery_id = queue.refresh(_reflection(), _diagnostics())["discovery_ids"][0]
+    proposal = _native_proposal(old_text)
+    proposal["generation_mode"] = "external_model_freeform"
+
+    with pytest.raises(ExperimentError, match="generation mode"):
+        queue.stage_native_proposal(discovery_id, proposal)
+
+    assert queue.summary()["candidate_count"] == 0
+
+
+def test_discovery_identity_changes_when_task_hash_changes(tmp_path):
+    root = _project(tmp_path / "repo")
+    knowledge = tmp_path / "knowledge"
+    queue = CandidateDiscoveryQueue(
+        knowledge, root, CandidateExperimentEngine(knowledge)
+    )
+
+    first = queue.refresh(_reflection(), _diagnostics())
+    different = queue.refresh(
+        _reflection(),
+        {
+            "events": [{
+                "event_id": "event-123",
+                "task_sha256": "b" * 64,
+                "event_classification": "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED",
+                "repeated_issue_fingerprints": ["expected_addition_result"],
+                "attempt_classifications": [],
+            }]
+        },
+    )
+
+    assert first["discovery_ids"][0] != different["discovery_ids"][0]
+    assert queue.summary()["item_count"] == 2
+
+
 def test_discovery_refresh_preserves_staged_candidate_state(tmp_path):
     root = _project(tmp_path / "repo")
     old_text = (root / "core" / "calc.py").read_text(encoding="utf-8")
