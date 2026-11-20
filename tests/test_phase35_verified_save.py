@@ -242,7 +242,7 @@ def test_learning_engine_rejects_caller_supplied_boolean_claims(tmp_path):
         error_type="test_failure",
         root_cause="multiplication is incorrect",
     ) is None
-    assert engine.stats()["trusted"] == 0
+    assert engine.stats()["trusted_solutions"] == 0
 
 
 def test_learning_engine_revalidates_persisted_trust_counters(tmp_path):
