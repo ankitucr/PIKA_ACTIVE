@@ -303,6 +303,8 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Native proposal has no source-bound old_text.")
         if not isinstance(candidates, list) or not 1 <= len(candidates) <= _MAX_CANDIDATES:
             raise ExperimentError("Native proposal must contain one to three candidates.")
+        if len(set(candidates)) != len(candidates):
+            raise ExperimentError("Native proposal contains duplicate candidates.")
 
         selected_tests = test_paths
         if selected_tests is None:
@@ -333,6 +335,14 @@ class CandidateDiscoveryQueue:
                 raise ExperimentError("Symlinked source targets are rejected.")
         if not current.is_file():
             raise ExperimentError("Native proposal target does not exist.")
+        for test_path in normalized_tests:
+            test_cursor = self.baseline
+            for part in PurePosixPath(test_path).parts:
+                test_cursor = test_cursor / part
+                if test_cursor.is_symlink():
+                    raise ExperimentError("Symlinked test paths are rejected.")
+            if not test_cursor.is_file():
+                raise ExperimentError(f"Pinned test file does not exist: {test_path}")
         current_bytes = current.read_bytes()
         try:
             current_text = current_bytes.decode("utf-8")
