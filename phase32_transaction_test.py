@@ -1,138 +1,67 @@
+from __future__ import annotations
+
 from pathlib import Path
-import shutil
+
+import pytest
 
 from core.transaction_engine import TransactionEngine
 
 
-workspace = Path.home() / "pika" / "workspace"
-test_file = workspace / "phase32_transaction_test.txt"
+def make_workspace(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    target = workspace / "phase32_transaction_test.txt"
+    target.write_text("ORIGINAL PIKA CONTENT\n", encoding="utf-8")
+    return workspace, target
 
-if test_file.exists():
-    test_file.unlink()
 
-test_file.write_text(
-    "ORIGINAL PIKA CONTENT\n",
-    encoding="utf-8",
-)
+def test_transaction_begin_rollback_and_commit_are_isolated(tmp_path):
+    workspace, target = make_workspace(tmp_path)
+    engine = TransactionEngine(workspace)
 
-engine = TransactionEngine(workspace)
+    begin = engine.begin(["phase32_transaction_test.txt"], transaction_id="TX-ROLLBACK")
+    assert begin["success"] is True
+    target.write_text("BROKEN NEW CONTENT\n", encoding="utf-8")
 
-print("=" * 70)
-print("PHASE 32 TRANSACTION TEST")
-print("=" * 70)
+    rollback = engine.rollback("TX-ROLLBACK")
+    assert rollback["success"] is True
+    assert target.read_text(encoding="utf-8") == "ORIGINAL PIKA CONTENT\n"
 
-print("\n[1] BEGIN TRANSACTION")
+    begin2 = engine.begin(["phase32_transaction_test.txt"], transaction_id="TX-COMMIT")
+    assert begin2["success"] is True
+    target.write_text("VALID NEW CONTENT\n", encoding="utf-8")
+    commit = engine.commit("TX-COMMIT")
+    assert commit["success"] is True
+    assert target.read_text(encoding="utf-8") == "VALID NEW CONTENT\n"
 
-begin = engine.begin(
-    ["phase32_transaction_test.txt"],
-    transaction_id="TX-PHASE32-TEST",
-)
 
-print(begin)
-assert begin["success"] is True
+def test_transaction_blocks_traversal_and_symlink_paths(tmp_path):
+    workspace, target = make_workspace(tmp_path)
+    engine = TransactionEngine(workspace)
+    bad = engine.begin(["../../.env"], transaction_id="TX-TRAVERSAL")
+    assert bad["success"] is False
 
-print("\n[2] MODIFY FILE")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    link = workspace / "escape.txt"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    blocked = engine.begin(["escape.txt"], transaction_id="TX-SYMLINK")
+    assert blocked["success"] is False
+    assert outside.read_text(encoding="utf-8") == "outside"
 
-test_file.write_text(
-    "BROKEN NEW CONTENT\n",
-    encoding="utf-8",
-)
 
-print(test_file.read_text(encoding="utf-8").strip())
+def test_transaction_restore_refuses_tampered_backup(tmp_path):
+    workspace, target = make_workspace(tmp_path)
+    engine = TransactionEngine(workspace)
+    begin = engine.begin(["phase32_transaction_test.txt"], transaction_id="TX-TAMPER")
+    assert begin["success"] is True
+    target.write_text("changed", encoding="utf-8")
 
-assert test_file.read_text(
-    encoding="utf-8"
-) == "BROKEN NEW CONTENT\n"
-
-print("\n[3] SIMULATE FAILURE")
-print("Verification: FAIL")
-
-print("\n[4] ROLLBACK")
-
-rollback = engine.rollback(
-    "TX-PHASE32-TEST"
-)
-
-print(rollback)
-assert rollback["success"] is True
-
-print("\n[5] VERIFY RESTORATION")
-
-content = test_file.read_text(
-    encoding="utf-8"
-)
-
-print(content.strip())
-
-assert content == "ORIGINAL PIKA CONTENT\n"
-
-print("\n[6] BEGIN SECOND TRANSACTION")
-
-begin2 = engine.begin(
-    ["phase32_transaction_test.txt"],
-    transaction_id="TX-PHASE32-COMMIT",
-)
-
-print(begin2)
-assert begin2["success"] is True
-
-test_file.write_text(
-    "VALID NEW CONTENT\n",
-    encoding="utf-8",
-)
-
-print("\n[7] COMMIT")
-
-commit = engine.commit(
-    "TX-PHASE32-COMMIT"
-)
-
-print(commit)
-assert commit["success"] is True
-
-print("\n[8] VERIFY COMMITTED CONTENT")
-
-content = test_file.read_text(
-    encoding="utf-8"
-)
-
-print(content.strip())
-
-assert content == "VALID NEW CONTENT\n"
-
-print("\n[9] SECURITY CHECK")
-
-try:
-    result = engine.begin(
-        ["../../.env"],
-        transaction_id="TX-PHASE32-SECURITY",
-    )
-
-    if result.get("success"):
-        raise AssertionError(
-            "Workspace traversal was not blocked."
-        )
-
-    print(
-        "Traversal blocked:",
-        result.get("error"),
-    )
-
-except ValueError as exc:
-    print(
-        "Traversal blocked:",
-        exc,
-    )
-
-print("\n[10] CLEANUP")
-
-test_file.unlink(missing_ok=True)
-
-shutil.rmtree(
-    workspace / ".pika" / "transactions",
-    ignore_errors=True,
-)
-
-print("\n" + "=" * 70)
-print("PHASE 32.1 SNAPSHOT + TRANSACTION TEST: PASS")
-print("=" * 70)
+    backup = workspace / ".pika" / "transactions" / "TX-TAMPER" / "backup" / "phase32_transaction_test.txt"
+    backup.write_text("forged", encoding="utf-8")
+    result = engine.rollback("TX-TAMPER")
+    assert result["success"] is False
+    assert target.read_text(encoding="utf-8") == "changed"
