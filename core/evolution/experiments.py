@@ -237,7 +237,7 @@ class CandidateExperimentEngine:
                     raise ExperimentError(f"Unsupported candidate provenance field: {key}")
                 if value is not None and (
                     not isinstance(value, str) or len(value) > 160
-                    or "\\n" in value or "\\r" in value
+                    or chr(10) in value or chr(13) in value
                 ):
                     raise ExperimentError(f"Invalid candidate provenance value: {key}")
                 clean_provenance[key] = value
