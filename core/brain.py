@@ -106,6 +106,8 @@ def _phase35_save_repair(
             evidence_receipt=outcome.get("evidence_receipt"),
         )
         if learning_engine is not None:
+            if isinstance(learning_engine, LearningEngine):
+                learning_engine.set_trust_gate(trust_gate)
             record = learning_engine.learn(
                 task=str(task),
                 error_type=str(diagnosis.get("error_type", "")),
@@ -172,14 +174,20 @@ class PIKABrain:
         self.semantic_code_memory = semantic_code_memory or SemanticCodeMemory(
             project_root / "data" / "semantic_code_memory.json"
         )
-        self.learning_engine = learning_engine or LearningEngine(
-            project_root / "data" / "learning_engine.json"
-        )
         self.evidence_authority = EvidenceAuthority(project_root)
         self.attestor_policy = attestor_policy
         self.learning_trust_gate = LearningTrustGate(
             self.evidence_authority, self.attestor_policy
         )
+        if learning_engine is None:
+            self.learning_engine = LearningEngine(
+                project_root / "data" / "learning_engine.json",
+                trust_gate=self.learning_trust_gate,
+            )
+        else:
+            self.learning_engine = learning_engine
+            if isinstance(self.learning_engine, LearningEngine):
+                self.learning_engine.set_trust_gate(self.learning_trust_gate)
         # PIKA_GITHUB_KNOWLEDGE_INTEGRATION_V1
         self.github_knowledge = PikaCodeLearning(project_root)
         self.github_knowledge.index_corpus()
