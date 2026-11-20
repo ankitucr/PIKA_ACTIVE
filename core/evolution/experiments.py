@@ -109,16 +109,22 @@ def _manifest_sha256(manifest: dict[str, str]) -> str:
 
 
 def _copy_source_tree(source: Path, destination: Path) -> None:
-    shutil.copytree(
-        source,
-        destination,
-        ignore=shutil.ignore_patterns(
-            ".git", ".venv*", "venv", ".sandbox_venv", "__pycache__",
-            ".pytest_cache", "node_modules", "PIKA_KNOWLEDGE",
-            "workspace", "data", "downloads", "backups", "logs", "tmp", "temp",
-            ".env", ".env.*", "*.pem", "*.key",
-        ),
-    )
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        ignored = set()
+        for name in names:
+            path = Path(directory) / name
+            if path.is_dir():
+                if name in _IGNORE_DIRS or name.startswith(".venv"):
+                    ignored.add(name)
+            elif (
+                name in _IGNORE_FILES
+                or name.startswith(".env.")
+                or name.endswith((".pem", ".key"))
+            ):
+                ignored.add(name)
+        return ignored
+
+    shutil.copytree(source, destination, ignore=ignore)
 
 
 def _json_write(path: Path, value: dict[str, Any]) -> None:
