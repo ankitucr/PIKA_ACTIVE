@@ -152,3 +152,76 @@ def test_workspace_context_still_blocks_arbitrary_native_code_generation(tmp_pat
     assert result["capability_gap"] is True
     assert result["retryable"] is False
     assert not (project / "data" / "pika_self_code_analysis.json").exists()
+
+
+
+def test_native_python_snippet_analysis_is_bounded_static_and_read_only(tmp_path: Path):
+    source = """import json
+
+class Store:
+    def load(self, path: str) -> dict:
+        with open(path) as handle:
+            return json.load(handle)
+"""
+    engine = NativeCognitionEngine(tmp_path)
+    result = asyncio.run(engine.execute(
+        "validate python syntax and analyze this snippet",
+        context={"source_code": source},
+    ))
+
+    assert result["success"] is True
+    assert result["agent"] == "native"
+    assert result["provider"] == "pika-native"
+    assert result["raw"]["mode"] == "native_static_python_snippet_analysis"
+    assert result["raw"]["code_valid"] is True
+    assert result["raw"]["parse_status"] == "parsed"
+    assert result["raw"]["source_executed"] is False
+    assert result["raw"]["source_modified"] is False
+    assert result["raw"]["source_persisted"] is False
+    assert result["raw"]["trust"] == "UNTRUSTED_USER_SUPPLIED_SOURCE"
+    assert result["raw"]["imports"] == ["json"]
+    assert any(item["qualified_name"] == "Store.load" for item in result["raw"]["symbols"])
+    assert "Syntax: VALID" in result["output"]
+    assert "never imported, executed" in result["output"]
+    assert not list(tmp_path.rglob("submitted_snippet.py"))
+
+
+def test_native_python_snippet_analysis_reports_syntax_errors_without_execution(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(
+        "check python syntax",
+        context={"source_code": "def broken(:\n    pass\n"},
+    ))
+
+    assert result["success"] is True
+    assert result["raw"]["code_valid"] is False
+    assert result["raw"]["parse_status"] == "syntax_error"
+    assert result["raw"]["source_executed"] is False
+    assert result["raw"]["source_persisted"] is False
+    assert "Syntax: INVALID" in result["output"]
+
+
+def test_native_python_snippet_analysis_accepts_only_explicit_python_fence(tmp_path: Path):
+    task = "analyze python snippet:\n\n```python\ndef add(a, b):\n    return a + b\n```"
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(task))
+
+    assert result["success"] is True
+    assert result["raw"]["code_valid"] is True
+    assert any(item["name"] == "add" for item in result["raw"]["symbols"])
+
+
+def test_native_python_snippet_analysis_requires_source(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute("validate python syntax"))
+
+    assert result["success"] is False
+    assert result["error"] == "PYTHON_SOURCE_REQUIRED"
+    assert result["capability_gap"] is False
+
+
+def test_native_python_snippet_analysis_rejects_oversized_input(tmp_path: Path):
+    result = NativeCognitionEngine(tmp_path).analyze_python_snippet("x = 1\n" * 12_000)
+
+    assert result["success"] is False
+    assert result["error"] == "PYTHON_SOURCE_TOO_LARGE"
+    assert result["max_bytes"] == 65_536
+    assert result["source_executed"] is False
+    assert result["source_modified"] is False
