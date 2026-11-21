@@ -9,6 +9,7 @@ import stat
 import tarfile
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
@@ -21,14 +22,25 @@ class RemoteAttestorClientError(RuntimeError):
 
 
 def _read_secret(path: str | Path) -> str:
-    source = Path(path).expanduser()
-    if source.is_symlink() or not source.is_file():
-        raise RemoteAttestorClientError("Bearer token must be a regular non-symlink file.")
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    cursor = absolute
+    while True:
+        if cursor.is_symlink():
+            raise RemoteAttestorClientError("Symlinks are forbidden in bearer-token paths.")
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    source = absolute.resolve(strict=True)
+    if not source.is_file():
+        raise RemoteAttestorClientError("Bearer token must be a regular file.")
     metadata = source.stat()
+    parent = source.parent.stat()
     if stat.S_IMODE(metadata.st_mode) & 0o077:
         raise RemoteAttestorClientError("Bearer token permissions must be owner-only (0600).")
-    if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
-        raise RemoteAttestorClientError("Bearer token must be owned by the current user.")
+    if stat.S_IMODE(parent.st_mode) & 0o077:
+        raise RemoteAttestorClientError("Bearer token directory must be owner-only (0700).")
+    if hasattr(os, "geteuid") and (metadata.st_uid != os.geteuid() or parent.st_uid != os.geteuid()):
+        raise RemoteAttestorClientError("Bearer token and directory must be owned by the current user.")
     token = source.read_text(encoding="utf-8").strip()
     if len(token) < 32 or len(token) > 4096 or any(ch.isspace() for ch in token):
         raise RemoteAttestorClientError("Bearer token must contain 32-4096 non-whitespace characters.")
@@ -82,6 +94,12 @@ def build_source_bundle(root: str | Path, source_hashes: Mapping[str, str]) -> b
     return result
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        # Never forward a bearer token or a signed run bundle to a redirect target.
+        return None
+
+
 class HttpResultAttestationBackend:
     """Client for a separately administered HTTPS host-attestor service.
 
@@ -98,10 +116,17 @@ class HttpResultAttestationBackend:
         backend_id: str,
         request_timeout_slack: int = 90,
     ):
-        if not isinstance(endpoint, str) or not endpoint.startswith("https://"):
-            raise ValueError("Remote attestor endpoint must use HTTPS.")
-        if endpoint.rstrip("/").endswith("/v1/run") is False:
-            endpoint = endpoint.rstrip("/") + "/v1/run"
+        if not isinstance(endpoint, str):
+            raise ValueError("Remote attestor endpoint must be a URL.")
+        parsed = urlsplit(endpoint)
+        if (parsed.scheme != "https" or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment):
+            raise ValueError("Remote attestor endpoint must be a clean HTTPS URL without userinfo, query or fragment.")
+        path = parsed.path.rstrip("/")
+        if path not in {"", "/v1/run"}:
+            raise ValueError("Remote attestor endpoint path must be empty or /v1/run.")
+        endpoint = parsed._replace(path="/v1/run").geturl()
         if not isinstance(backend_id, str) or not backend_id.strip() or backend_id != backend_id.strip():
             raise ValueError("A fixed backend_id is required.")
         if isinstance(request_timeout_slack, bool) or not isinstance(request_timeout_slack, int) or not 30 <= request_timeout_slack <= 300:
@@ -149,9 +174,13 @@ class HttpResultAttestationBackend:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout + self.request_timeout_slack) as response:
+            opener = urllib.request.build_opener(_RejectRedirects())
+            with opener.open(request, timeout=timeout + self.request_timeout_slack) as response:
                 if response.status != 200:
                     raise RemoteAttestorClientError(f"Host attestor returned HTTP {response.status}.")
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" not in content_type.lower():
+                    raise RemoteAttestorClientError("Host attestor response Content-Type must be application/json.")
                 body = response.read(2_000_001)
         except urllib.error.HTTPError as exc:
             detail = exc.read(4096).decode("utf-8", errors="replace")
