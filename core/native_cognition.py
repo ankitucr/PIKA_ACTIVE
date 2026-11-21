@@ -288,6 +288,10 @@ class NativeCognitionEngine:
 
     @staticmethod
     def _failure(code: str, message: str) -> dict[str, Any]:
+        capability_gap = code in {
+            "UNSUPPORTED_NATIVE_OPERATION",
+            "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
+        }
         return {
             "success": False,
             "agent": "native",
@@ -296,7 +300,21 @@ class NativeCognitionEngine:
             "error": code,
             "output": message,
             "knowledge_consumed": False,
-            "raw": {"error": code},
+            "failure_class": (
+                "unsupported_native_capability"
+                if capability_gap else "native_operation_failure"
+            ),
+            "capability_gap": capability_gap,
+            "retryable": False if capability_gap else None,
+            "raw": {
+                "error": code,
+                "failure_class": (
+                    "unsupported_native_capability"
+                    if capability_gap else "native_operation_failure"
+                ),
+                "capability_gap": capability_gap,
+                "retryable": False if capability_gap else None,
+            },
         }
 
     @staticmethod
