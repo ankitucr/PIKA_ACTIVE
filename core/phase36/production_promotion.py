@@ -394,14 +394,14 @@ class ProductionPromotionManager:
                         raise ProductionPromotionError(f"Promotion journal chain corrupt at line {number}.")
                     previous = expected
                     rows.append(row)
-            if kind == "promotion_started":
+            if kind in {"promotion_started", "manual_rollback_started"}:
                 for old_row in rows:
                     old_payload = old_row.get("payload", {})
-                    if old_row.get("event") == "promotion_started" and (
+                    if old_row.get("event") == kind and (
                         old_payload.get("plan_id") == payload.get("plan_id")
                         or old_payload.get("approval_nonce") == payload.get("approval_nonce")
                     ):
-                        raise ProductionPromotionError("Promotion plan or approval nonce has already been consumed.")
+                        raise ProductionPromotionError("Promotion/rollback plan or approval nonce has already been consumed.")
             body = {"event": kind, "payload": payload, "previous_hash": previous}
             row = {**body, "entry_hash": _sha(_canonical(body))}
             encoded = _canonical(row) + b"\n"
@@ -583,12 +583,60 @@ class ProductionPromotionManager:
             "production_promotion": "PROMOTED_WITH_OPERATOR_APPROVAL_AND_ATTESTED_POSTCHECK",
         }
 
-    def rollback(self, plan_path: str | Path) -> dict[str, Any]:
+    def rollback_approval_payload(self, plan_path: str | Path) -> dict[str, Any]:
         plan, plan_sha = self._read_plan(plan_path)
+        live_path = _path_no_symlink(self.root, _safe_target(plan["target"]))
+        live_sha = _sha(live_path.read_bytes())
+        if live_sha != plan["candidate_sha256"]:
+            raise ProductionPromotionError("Manual rollback requires the exact promoted candidate to be live.")
+        backup = self.rollback_root / plan["rollback"]["rollback_id"] / "baseline.bin"
+        if backup.is_symlink() or not backup.is_file() or _sha(backup.read_bytes()) != plan["baseline_sha256"]:
+            raise ProductionPromotionError("Rollback snapshot is missing or invalid.")
+        return {
+            "action": "ROLLBACK_CANDIDATE",
+            "plan_id": plan["plan_id"],
+            "plan_sha256": plan_sha,
+            "candidate_id": plan["candidate_id"],
+            "target": plan["target"],
+            "current_candidate_sha256": live_sha,
+            "baseline_sha256": plan["baseline_sha256"],
+            "rollback_snapshot_sha256": plan["rollback"]["snapshot_sha256"],
+        }
+
+    def rollback(
+        self,
+        plan_path: str | Path,
+        *,
+        approval_path: str | Path,
+        approval_policy: OperatorApprovalTrustPolicy,
+    ) -> dict[str, Any]:
+        plan, plan_sha = self._read_plan(plan_path)
+        expected_payload = self.rollback_approval_payload(plan_path)
+        _, raw = _protected_file(approval_path, project_root=self.root, maximum=1_000_000)
+        try:
+            approval = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ProductionPromotionError("Rollback approval is invalid JSON.") from exc
+        try:
+            approval_info = approval_policy.verify(approval, expected_payload)
+        except OperatorApprovalError as exc:
+            raise ProductionPromotionError(f"Production rollback approval rejected: {exc}") from exc
+        row_start = self._append_event("manual_rollback_started", {
+            "plan_id": plan["plan_id"],
+            "candidate_id": plan["candidate_id"],
+            "approval_nonce": approval["nonce"],
+            "approval_sha256": approval_info["approval_sha256"],
+            "plan_sha256": plan_sha,
+            "current_candidate_sha256": expected_payload["current_candidate_sha256"],
+            "baseline_sha256": plan["baseline_sha256"],
+        })
         restored = self._restore(plan)
         row = self._append_event("candidate_manual_rollback", {
             "plan_id": plan["plan_id"], "candidate_id": plan["candidate_id"],
             "plan_sha256": plan_sha, "restored_sha256": restored["restored_sha256"],
+            "approval_sha256": approval_info["approval_sha256"],
+            "approval_nonce": approval["nonce"],
+            "started_event_hash": row_start["entry_hash"],
             "state": "ROLLED_BACK",
         })
         return {
@@ -597,5 +645,6 @@ class ProductionPromotionManager:
             "candidate_id": plan["candidate_id"],
             "rollback": restored,
             "event_hash": row["entry_hash"],
+            "approval_approver_id": approval_info["approver_id"],
             "live_source_modified": True,
         }
