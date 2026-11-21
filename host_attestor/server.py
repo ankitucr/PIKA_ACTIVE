@@ -401,7 +401,7 @@ class HostAttestor:
                 "previous_hash": previous,
             }
             row = {**body, "entry_hash": hashlib.sha256(_canonical(body)).hexdigest()}
-            encoded = _canonical(row) + b"\\n"
+            encoded = _canonical(row) + bytes((10,))
             out = os.open(self.nonce_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
             try:
                 written = os.write(out, encoded)
