@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
 from .evidence import SANDBOX_POLICY_ID
+from .remote_backend import build_source_bundle
 
 CHALLENGE_SCHEMA = 'pika.os-run-challenge.v1'
 RESULT_ATTESTATION_SCHEMA = 'pika.os-run-result-attestation.v1'
@@ -505,12 +506,14 @@ class ResultBoundSandboxRunner:
         if not isinstance(backend_id, str) or not backend_id.strip():
             raise ResultAttestationError('External backend identity is missing.')
         source_hashes = self._hash_sources(root, source_paths)
+        source_bundle = build_source_bundle(root, source_hashes)
         challenge = create_run_challenge(backend_id=backend_id, integration_type=integration_type,
                                          argv=list(argv), timeout=timeout, source_hashes=source_hashes)
         try:
             raw = self.backend.run_test_with_result_attestation(
                 challenge=dict(challenge), cwd=str(root), argv=list(argv), timeout=timeout,
-                source_hashes=dict(source_hashes), sandbox_policy_id=SANDBOX_POLICY_ID)
+                source_hashes=dict(source_hashes), sandbox_policy_id=SANDBOX_POLICY_ID,
+                source_bundle=source_bundle)
         except Exception as exc:
             raise ResultAttestationError(f'External result-attested run failed: {type(exc).__name__}') from exc
         if not isinstance(raw, dict) or set(raw) != {'result_attestation'}:
