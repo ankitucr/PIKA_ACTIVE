@@ -416,7 +416,7 @@ class RunAttestationReplayGuard:
                     'result_sha256': result_sha, 'recorded_at': time.time(),
                     'previous_hash': previous}
             row = {**body, 'entry_hash': hashlib.sha256(_canonical(body)).hexdigest()}
-            encoded = (_canonical(row) + chr(10)).encode('utf-8')
+            encoded = _canonical(row) + bytes((10,))
             if self.path.exists() and self.path.stat().st_size + len(encoded) > self.max_bytes:
                 raise ResultAttestationError('Replay journal size limit reached.')
             flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, 'O_NOFOLLOW', 0)
