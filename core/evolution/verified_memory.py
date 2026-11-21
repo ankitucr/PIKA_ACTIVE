@@ -176,6 +176,7 @@ class VerifiedExperimentMemory:
         self.memory = ExperienceMemory(self.knowledge / 'EXPERIENCE_MEMORY.jsonl')
         self.ledger = Ledger(self.knowledge / 'EVOLUTION_LEDGER.jsonl')
         self.journal = self.knowledge / 'PHASE37_EXPERIMENT_MEMORY.jsonl'
+        self.projection_lock = self.knowledge / 'PHASE37_EXPERIMENT_MEMORY.projection.lock'
 
     @staticmethod
     def _read_fd(fd: int) -> bytes:
@@ -294,6 +295,23 @@ class VerifiedExperimentMemory:
             'promotion': 'BLOCKED',
         })
 
+    def _project_with_lock(self, payload: dict[str, Any], digest: str) -> None:
+        if self.projection_lock.is_symlink():
+            raise VerifiedMemoryError("Projection lock symlink rejected.")
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
+        fd = os.open(self.projection_lock, flags, 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise VerifiedMemoryError("Projection lock must be a regular file.")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            self._project_memory(payload, digest)
+            self._project_ledger(payload, digest)
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+
     def record(self, report_path: str | Path) -> dict[str, Any]:
         source, report, report_sha = _load_report(report_path)
         if report.get('schema') != 'pika.phase37.experiment.v1' or report.get('trust') != 'UNVERIFIED_LOCAL':
@@ -347,8 +365,7 @@ class VerifiedExperimentMemory:
         }
         digest = hashlib.sha256(_canonical(payload)).hexdigest()
         stored_payload, stored_digest, existed = self._append_or_get(payload, digest)
-        self._project_memory(stored_payload, stored_digest)
-        self._project_ledger(stored_payload, stored_digest)
+        self._project_with_lock(stored_payload, stored_digest)
         return {
             'success': True, 'experiment_id': experiment_id, 'candidate_id': candidate_id,
             'report_sha256': report_sha, 'payload_sha256': stored_digest,
