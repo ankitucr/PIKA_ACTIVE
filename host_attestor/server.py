@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import hashlib
 import hmac
 import io
@@ -216,7 +217,7 @@ class PodmanResultExecutor:
             "--memory=2g", "--cpus=2", "--user=65532:65532",
             "--tmpfs", "/work:rw,nosuid,nodev,size=1536m,mode=1777",
             "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
-            "--volume", f"{source_dir}:/input:ro",
+            "--volume", f"{source_dir}:/input:ro,Z",
             "--workdir", "/work",
             "--env", "HOME=/tmp",
             "--env", "PYTHONDONTWRITEBYTECODE=1",
@@ -288,7 +289,7 @@ class PodmanResultExecutor:
 
 
 class HostAttestor:
-    def __init__(self, config_path: str | Path):
+    def __init__(self, config_path: str | Path, *, executor=None):
         self.config_path = Path(config_path).expanduser().resolve(strict=True)
         config_raw = _read_owner_file(self.config_path)
         try:
@@ -335,15 +336,60 @@ class HostAttestor:
         self.storage_dir = Path(config["storage_dir"]).expanduser().resolve()
         self.storage_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.storage_dir.chmod(0o700)
-        self.executor = PodmanResultExecutor(
+        self.executor = executor or PodmanResultExecutor(
             runtime=config["runner_runtime"], image=config["runner_image"],
             storage_dir=self.storage_dir,
         )
+        self.audit_path = self.storage_dir / "attestation-audit.jsonl"
+        self.audit_lock = self.storage_dir / "attestation-audit.lock"
         replay_path = Path(config["replay_journal_file"]).expanduser().resolve()
         self.replay_guard = RunAttestationReplayGuard(
             replay_path, project_root=Path(__file__).resolve().parents[1]
         )
         self.semaphore = threading.BoundedSemaphore(1)
+
+    def _append_audit(self, attestation: dict[str, Any], measurement: dict[str, Any]) -> None:
+        fd = os.open(self.audit_lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise HostAttestorError("Attestation audit lock is not a regular file.")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            previous = "0" * 64
+            if self.audit_path.exists():
+                if self.audit_path.is_symlink() or self.audit_path.stat().st_size > 100 * 1024 * 1024:
+                    raise HostAttestorError("Attestation audit journal is unsafe or oversized.")
+                for number, line in enumerate(self.audit_path.read_text(encoding="utf-8").splitlines(), 1):
+                    row = json.loads(line)
+                    body = {key: value for key, value in row.items() if key != "entry_hash"}
+                    expected = hashlib.sha256(_canonical(body)).hexdigest()
+                    if row.get("previous_hash") != previous or row.get("entry_hash") != expected:
+                        raise HostAttestorError(f"Attestation audit chain corrupt at line {number}.")
+                    previous = expected
+            body = {
+                "verification_id": attestation["verification_id"],
+                "challenge_nonce": attestation["challenge_nonce"],
+                "result_sha256": attestation["result_sha256"],
+                "measurement_sha256": attestation["measurement_sha256"],
+                "result": attestation["result"],
+                "measurement": measurement,
+                "recorded_at": time.time(),
+                "previous_hash": previous,
+            }
+            row = {**body, "entry_hash": hashlib.sha256(_canonical(body)).hexdigest()}
+            encoded = _canonical(row) + b"\\n"
+            out = os.open(self.audit_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            try:
+                written = os.write(out, encoded)
+                if written != len(encoded):
+                    raise OSError("Short attestation audit append.")
+                os.fsync(out)
+            finally:
+                os.close(out)
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
 
     def public_status(self) -> dict[str, Any]:
         return {
@@ -395,6 +441,7 @@ class HostAttestor:
                 source_dir = Path(temp) / "source"
                 source_dir.mkdir(mode=0o700)
                 _extract_bundle(bundle, source_dir, hashes)
+                source_dir.chmod(0o755)
                 result, measurement = self.executor.execute(source_dir, argv, challenge["timeout"])
         finally:
             self.semaphore.release()
@@ -422,6 +469,7 @@ class HostAttestor:
             RunResultAttestationTrustPolicy.canonical_message(attestation)
         ).hex()
         self.replay_guard.consume(attestation)
+        self._append_audit(attestation, measurement)
         return {"result_attestation": attestation}
 
 
