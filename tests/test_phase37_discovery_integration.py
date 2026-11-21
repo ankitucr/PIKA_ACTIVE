@@ -181,6 +181,11 @@ def test_unsupported_native_operation_review_points_to_capability_handler(tmp_pa
 
     controller = EvolutionController(tmp_path)
     controller.refresh_candidate_discovery()
+    queue_path = knowledge / "CANDIDATE_DISCOVERY_QUEUE.json"
+    stored = json.loads(queue_path.read_text(encoding="utf-8"))
+    # Simulate a pre-classifier queue record. Review must use live diagnostics.
+    stored["items"][0]["diagnostic_classification"] = "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED"
+    queue_path.write_text(json.dumps(stored), encoding="utf-8")
     item = controller.review_candidate_discoveries()["items"][0]
 
     assert item["event_id"] == recorded["event_id"]
