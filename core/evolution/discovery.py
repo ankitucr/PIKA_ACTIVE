@@ -77,6 +77,39 @@ def _safe_classification(value: Any) -> str | None:
     return value if value in _DIAGNOSTIC_CLASSES else None
 
 
+def _safe_traceback_text_hints(value: Any) -> list[dict[str, Any]]:
+    """Accept only bounded, explicitly untrusted returned-traceback frame hints."""
+    if not isinstance(value, list):
+        return []
+    captured: list[dict[str, Any]] = []
+    for frame in value[:_MAX_CANDIDATES + 1]:
+        if not isinstance(frame, dict):
+            continue
+        try:
+            path = _safe_python_path(frame.get("path"))
+        except ExperimentError:
+            continue
+        line = frame.get("line")
+        digest = frame.get("source_sha256")
+        if (
+            isinstance(line, bool)
+            or not isinstance(line, int)
+            or line < 1
+            or not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or frame.get("hint_source") != "RETURNED_TRACEBACK_TEXT_UNTRUSTED"
+        ):
+            continue
+        captured.append({
+            "path": path.as_posix(),
+            "line": line,
+            "function": _bounded_text(frame.get("function"), 80),
+            "source_sha256": digest,
+            "hint_source": "RETURNED_TRACEBACK_TEXT_UNTRUSTED",
+        })
+    return captured
+
+
 def _safe_evidence_gaps(value: Any) -> list[str]:
     allowed = {"evaluator_result", "error_trace", "source_backed_diagnosis"}
     if not isinstance(value, list):
@@ -479,6 +512,9 @@ class CandidateDiscoveryQueue:
                 previous["issue_fingerprints"] = safe_fingerprints
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
+                previous["traceback_text_hints"] = _safe_traceback_text_hints(
+                    diag.get("traceback_text_hints")
+                )
                 reflected = reflected_by_event.get(event_id, {})
                 source_frames = (
                     reflected.get("traceback_frames")
@@ -528,6 +564,9 @@ class CandidateDiscoveryQueue:
                 "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
                 "traceback_frames": [],
+                "traceback_text_hints": _safe_traceback_text_hints(
+                    diag.get("traceback_text_hints")
+                ),
                 "traceback_context_status": "NOT_CAPTURED_LEGACY",
                 "source_context": None,
                 "state": "SOURCE_REVIEW_REQUIRED",
@@ -646,6 +685,13 @@ class CandidateDiscoveryQueue:
                 else item.get("traceback_frames")
             )
             current_context = self._resolve_traceback_source_context(frames)
+            text_frames = (
+                live_diagnostic.get("traceback_text_hints")
+                if isinstance(live_diagnostic.get("traceback_text_hints"), list)
+                else item.get("traceback_text_hints")
+            )
+            safe_text_frames = _safe_traceback_text_hints(text_frames)
+            text_hint_context = self._resolve_traceback_source_context(safe_text_frames)
             review_item = dict(item)
             if current_context is not None:
                 review_item["source_context"] = current_context
@@ -719,7 +765,17 @@ class CandidateDiscoveryQueue:
                 "target": current_context.get("target") if current_context else None,
                 "source_sha256": current_context.get("source_sha256") if current_context else None,
                 "source_context": current_context,
+                "traceback_text_hint": {
+                    "context": text_hint_context,
+                    "trusted_runtime_traceback": False,
+                    "automatic_source_binding": False,
+                    "automatic_test_pinning": False,
+                } if text_hint_context is not None else None,
                 "related_test_suggestions": related_test_suggestions,
+                "traceback_text_hint_status": (
+                    "CURRENT_FILE_HASH_MATCH_UNTRUSTED_HINT"
+                    if text_hint_context is not None else "NO_CURRENT_UNTRUSTED_HINT"
+                ),
                 "traceback_context_status": (
                     "CURRENT_SOURCE_HASH_MATCH"
                     if current_context is not None
