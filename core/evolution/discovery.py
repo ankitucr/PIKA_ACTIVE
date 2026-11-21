@@ -295,36 +295,42 @@ class CandidateDiscoveryQueue:
         if context is None:
             context = validate_source_context(item.get("source_context"), self.baseline)
         if context is not None:
-            item["source_context"] = context
-            current_frames = [
-                frame for frame in context["frames"]
-                if frame.get("current_source_matches") is True
-            ]
-            project_frames = [
-                frame for frame in current_frames
-                if frame.get("source_kind") == "project"
-            ]
-            if project_frames and not item.get("target"):
-                selected = project_frames[-1]
-                item["target"] = selected["path"]
-                item["source_sha256"] = selected["source_sha256"]
-                item["target_line"] = selected["line"]
+            if context.get("capture_mode") != "PYTHON_EXCEPTION_TRACEBACK":
+                # A worker-returned traceback string can be fabricated. Keep it
+                # as a review hint; never use it to bind candidate source/tests.
+                item["source_context_hint"] = context
+            else:
+                item["source_context"] = context
+                item.pop("source_context_hint", None)
+                current_frames = [
+                    frame for frame in context["frames"]
+                    if frame.get("current_source_matches") is True
+                ]
+                project_frames = [
+                    frame for frame in current_frames
+                    if frame.get("source_kind") == "project"
+                ]
+                if project_frames and not item.get("target"):
+                    selected = project_frames[-1]
+                    item["target"] = selected["path"]
+                    item["source_sha256"] = selected["source_sha256"]
+                    item["target_line"] = selected["line"]
 
-            test_frames = [
-                frame for frame in current_frames
-                if frame.get("source_kind") == "test"
-            ]
-            if test_frames and (
-                not item.get("test_paths") or not item.get("test_hashes")
-            ):
-                test_paths = list(dict.fromkeys(frame["path"] for frame in test_frames))[:3]
-                test_hashes = {
-                    frame["path"]: frame["source_sha256"]
-                    for frame in test_frames
-                    if frame["path"] in test_paths
-                }
-                item["test_paths"] = test_paths
-                item["test_hashes"] = test_hashes
+                test_frames = [
+                    frame for frame in current_frames
+                    if frame.get("source_kind") == "test"
+                ]
+                if test_frames and (
+                    not item.get("test_paths") or not item.get("test_hashes")
+                ):
+                    test_paths = list(dict.fromkeys(frame["path"] for frame in test_frames))[:3]
+                    test_hashes = {
+                        frame["path"]: frame["source_sha256"]
+                        for frame in test_frames
+                        if frame["path"] in test_paths
+                    }
+                    item["test_paths"] = test_paths
+                    item["test_hashes"] = test_hashes
 
         proposal_ids = diagnostic.get("native_proposal_ids", [])
         if not isinstance(proposal_ids, list):
@@ -574,6 +580,9 @@ class CandidateDiscoveryQueue:
             validated_context = validate_source_context(
                 item.get("source_context"), self.baseline
             )
+            validated_hint = validate_source_context(
+                item.get("source_context_hint"), self.baseline
+            )
             gaps = _review_gaps(item, self.baseline)
             live_reflection = reflection_by_event.get(item.get("event_id"), {})
             live_diagnostic = diagnostics_by_event.get(item.get("event_id"), {})
@@ -632,6 +641,21 @@ class CandidateDiscoveryQueue:
                     ],
                     "root_cause_verified": False,
                 } if validated_context is not None else None,
+                "source_context_hint": {
+                    "capture_mode": validated_hint["capture_mode"],
+                    "frames": [
+                        {
+                            "path": frame["path"],
+                            "line": frame["line"],
+                            "source_sha256": frame["source_sha256"],
+                            "source_kind": frame["source_kind"],
+                            "current_file_matches_claimed_hash": frame["current_source_matches"],
+                        }
+                        for frame in validated_hint["frames"]
+                    ],
+                    "trusted_runtime_traceback": False,
+                    "root_cause_verified": False,
+                } if validated_hint is not None else None,
                 "candidate_ids": item.get("candidate_ids", []),
                 "source_review_hint": source_review_hint,
                 "next_action": (
