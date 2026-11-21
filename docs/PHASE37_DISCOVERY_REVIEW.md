@@ -66,3 +66,7 @@ Regression coverage includes valid source, invalid syntax, fenced-source extract
 The operation applies the existing 65,536-byte limit independently to each input and uses the deterministic AST analyzer. It returns a deterministic comparison ID bound to both source SHA-256 values, added/removed/changed symbol names and signatures, import changes, AST metric deltas, and added/removed static findings.
 
 Invalid syntax yields `INCOMPLETE_INVALID_SYNTAX`; no structural diff is claimed. A completed structural comparison does not claim that a candidate is better, semantically equivalent or runtime-correct. Both inputs remain untrusted data and are never imported, executed, modified or persisted. Promotion remains false.
+
+## Signature-level fidelity
+
+The AST analyzer now preserves Python's positional-only `/`, positional parameter defaults, `*args`, keyword-only `*`, keyword-only defaults, `**kwargs`, argument annotations and return annotations in structural signatures. Existing `argument_annotations` continues to contain annotated parameter names for compatibility; the additive `argument_annotation_types` field contains the annotation expressions themselves. Regression tests cover the full signature shape.
