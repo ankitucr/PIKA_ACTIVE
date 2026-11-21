@@ -18,7 +18,7 @@ CHALLENGE_SCHEMA = 'pika.os-run-challenge.v1'
 RESULT_ATTESTATION_SCHEMA = 'pika.os-run-result-attestation.v1'
 TRUST_CONFIG_SCHEMA = 'pika.result-attestor-trust.v1'
 MAX_ATTESTATION_AGE_SECONDS = 300
-MAX_SOURCE_FILES = 100
+MAX_SOURCE_FILES = 5000
 MAX_REPLAY_JOURNAL_BYTES = 20_000_000
 
 
@@ -75,7 +75,7 @@ def create_run_challenge(*, backend_id: str, integration_type: str, argv: list[s
         raise ResultAttestationError('timeout must be an integer from 1 to 900 seconds.')
     if sandbox_policy_id != SANDBOX_POLICY_ID:
         raise ResultAttestationError('Unsupported sandbox policy.')
-    nonce = challenge_nonce or secrets.token_hex(32)
+    nonce = secrets.token_hex(32) if challenge_nonce is None else challenge_nonce
     if not _is_digest(nonce):
         raise ResultAttestationError('Challenge nonce must be a 32-byte hexadecimal value.')
     stamp = time.time() if issued_at is None else issued_at
