@@ -197,6 +197,7 @@ class VerifiedExperimentMemory:
     def _parse_journal(raw: bytes) -> list[dict[str, Any]]:
         rows = []
         seen = set()
+        seen_experiment_ids = set()
         try:
             lines = raw.decode('utf-8').splitlines()
         except UnicodeError as exc:
@@ -218,9 +219,10 @@ class VerifiedExperimentMemory:
             if row.get('payload_sha256') != expected:
                 raise VerifiedMemoryError(f"Journal hash mismatch at line {number}.")
             identity = (payload.get('experiment_id'), payload.get('report_sha256'))
-            if not all(isinstance(value, str) and value for value in identity) or identity in seen:
-                raise VerifiedMemoryError(f"Duplicate or invalid evidence identity at line {number}.")
+            if not all(isinstance(value, str) and value for value in identity) or identity in seen or identity[0] in seen_experiment_ids:
+                raise VerifiedMemoryError(f"Duplicate or conflicting evidence identity at line {number}.")
             seen.add(identity)
+            seen_experiment_ids.add(identity[0])
             if payload.get('schema') != SCHEMA or payload.get('trust') != 'UNVERIFIED' or payload.get('replay_allowed') is not False or payload.get('promotion_allowed') is not False:
                 raise VerifiedMemoryError(f"Trust boundary violation at line {number}.")
             rows.append(row)
