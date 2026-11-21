@@ -11,6 +11,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from core.evolution.ledger import Ledger
+
 from .operator_approval import (
     OperatorApprovalError,
     OperatorApprovalTrustPolicy,
@@ -44,6 +46,9 @@ class TrustedLearningAdmission:
             raw = self.root / raw
         self.journal = raw.absolute()
         self.lock_path = self.journal.with_name(self.journal.name + ".lock")
+        self.memory_path = self.knowledge / "EXPERIENCE_MEMORY.jsonl"
+        self.ledger = Ledger(self.knowledge / "EVOLUTION_LEDGER.jsonl")
+        self.projection_lock = self.knowledge / "TRUSTED_LEARNING_PROJECTION.lock"
         self.journal.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_outside_approval_data()
 
@@ -120,16 +125,195 @@ class TrustedLearningAdmission:
             rows.append(row)
         return rows
 
+    @staticmethod
+    def _projection_payload(record: dict[str, Any], admission_sha256: str) -> dict[str, Any]:
+        return {
+            "schema": ADMISSION_SCHEMA,
+            "admission_id": record["admission_id"],
+            "admission_sha256": admission_sha256,
+            "report_sha256": record["report_sha256"],
+            "experiment_id": record["experiment_id"],
+            "candidate_id": record["candidate_id"],
+            "decision": record["decision"],
+            "approver_id": record["approver_id"],
+            "approver_key_sha256": record["approver_key_sha256"],
+            "approval_sha256": record["approval_sha256"],
+            "trust": "TRUSTED_OPERATOR_ADMITTED",
+            "trusted_learning_allowed": True,
+            "replay_allowed": False,
+            "production_promotion_allowed": False,
+        }
+
+    def _project_admission(self, record: dict[str, Any], admission_sha256: str) -> dict[str, Any]:
+        """Idempotently project journal-backed admission into Experience Memory and Ledger."""
+        expected = self._projection_payload(record, admission_sha256)
+        lock_fd = os.open(
+            self.projection_lock,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            metadata = os.fstat(lock_fd)
+            if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+                raise LearningAdmissionError("Trusted-learning projection lock must be owner-only.")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+            memory_rows = []
+            if self.memory_path.is_symlink():
+                raise LearningAdmissionError("Experience Memory symlink rejected.")
+            if self.memory_path.exists():
+                meta = self.memory_path.stat()
+                if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                    raise LearningAdmissionError("Experience Memory must be a regular owner-only file.")
+                for number, line in enumerate(self.memory_path.read_text(encoding="utf-8").splitlines(), 1):
+                    if not line.strip():
+                        raise LearningAdmissionError(f"Experience Memory contains an empty line at {number}.")
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise LearningAdmissionError(f"Experience Memory JSON is corrupt at line {number}.") from exc
+                    if isinstance(row, dict) and row.get("category") == "phase37_trusted_experiment":
+                        memory_rows.append(row)
+            matching = [
+                row for row in memory_rows
+                if isinstance(row.get("observation"), dict)
+                and row["observation"].get("admission_id") == record["admission_id"]
+            ]
+            if len(matching) > 1:
+                raise LearningAdmissionError("Duplicate trusted-learning Experience Memory projection.")
+            if matching:
+                row = matching[0]
+                if (row.get("trust") != "TRUSTED_OPERATOR_ADMITTED"
+                        or row.get("replay_allowed") is not False
+                        or row.get("observation") != expected):
+                    raise LearningAdmissionError("Trusted-learning Experience Memory projection mismatch.")
+            else:
+                memory_record = {
+                    "timestamp": record["admitted_at"],
+                    "category": "phase37_trusted_experiment",
+                    "observation": expected,
+                    "source": "Phase37.TrustedLearningAdmission",
+                    "trust": "TRUSTED_OPERATOR_ADMITTED",
+                    "replay_allowed": False,
+                }
+                encoded = (json.dumps(
+                    memory_record, sort_keys=True, ensure_ascii=False, allow_nan=False
+                ) + "\n").encode("utf-8")
+                flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+                fd = os.open(self.memory_path, flags, 0o600)
+                try:
+                    meta = os.fstat(fd)
+                    if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                        raise LearningAdmissionError("Experience Memory append target must be regular and owner-only.")
+                    offset = 0
+                    while offset < len(encoded):
+                        written = os.write(fd, encoded[offset:])
+                        if written <= 0:
+                            raise OSError("Short trusted-learning memory projection append.")
+                        offset += written
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+
+            ledger_state = self.ledger.verify()
+            if not ledger_state.get("valid"):
+                raise LearningAdmissionError("Evolution Ledger is invalid; trusted projection denied.")
+            expected_ledger_payload = expected
+            matching_ledger = [
+                row for row in self.ledger.rows()
+                if row.get("event_type") == "phase37_trusted_learning_admitted"
+                and isinstance(row.get("payload"), dict)
+                and row["payload"].get("admission_id") == record["admission_id"]
+            ]
+            if len(matching_ledger) > 1:
+                raise LearningAdmissionError("Duplicate trusted-learning Evolution Ledger projection.")
+            if matching_ledger:
+                if matching_ledger[0]["payload"] != expected_ledger_payload:
+                    raise LearningAdmissionError("Trusted-learning Evolution Ledger projection mismatch.")
+            else:
+                self.ledger.append("phase37_trusted_learning_admitted", expected_ledger_payload)
+            return {"valid": True, "experience_memory": True, "evolution_ledger": True}
+        finally:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
+
+    def _verify_projections(self, records: list[tuple[dict[str, Any], str]]) -> dict[str, Any]:
+        expected = {record["admission_id"]: self._projection_payload(record, digest)
+                    for record, digest in records}
+        memory_map: dict[str, list[dict[str, Any]]] = {}
+        errors = []
+        if self.memory_path.is_symlink():
+            return {"valid": False, "errors": ["experience_memory_symlink_rejected"]}
+        if self.memory_path.exists():
+            try:
+                for number, line in enumerate(self.memory_path.read_text(encoding="utf-8").splitlines(), 1):
+                    if not line.strip():
+                        errors.append(f"experience_memory_empty_line_{number}")
+                        continue
+                    row = json.loads(line)
+                    if isinstance(row, dict) and row.get("category") == "phase37_trusted_experiment":
+                        observation = row.get("observation")
+                        identity = observation.get("admission_id") if isinstance(observation, dict) else None
+                        memory_map.setdefault(identity, []).append(row)
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                return {"valid": False, "errors": [f"experience_memory_{type(exc).__name__}"]}
+        ledger_state = self.ledger.verify()
+        if not ledger_state.get("valid"):
+            return {"valid": False, "errors": ["evolution_ledger_invalid"]}
+        ledger_map: dict[str, list[dict[str, Any]]] = {}
+        try:
+            for row in self.ledger.rows():
+                if row.get("event_type") == "phase37_trusted_learning_admitted":
+                    payload = row.get("payload")
+                    identity = payload.get("admission_id") if isinstance(payload, dict) else None
+                    ledger_map.setdefault(identity, []).append(row)
+        except (OSError, UnicodeError, ValueError) as exc:
+            return {"valid": False, "errors": [f"evolution_ledger_{type(exc).__name__}"]}
+        missing_memory, missing_ledger, duplicates = [], [], []
+        for identity, payload in expected.items():
+            memory_rows = memory_map.get(identity, [])
+            ledger_rows = ledger_map.get(identity, [])
+            if not memory_rows:
+                missing_memory.append(identity)
+            elif len(memory_rows) > 1:
+                duplicates.append(f"experience_memory:{identity}")
+            elif (memory_rows[0].get("observation") != payload
+                  or memory_rows[0].get("trust") != "TRUSTED_OPERATOR_ADMITTED"
+                  or memory_rows[0].get("replay_allowed") is not False):
+                errors.append(f"experience_memory_payload_mismatch:{identity}")
+            if not ledger_rows:
+                missing_ledger.append(identity)
+            elif len(ledger_rows) > 1:
+                duplicates.append(f"evolution_ledger:{identity}")
+            elif ledger_rows[0].get("payload") != payload:
+                errors.append(f"evolution_ledger_payload_mismatch:{identity}")
+        return {
+            "valid": not (missing_memory or missing_ledger or duplicates or errors),
+            "expected_entries": len(expected),
+            "experience_memory_entries": sum(len(value) for value in memory_map.values()),
+            "evolution_ledger_entries": sum(len(value) for value in ledger_map.values()),
+            "missing_memory": sorted(missing_memory),
+            "missing_ledger": sorted(missing_ledger),
+            "duplicates": sorted(duplicates),
+            "errors": errors,
+        }
+
     def verify(self) -> dict[str, Any]:
         lock_fd = self._open_lock()
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_SH)
             rows = self._read_rows()
+            projection = self._verify_projections([
+                (row["record"], row["entry_hash"]) for row in rows
+            ])
             return {
-                "valid": True,
+                "valid": projection["valid"],
                 "entries": len(rows),
                 "head_hash": rows[-1]["entry_hash"] if rows else "0" * 64,
                 "report_count": len({row["record"]["report_sha256"] for row in rows}),
+                "projections": projection,
             }
         except (OSError, ValueError, LearningAdmissionError) as exc:
             return {"valid": False, "entries": 0, "error": type(exc).__name__}
@@ -250,6 +434,7 @@ class TrustedLearningAdmission:
             for row in rows:
                 old = row["record"]
                 if old["report_sha256"] == report_sha:
+                    projection = self._project_admission(old, row["entry_hash"])
                     return {
                         "success": True, "already_admitted": True,
                         "admission_id": old["admission_id"],
@@ -257,6 +442,7 @@ class TrustedLearningAdmission:
                         "trust": old["trust"],
                         "replay_allowed": False,
                         "production_promotion_allowed": False,
+                        "projections": projection,
                     }
             if any(row["record"]["approval_nonce"] == approval["nonce"] for row in rows):
                 raise LearningAdmissionError("Learning approval nonce was already used.")
@@ -283,9 +469,11 @@ class TrustedLearningAdmission:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
             finally:
                 os.close(lock_fd)
+        projection = self._project_admission(record, row["entry_hash"])
         return {
             "success": True,
             "already_admitted": False,
+            "projections": projection,
             "admission_id": record["admission_id"],
             "admission_sha256": row["entry_hash"],
             "candidate_id": record["candidate_id"],
