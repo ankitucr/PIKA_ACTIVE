@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import pytest
 from core.evolution.verified_memory import VerifiedExperimentMemory, VerifiedMemoryError
+from core.evolution.controller import EvolutionController
 
 def make_report(path: Path):
     run = {'passed': True, 'returncode': 0, 'timed_out': False, 'no_tests_ran': False, 'tests_passed': 3, 'tests_failed': 0, 'tests_errors': 0, 'duration_s': 0.2, 'source_modified_files': []}
@@ -147,3 +148,18 @@ def test_rejects_performance_label_below_configured_threshold(tmp_path):
     report.write_text(json.dumps(value), encoding='utf-8')
     with pytest.raises(VerifiedMemoryError, match='performance threshold'):
         VerifiedExperimentMemory(tmp_path/'knowledge').record(report)
+
+
+def test_controller_records_each_completed_experiment_automatically(tmp_path, monkeypatch):
+    report = tmp_path/'report.json'
+    make_report(report)
+    controller = EvolutionController(tmp_path)
+    monkeypatch.setattr(
+        controller.experiments,
+        'evaluate_candidate',
+        lambda *args, **kwargs: {'success': True, 'report_path': str(report)},
+    )
+    result = controller.evaluate_candidate('a' * 32)
+    assert result['memory_record']['success'] is True
+    assert result['memory_record']['memory_trust'] == 'UNVERIFIED'
+    assert controller.verify_experiment_memory()['valid'] is True
