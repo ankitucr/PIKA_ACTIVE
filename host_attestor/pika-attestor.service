@@ -1,0 +1,33 @@
+[Unit]
+Description=PIKA Independent Rootless OS Result Attestor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pika-attestor
+Group=pika-attestor
+Environment=HOME=/var/lib/pika-attestor
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/pika-attestor
+ExecStart=/opt/pika-attestor/venv/bin/python -m host_attestor.server --config /etc/pika-attestor/host-config.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/pika-attestor
+ReadOnlyPaths=/etc/pika-attestor /opt/pika-attestor
+
+[Install]
+WantedBy=multi-user.target
