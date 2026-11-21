@@ -236,7 +236,9 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "python_syntax_validation",
         "python_snippet_comparison",
         "github_repository_learning",
-        "code_evidence_retrieval",
+        "pika_self_ast_analysis",
+        "static_improvement_queue",
+        "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
     }
     assert not {
@@ -251,6 +253,9 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "python_static_analysis" in capabilities
     assert "python_syntax_validation" in capabilities
     assert "python_snippet_comparison" in capabilities
+    assert "pika_self_ast_analysis" in capabilities
+    assert "static_improvement_queue" in capabilities
+    assert "lexical_code_evidence_retrieval" in capabilities
     assert "github_repository_learning" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
