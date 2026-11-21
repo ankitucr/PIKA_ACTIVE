@@ -1,26 +1,27 @@
 # Phase 37.2: Evidence-backed experiment memory
 
-Phase 37.2 turns the output of each candidate experiment into durable, inspectable knowledge without granting trust.
+Phase 37.2 turns every completed candidate experiment into durable, inspectable knowledge without granting trust.
 
 ## Lifecycle
 
-1. `candidate-evaluate` runs the pinned baseline/candidate experiment and writes its report.
-2. `EvolutionController` automatically records the report in the Phase 37 experiment-memory journal.
+1. `candidate-evaluate` runs the paired baseline/candidate experiment and writes the report.
+2. `EvolutionController` automatically records the resulting report in the Phase 37 experiment-memory journal.
 3. The exact report SHA-256 and canonical payload SHA-256 are retained.
-4. The observation is projected into `EXPERIENCE_MEMORY.jsonl` as `UNVERIFIED` and linked from the hash-chained evolution ledger.
-5. If a projection is interrupted after the journal append, repeating the record command repairs the missing projection without duplicating the journal record.
+4. The observation is projected into `EXPERIENCE_MEMORY.jsonl` as `UNVERIFIED` and linked from the hash-chained `EVOLUTION_LEDGER.jsonl`.
+5. Repeating a record operation repairs missing projections after an interrupted write without duplicating the journal or ledger entry.
 
 ## Evidence contract
 
 - Accept only `pika.phase37.experiment.v1` reports labelled `UNVERIFIED_LOCAL`.
-- Validate source hashes, pinned test hashes, per-run process/test outcomes, summary counts, medians and decision consistency.
-- Reject claimed sandbox/attestation, replay permission, promotion permission, malformed runs, conflicting experiment IDs and duplicate evidence.
-- The journal uses owner-readable file permissions, append locking, `O_NOFOLLOW` where supported, `fsync`, and canonical payload hashes.
-- Verification checks each journal hash, evidence identity and trust-boundary fields.
+- Validate explicit pytest argv, timeout, source/test SHA-256, per-run process/test outcomes, summary counts/medians, and the decision against the recorded performance threshold.
+- Bind the exact report SHA-256 and canonical payload SHA-256 into a bounded append-only journal.
+- Use append locking, `O_NOFOLLOW` where supported, owner-only creation mode, and `fsync` for the primary journal.
+- Verify the journal and compare each canonical payload against its Experience Memory and Evolution Ledger projections.
+- Reject malformed evidence, duplicate or conflicting experiment identity, forged sandbox/attestation claims, replay, and promotion.
 
 ## Operator commands
 
-`candidate-evaluate` records memory automatically. To verify or retry a prior projection:
+Evaluation records its report automatically. Verify or retry a prior report with:
 
 ```bash
 python -m core.evolution.cli verify-experiment-memory --root .
@@ -29,8 +30,4 @@ python -m core.evolution.cli record-experiment-memory --root . --report-file PIK
 
 ## Trust boundary
 
-These records are local diagnostic evidence only. They remain `UNVERIFIED`, cannot be replayed as trusted learning, and cannot authorize promotion. Independent attestation, trusted-learning admission and human approval remain separate requirements.
-
-## Operational recovery
-
-If an evaluation writes the journal but a later projection fails, rerun `record-experiment-memory` for the same report. The journal identity is reused and only missing memory/ledger projections are appended.
+These records are local diagnostic evidence only. They remain `UNVERIFIED`, cannot be replayed as trusted learning, and cannot authorize candidate promotion. Independent OS attestation, trusted-learning admission, and human approval remain separate requirements.
