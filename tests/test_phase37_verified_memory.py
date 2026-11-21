@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import pytest
 from core.evolution.verified_memory import VerifiedExperimentMemory, VerifiedMemoryError
@@ -163,3 +164,17 @@ def test_controller_records_each_completed_experiment_automatically(tmp_path, mo
     assert result['memory_record']['success'] is True
     assert result['memory_record']['memory_trust'] == 'UNVERIFIED'
     assert controller.verify_experiment_memory()['valid'] is True
+
+
+def test_concurrent_recording_creates_single_memory_and_ledger_projection(tmp_path):
+    report = tmp_path/'report.json'
+    make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: memory.record(report), range(8)))
+    assert all(result['success'] for result in results)
+    assert memory.verify()['valid'] is True
+    assert memory.verify()['entries'] == 1
+    assert len(memory.memory.recent(100)) == 1
+    ledger_rows = [row for row in memory.ledger.rows() if row.get('event_type') == 'phase37_experiment_memory_recorded']
+    assert len(ledger_rows) == 1
