@@ -269,6 +269,8 @@ def _admit_learning(
         operator_approval_path=approval_path,
         operator_trust_policy=operator_policy,
     )
+    admission._test_approval_path = approval_path
+    admission._test_operator_policy = operator_policy
     return admission, result, operator_policy, public
 
 
@@ -282,14 +284,33 @@ def test_trusted_learning_requires_signed_operator_approval_and_is_idempotent(tm
     assert result["trusted_learning_allowed"] is True
     assert result["replay_allowed"] is False
     assert result["production_promotion_allowed"] is False
-    assert admission.verify()["valid"] is True
-    assert admission.verify()["entries"] == 1
+    verified = admission.verify()
+    assert verified["valid"] is True
+    assert verified["entries"] == 1
+    assert verified["projections"]["experience_memory_entries"] == 1
+    assert verified["projections"]["evolution_ledger_entries"] == 1
 
-    payload = admission.approval_payload(
-        report_path, result_attestor_config=result_config, result_policy=policy
+    # Simulate a crash after the authoritative admission journal append but
+    # before the derived memory/ledger projections were persisted.
+    admission.memory_path.unlink(missing_ok=True)
+    admission.ledger.path.unlink(missing_ok=True)
+    assert admission.verify()["valid"] is False
+    with pytest.raises(LearningAdmissionError, match="projections are incomplete"):
+        admission.find_report(hashlib.sha256(report_path.read_bytes()).hexdigest())
+
+    recovered = admission.admit(
+        report_path=report_path,
+        result_attestor_config=result_config,
+        result_policy=policy,
+        operator_approval_path=admission._test_approval_path,
+        operator_trust_policy=admission._test_operator_policy,
     )
-    private, _, _, _, _ = _make_operator(tmp_path, "unused", "TRUSTED_LEARNING_ADMISSION") if False else (None, None, None, None, None)
-    # Reusing the same exact report is idempotent even if the original approval has been consumed.
+    assert recovered["already_admitted"] is True
+    assert recovered["projections"]["valid"] is True
+    verified = admission.verify()
+    assert verified["valid"] is True
+    assert verified["projections"]["experience_memory_entries"] == 1
+    assert verified["projections"]["evolution_ledger_entries"] == 1
     duplicate = admission.find_report(hashlib.sha256(report_path.read_bytes()).hexdigest())
     assert duplicate is not None
     assert duplicate["approver_key_sha256"] == hashlib.sha256(bytes.fromhex(public)).hexdigest()
