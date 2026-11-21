@@ -606,6 +606,7 @@ class CandidateExperimentEngine:
             "provenance": dict(metadata.get("provenance", {})),
             "argv": list(argv),
             "timeout": timeout,
+            "performance_threshold": threshold,
             "repetitions": repetitions,
             "started_at": started,
             "finished_at": time.time(),
