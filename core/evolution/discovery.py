@@ -314,7 +314,9 @@ class CandidateDiscoveryQueue:
                 frame for frame in current_frames
                 if frame.get("source_kind") == "test"
             ]
-            if test_frames and not item.get("test_paths"):
+            if test_frames and (
+                not item.get("test_paths") or not item.get("test_hashes")
+            ):
                 test_paths = list(dict.fromkeys(frame["path"] for frame in test_frames))[:3]
                 test_hashes = {
                     frame["path"]: frame["source_sha256"]
