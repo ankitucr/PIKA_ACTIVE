@@ -73,6 +73,11 @@ backups/
 # Ephemeral process locks for private runtime journals
 /PIKA_KNOWLEDGE/*.lock
 
+# Private Phase 37 discovery and candidate runtime artifacts
+/PIKA_KNOWLEDGE/CANDIDATE_DISCOVERY_QUEUE.json
+/PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/
+/PIKA_KNOWLEDGE/PHASE37_EXPERIMENTS/
+
 # PIKA private runtime knowledge and personal state
 /PIKA_KNOWLEDGE/*LEDGER*.jsonl
 /PIKA_KNOWLEDGE/*MEMORY*.jsonl
