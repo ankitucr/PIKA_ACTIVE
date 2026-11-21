@@ -17,7 +17,8 @@ def test_records_unverified_evidence(tmp_path):
     result = memory.record(report)
     assert result['memory_trust'] == 'UNVERIFIED'
     assert result['promotion'] == 'BLOCKED'
-    assert memory.verify() == {'valid': True, 'entries': 1}
+    assert memory.verify()['valid'] is True
+    assert memory.verify()['entries'] == 1
 
 def test_rejects_forged_sandbox_claim(tmp_path):
     report = tmp_path/'report.json'; value = make_report(report); value['sandboxed'] = True; report.write_text(json.dumps(value))
@@ -74,10 +75,13 @@ def test_recovers_projection_after_journal_was_written(tmp_path, monkeypatch):
     monkeypatch.setattr(memory.memory, 'add', fail_once)
     with pytest.raises(OSError):
         memory.record(report)
-    assert memory.verify() == {'valid': True, 'entries': 1}
+    interrupted = memory.verify()
+    assert interrupted['valid'] is False
+    assert interrupted['projections']['experience_memory']['missing']
     monkeypatch.setattr(memory.memory, 'add', original_add)
     result = memory.record(report)
     assert result['already_recorded'] is True
+    assert memory.verify()['valid'] is True
     assert len(memory.memory.recent(100)) == 1
     assert memory.ledger.verify()['valid'] is True
 
