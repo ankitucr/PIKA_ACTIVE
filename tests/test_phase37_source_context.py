@@ -17,7 +17,7 @@ def _raise_from_project(root: Path, *, test_frame: bool = True):
     source = root / "core" / "broken.py"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(
-        'API_KEY = "supersecretvalue123456"\n'
+        'API_KEY = "super secret value with spaces"\n'
         "def fail():\n"
         "    raise RuntimeError('observed failure')\n",
         encoding="utf-8",
@@ -63,7 +63,7 @@ def test_exception_capture_binds_project_and_test_frames_without_secret_text(tmp
     assert any(frame["path"] == "core/broken.py" for frame in frames)
     assert any(frame["path"] == "tests/test_broken.py" for frame in frames)
     assert all(len(frame["snippet"]) <= 7 for frame in frames)
-    assert all("supersecretvalue123456" not in "\n".join(frame["snippet"]) for frame in frames)
+    assert all("super secret value with spaces" not in "\n".join(frame["snippet"]) for frame in frames)
     assert any("[REDACTED]" in "\n".join(frame["snippet"]) for frame in frames)
     source_frame = next(frame for frame in frames if frame["path"] == "core/broken.py")
     assert source_frame["source_sha256"] == hashlib.sha256(
