@@ -34,6 +34,7 @@ _DIAGNOSTIC_CLASSES = frozenset({
     "WORKER_FAILURE_UNCLASSIFIED",
     "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED",
     "NO_FAILURE_SIGNATURE_IN_ATTEMPTS",
+    "UNSUPPORTED_NATIVE_CAPABILITY",
 })
 _ATTEMPT_CLASSES = frozenset({
     "NETWORK_OR_PROVIDER_TIMEOUT",
@@ -43,6 +44,7 @@ _ATTEMPT_CLASSES = frozenset({
     "WORKER_FAILURE_UNCLASSIFIED",
     "ATTEMPT_SUCCEEDED",
     "INSUFFICIENT_ATTEMPT_EVIDENCE",
+    "UNSUPPORTED_NATIVE_CAPABILITY",
 })
 
 
@@ -414,22 +416,53 @@ class CandidateDiscoveryQueue:
             )
             fingerprints = item.get("issue_fingerprints")
             classifications = item.get("attempt_classifications")
+            observed_fingerprints = fingerprints if isinstance(fingerprints, list) else []
+            classification = (
+                item.get("diagnostic_classification")
+                or _safe_classification(live_diagnostic.get("event_classification"))
+            )
+            native_error_codes = [
+                code for code in (
+                    "unsupported_native_operation",
+                    "native_code_generation_not_yet_supported",
+                )
+                if code in observed_fingerprints
+            ]
+            source_review_hint = None
+            if classification == "UNSUPPORTED_NATIVE_CAPABILITY":
+                source_review_hint = {
+                    "kind": "native_capability_gap",
+                    "observed_error_codes": native_error_codes,
+                    "source_files_to_inspect": [
+                        "core/native_cognition.py",
+                        "core/runtime.py",
+                        "agents/native_cognition.py",
+                    ],
+                    "evidence_status": "STATIC_HANDLER_MATCH_ONLY",
+                    "event_level_causality_verified": False,
+                    "recommended_action": "VERIFY_THE_MATCHING_HANDLER_AND_ADD_A_BOUNDED_CAPABILITY_REGRESSION_TEST",
+                }
             items.append({
                 "discovery_id": item.get("discovery_id"),
                 "event_id": item.get("event_id"),
                 "outcome": item.get("outcome"),
-                "diagnostic_classification": item.get("diagnostic_classification") or _safe_classification(live_diagnostic.get("event_classification")),
-                "issue_fingerprints": fingerprints[:12] if isinstance(fingerprints, list) else [],
+                "diagnostic_classification": classification,
+                "issue_fingerprints": observed_fingerprints[:12],
                 "attempt_classifications": classifications[:12] if isinstance(classifications, list) else [],
                 "reflection_evidence_missing": reflection_missing,
                 "review_gaps": gaps,
                 "state": item.get("state", "UNKNOWN"),
                 "source_backed_root_cause_verified": False,
                 "candidate_ids": item.get("candidate_ids", []),
+                "source_review_hint": source_review_hint,
                 "next_action": (
-                    "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
-                    if "traceback_referenced_source_context" in gaps
-                    else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                    "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
+                    if classification == "UNSUPPORTED_NATIVE_CAPABILITY"
+                    else (
+                        "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
+                        if "traceback_referenced_source_context" in gaps
+                        else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                    )
                 ),
             })
         return {
