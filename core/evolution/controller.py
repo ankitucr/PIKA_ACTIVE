@@ -16,6 +16,15 @@ from .diagnostic_analysis import analyze_file
 from .verified_memory import VerifiedExperimentMemory
 from .attested_experiments import ResultAttestedCandidateExperimentEngine
 from core.phase36.result_learning import ResultAttestedLearningGate
+from core.phase36.learning_admission import TrustedLearningAdmission
+from core.phase36.production_promotion import ProductionPromotionManager
+from core.phase36.operator_approval import load_operator_approval_trust_policy
+from core.phase36.result_attestation import (
+    RunAttestationReplayGuard,
+    ResultBoundSandboxRunner,
+    load_result_attestation_trust_policy,
+)
+from core.phase36.remote_backend import HttpResultAttestationBackend
 
 
 class EvolutionController:
@@ -34,6 +43,7 @@ class EvolutionController:
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
         self.verified_memory = VerifiedExperimentMemory(self.knowledge)
+        self.trusted_learning = TrustedLearningAdmission(self.root)
         self.discovery = CandidateDiscoveryQueue(
             self.knowledge, self.root, self.experiments
         )
@@ -62,6 +72,7 @@ class EvolutionController:
                 **self.experiments.summary(),
                 "discovery": self.discovery.summary(),
                 "experiment_memory": self.verified_memory.verify(),
+                "trusted_learning_admission": self.trusted_learning.verify(),
             },
             "safety": {
                 "live_source_writes": False,
@@ -165,6 +176,74 @@ class EvolutionController:
         grants replay, changes source, or authorizes production promotion.
         """
         return ResultAttestedLearningGate(trust_policy).verify_report(report)
+
+
+    def prepare_learning_approval(self, report_path, *, result_attestor_config):
+        return self.trusted_learning.approval_payload(
+            report_path, result_attestor_config=result_attestor_config
+        )
+
+    def admit_attested_learning(
+        self, report_path, *, result_attestor_config,
+        operator_approval_file, operator_trust_config,
+    ):
+        operator_policy = load_operator_approval_trust_policy(
+            operator_trust_config,
+            project_root=self.root,
+            purpose="TRUSTED_LEARNING_ADMISSION",
+        )
+        return self.trusted_learning.admit(
+            report_path=report_path,
+            result_attestor_config=result_attestor_config,
+            operator_approval_path=operator_approval_file,
+            operator_trust_policy=operator_policy,
+        )
+
+    def _production_promotion_manager(self, rollback_root):
+        return ProductionPromotionManager(
+            self.root, self.experiments, self.trusted_learning,
+            rollback_root=rollback_root,
+        )
+
+    def prepare_production_promotion(
+        self, candidate_id, *, report_path, result_attestor_config, rollback_root,
+    ):
+        return self._production_promotion_manager(rollback_root).prepare(
+            candidate_id,
+            report_path=report_path,
+            result_attestor_config=result_attestor_config,
+        )
+
+    def promote_candidate(
+        self, *, plan_file, approval_file, approval_trust_config,
+        result_attestor_config, attestor_url, attestor_token_file,
+        attestor_backend_id, replay_journal, rollback_root,
+    ):
+        result_policy = load_result_attestation_trust_policy(
+            result_attestor_config, project_root=self.root
+        )
+        approval_policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_PROMOTION",
+        )
+        replay = RunAttestationReplayGuard(
+            replay_journal, project_root=self.root
+        )
+        backend = HttpResultAttestationBackend(
+            attestor_url, attestor_token_file, backend_id=attestor_backend_id
+        )
+        runner = ResultBoundSandboxRunner(backend, result_policy, replay)
+        return self._production_promotion_manager(rollback_root).promote(
+            plan_path=plan_file,
+            approval_path=approval_file,
+            approval_policy=approval_policy,
+            result_runner=runner,
+            result_attestor_config=result_attestor_config,
+        )
+
+    def rollback_candidate(self, *, plan_file, rollback_root):
+        return self._production_promotion_manager(rollback_root).rollback(plan_file)
 
     def record_experiment_memory(self, report_path):
         return self.verified_memory.record(report_path)
