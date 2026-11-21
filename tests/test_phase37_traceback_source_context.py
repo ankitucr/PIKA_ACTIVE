@@ -175,16 +175,16 @@ def test_returned_traceback_text_is_untrusted_hint_not_live_exception_frame(tmp_
     source = root / "core" / "hinted.py"
     source.parent.mkdir(parents=True)
     source.write_text(
-        "def handler():\\n"
-        "    raise RuntimeError('hint target')\\n",
+        "def handler():\n"
+        "    raise RuntimeError('hint target')\n",
         encoding="utf-8",
     )
 
     observer = ExecutionObserver(root / "PIKA_KNOWLEDGE", project_root=root)
     token = observer.begin("returned traceback hint test")
     returned_traceback = (
-        "Traceback (most recent call last):\\n"
-        f'  File "{source}", line 2, in handler\\n'
+        "Traceback (most recent call last):\n"
+        f'  File "{source}", line 2, in handler\n'
     )
     result = observer.finish(
         token,
