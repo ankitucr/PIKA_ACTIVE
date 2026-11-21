@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .controller import EvolutionController
+from core.phase36.result_attestation import load_result_attestation_trust_policy
 
 
 def main() -> int:
@@ -23,6 +24,7 @@ def main() -> int:
             "candidate-stage-native",
             "record-experiment-memory",
             "verify-experiment-memory",
+            "verify-attested-learning",
         ),
     )
     parser.add_argument("--root", default=".")
@@ -34,6 +36,7 @@ def main() -> int:
     parser.add_argument("--discovery-id")
     parser.add_argument("--proposal-file")
     parser.add_argument("--report-file")
+    parser.add_argument("--attestor-config")
     parser.add_argument("--baseline-root")
     parser.add_argument("--test-path", action="append", default=[])
     parser.add_argument("--expected-base-sha256")
@@ -72,6 +75,24 @@ def main() -> int:
         result = evolution.record_experiment_memory(args.report_file)
     elif args.command == "verify-experiment-memory":
         result = evolution.verify_experiment_memory()
+    elif args.command == "verify-attested-learning":
+        if not args.report_file or not args.attestor_config:
+            parser.error("verify-attested-learning requires --report-file and --attestor-config")
+        report_path = Path(args.report_file).expanduser()
+        if report_path.is_symlink() or not report_path.is_file():
+            parser.error("report file must be a regular non-symlink file")
+        if report_path.stat().st_size > 20_000_000:
+            parser.error("attested report exceeds the 20 MB limit")
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            parser.error(f"invalid attested report: {type(exc).__name__}")
+        trust_policy = load_result_attestation_trust_policy(
+            args.attestor_config, project_root=args.root
+        )
+        result = evolution.verify_attested_learning_report(
+            report, trust_policy=trust_policy
+        )
     elif args.command == "candidate-stage-native":
         if not args.discovery_id or not args.proposal_file:
             parser.error(
