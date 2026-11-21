@@ -691,6 +691,19 @@ class CandidateDiscoveryQueue:
                     "event_level_causality_verified": False,
                     "recommended_action": "VERIFY_THE_MATCHING_HANDLER_AND_ADD_A_BOUNDED_CAPABILITY_REGRESSION_TEST",
                 }
+            related_test_suggestions = (
+                self._suggest_related_test_paths(current_context["target"])
+                if current_context is not None else []
+            )
+            if classification == "UNSUPPORTED_NATIVE_CAPABILITY":
+                next_action = "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
+            elif "traceback_referenced_source_context" in gaps:
+                next_action = "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
+            elif related_test_suggestions:
+                next_action = "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
+            else:
+                next_action = "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+
             items.append({
                 "discovery_id": item.get("discovery_id"),
                 "event_id": item.get("event_id"),
@@ -706,10 +719,7 @@ class CandidateDiscoveryQueue:
                 "target": current_context.get("target") if current_context else None,
                 "source_sha256": current_context.get("source_sha256") if current_context else None,
                 "source_context": current_context,
-                "related_test_suggestions": (
-                    self._suggest_related_test_paths(current_context["target"])
-                    if current_context is not None else []
-                ),
+                "related_test_suggestions": related_test_suggestions,
                 "traceback_context_status": (
                     "CURRENT_SOURCE_HASH_MATCH"
                     if current_context is not None
@@ -718,21 +728,7 @@ class CandidateDiscoveryQueue:
                     else "NOT_CAPTURED_LEGACY"
                 ),
                 "source_review_hint": source_review_hint,
-                "next_action": (
-                    "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
-                    if classification == "UNSUPPORTED_NATIVE_CAPABILITY"
-                    else (
-                        "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
-                        if "traceback_referenced_source_context" in gaps
-                        else (
-                            "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
-                            if reviewed_tests := self._suggest_related_test_paths(
-                                current_context["target"] if current_context is not None else None
-                            )
-                            else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
-                        )
-                    )
-                ),
+                "next_action": next_action,
             })
         return {
             "success": True,
