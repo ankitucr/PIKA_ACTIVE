@@ -58,3 +58,14 @@ def test_ledger_concurrent_appends_preserve_hash_chain(tmp_path):
     assert result['valid'] is True
     assert result['entries'] == 80
     assert sorted(row['payload']['index'] for row in ledger.rows()) == list(range(80))
+
+
+
+def test_status_reports_resolved_workspace_and_knowledge_roots(tmp_path):
+    controller = EvolutionController(tmp_path)
+    status = controller.status()
+    identity = status["workspace_identity"]
+    assert Path(identity["project_root"]) == tmp_path.resolve()
+    assert Path(identity["knowledge_root"]) == (tmp_path / "PIKA_KNOWLEDGE").resolve()
+    assert identity["knowledge_within_project"] is True
+    assert identity["root_input_is_symlink"] is False
