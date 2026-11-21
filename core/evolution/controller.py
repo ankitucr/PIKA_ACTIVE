@@ -14,6 +14,7 @@ from .experiments import CandidateExperimentEngine
 from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
 from .verified_memory import VerifiedExperimentMemory
+from .attested_experiments import ResultAttestedCandidateExperimentEngine
 
 
 class EvolutionController:
@@ -54,6 +55,8 @@ class EvolutionController:
                 "automatic_promotion": False,
                 "sandbox": "EXTERNAL_PENDING",
                 "candidate_trust": "UNVERIFIED_LOCAL",
+                "independent_result_attestation": "DENY_ALL_UNTIL_EXTERNAL_BACKEND_AND_PINNED_TRUST_ARE_INJECTED",
+                "trusted_learning_admission": "PENDING_LEARNING_TRUST_GATE",
             },
         }
 
@@ -121,6 +124,23 @@ class EvolutionController:
                     "retry_command": "record-experiment-memory",
                 }
         return result
+
+
+    def evaluate_candidate_attested(
+        self, candidate_id, *, result_runner, timeout=120,
+        performance_threshold=0.10, repetitions=3, argv=None
+    ):
+        """Evaluate a staged candidate using signed post-run OS measurements.
+
+        No local-vnev fallback is permitted. The caller must inject a configured
+        external result-attested runner. Results remain pending the separate
+        LearningTrustGate and can never authorize production promotion.
+        """
+        engine = ResultAttestedCandidateExperimentEngine(self.experiments, result_runner)
+        return engine.evaluate_candidate(
+            candidate_id, timeout=timeout, performance_threshold=performance_threshold,
+            repetitions=repetitions, argv=argv
+        )
 
     def record_experiment_memory(self, report_path):
         return self.verified_memory.record(report_path)
