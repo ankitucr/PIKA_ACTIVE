@@ -337,20 +337,75 @@ class VerifiedExperimentMemory:
 
     def verify(self) -> dict[str, Any]:
         if self.journal.is_symlink():
-            return {'valid': False, 'entries': 0, 'error': 'symlink_rejected'}
-        if not self.journal.exists():
-            return {'valid': True, 'entries': 0}
-        flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+            return {'valid': False, 'entries': 0, 'error': 'journal_symlink_rejected'}
+        journal_rows: list[dict[str, Any]] = []
+        if self.journal.exists():
+            flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+            try:
+                fd = os.open(self.journal, flags)
+            except OSError:
+                return {'valid': False, 'entries': 0, 'error': 'journal_open_failed'}
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    return {'valid': False, 'entries': 0, 'error': 'journal_not_regular_file'}
+                journal_rows = self._parse_journal(self._read_fd(fd))
+            except (OSError, UnicodeError, VerifiedMemoryError) as exc:
+                return {'valid': False, 'entries': 0, 'error': type(exc).__name__}
+            finally:
+                os.close(fd)
+
+        expected = {row['payload_sha256'] for row in journal_rows}
+        memory_digests: list[str] = []
+        memory_path = self.memory.path
+        if memory_path.is_symlink():
+            return {'valid': False, 'entries': len(journal_rows), 'error': 'experience_memory_symlink_rejected'}
+        if memory_path.exists():
+            try:
+                if not memory_path.is_file():
+                    return {'valid': False, 'entries': len(journal_rows), 'error': 'experience_memory_not_regular_file'}
+                for number, line in enumerate(memory_path.read_text(encoding='utf-8').splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        return {'valid': False, 'entries': len(journal_rows), 'error': f'experience_memory_json_error_line_{number}'}
+                    observation = row.get('observation') if isinstance(row, dict) else None
+                    if isinstance(observation, dict) and observation.get('schema') == SCHEMA:
+                        if observation.get('trust') != 'UNVERIFIED' or observation.get('replay_allowed') is not False or observation.get('promotion_allowed') is not False:
+                            return {'valid': False, 'entries': len(journal_rows), 'error': f'experience_memory_trust_boundary_line_{number}'}
+                        digest = observation.get('payload_sha256')
+                        if isinstance(digest, str):
+                            memory_digests.append(digest)
+            except (OSError, UnicodeError) as exc:
+                return {'valid': False, 'entries': len(journal_rows), 'error': type(exc).__name__}
+
+        ledger_state = self.ledger.verify()
+        if not ledger_state.get('valid'):
+            return {'valid': False, 'entries': len(journal_rows), 'error': 'evolution_ledger_invalid', 'ledger': ledger_state}
+        ledger_digests = []
         try:
-            fd = os.open(self.journal, flags)
-        except OSError:
-            return {'valid': False, 'entries': 0, 'error': 'open_failed'}
-        try:
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
-                return {'valid': False, 'entries': 0, 'error': 'not_regular_file'}
-            rows = self._parse_journal(self._read_fd(fd))
-            return {'valid': True, 'entries': len(rows)}
-        except (OSError, UnicodeError, VerifiedMemoryError) as exc:
-            return {'valid': False, 'entries': 0, 'error': type(exc).__name__}
-        finally:
-            os.close(fd)
+            for row in self.ledger.rows():
+                body = row.get('payload') if isinstance(row, dict) else None
+                if isinstance(body, dict) and row.get('event_type') == 'phase37_experiment_memory_recorded':
+                    digest = body.get('payload_sha256')
+                    if isinstance(digest, str):
+                        ledger_digests.append(digest)
+        except (OSError, UnicodeError, ValueError) as exc:
+            return {'valid': False, 'entries': len(journal_rows), 'error': type(exc).__name__}
+
+        memory_set = set(memory_digests)
+        ledger_set = set(ledger_digests)
+        missing_memory = sorted(expected - memory_set)
+        missing_ledger = sorted(expected - ledger_set)
+        duplicate_memory = sorted(digest for digest in expected if memory_digests.count(digest) > 1)
+        duplicate_ledger = sorted(digest for digest in expected if ledger_digests.count(digest) > 1)
+        projections_valid = not (missing_memory or missing_ledger or duplicate_memory or duplicate_ledger)
+        return {
+            'valid': projections_valid,
+            'entries': len(journal_rows),
+            'projections': {
+                'experience_memory': {'valid': not missing_memory and not duplicate_memory, 'missing': missing_memory, 'duplicates': duplicate_memory},
+                'evolution_ledger': {'valid': not missing_ledger and not duplicate_ledger, 'missing': missing_ledger, 'duplicates': duplicate_ledger, 'ledger_entries': ledger_state.get('entries', 0)},
+            },
+        }
