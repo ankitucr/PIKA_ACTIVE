@@ -149,9 +149,22 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
         outcome = _text(obs.get("outcome_status") or row.get("category"), 40) or "UNKNOWN"
         outcome_counts[outcome] += 1
+        native_proposal_ids = obs.get("native_proposal_ids", [])
+        if not isinstance(native_proposal_ids, list):
+            native_proposal_ids = []
+        native_proposal_ids = [
+            value for value in native_proposal_ids
+            if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value)
+        ][:3]
+        source_context = (
+            obs.get("source_context")
+            if isinstance(obs.get("source_context"), dict) else None
+        )
         events.append({
             "event_id": _text(obs.get("event_id"), 80) or None,
             "task_sha256": _text(obs.get("task_sha256"), 64) or None,
+            "source_context": source_context,
+            "native_proposal_ids": native_proposal_ids,
             "outcome": outcome,
             "event_classification": event_class,
             "attempt_count": len(classified),
