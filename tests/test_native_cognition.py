@@ -408,5 +408,6 @@ def keyword_only(value, *, enabled=False):
         "transform(a, /, b: int=1, *values: str, enabled: bool=True, **options: object) -> None"
     )
     assert symbols["keyword_only"]["signature"] == "keyword_only(value, *, enabled=False)"
-    assert set(symbols["transform"]["argument_annotations"]) == {"int", "str", "bool", "object"}
+    assert set(symbols["transform"]["argument_annotations"]) == {"b", "values", "enabled", "options"}
+    assert set(symbols["transform"]["argument_annotation_types"]) == {"int", "str", "bool", "object"}
     assert analyzed["executed"] is False
