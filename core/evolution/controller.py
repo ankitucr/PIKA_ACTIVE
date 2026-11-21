@@ -15,6 +15,7 @@ from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
 from .verified_memory import VerifiedExperimentMemory
 from .attested_experiments import ResultAttestedCandidateExperimentEngine
+from core.phase36.result_learning import ResultAttestedLearningGate
 
 
 class EvolutionController:
@@ -141,6 +142,15 @@ class EvolutionController:
             candidate_id, timeout=timeout, performance_threshold=performance_threshold,
             repetitions=repetitions, argv=argv
         )
+
+
+    def verify_attested_learning_report(self, report, *, trust_policy):
+        """Re-verify every signed run before candidate evidence is eligible for learning.
+
+        This is an eligibility check only. It never writes experience memory,
+        grants replay, changes source, or authorizes production promotion.
+        """
+        return ResultAttestedLearningGate(trust_policy).verify_report(report)
 
     def record_experiment_memory(self, report_path):
         return self.verified_memory.record(report_path)
