@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -178,3 +179,20 @@ def test_concurrent_recording_creates_single_memory_and_ledger_projection(tmp_pa
     assert len(memory.memory.recent(100)) == 1
     ledger_rows = [row for row in memory.ledger.rows() if row.get('event_type') == 'phase37_experiment_memory_recorded']
     assert len(ledger_rows) == 1
+
+
+def test_journal_rejects_duplicate_experiment_id_with_valid_row_hashes(tmp_path):
+    report = tmp_path/'report.json'
+    make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    memory.record(report)
+    first_line = memory.journal.read_text(encoding='utf-8').splitlines()[0]
+    first_row = json.loads(first_line)
+    duplicate_payload = dict(first_row['payload'])
+    duplicate_payload['report_sha256'] = 'd' * 64
+    canonical = json.dumps(duplicate_payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode('utf-8')
+    duplicate_row = {'payload': duplicate_payload, 'payload_sha256': hashlib.sha256(canonical).hexdigest()}
+    memory.journal.write_text(first_line + chr(10) + json.dumps(duplicate_row, sort_keys=True, separators=(',', ':')) + chr(10), encoding='utf-8')
+    result = memory.verify()
+    assert result['valid'] is False
+    assert result['error'] == 'VerifiedMemoryError'
