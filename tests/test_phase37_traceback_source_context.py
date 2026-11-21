@@ -118,3 +118,50 @@ def test_traceback_capture_does_not_claim_source_context_without_exception(tmp_p
     observation = json.loads(rows[-1])["observation"]
     assert observation["traceback_frames"] == []
     assert observation["traceback_capture"] == "NO_EXCEPTION"
+
+
+def test_review_suggests_import_linked_tests_without_auto_pinning(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    knowledge, reflection, diagnostics, result = _capture_failure(root)
+
+    test_file = root / "tests" / "test_failing.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        "from core.failing import fail\\n"
+        "raise RuntimeError('this file must only be parsed, never imported')\\n"
+        "def test_failure_contract():\\n"
+        "    assert callable(fail)\\n",
+        encoding="utf-8",
+    )
+    unrelated = root / "tests" / "test_unrelated.py"
+    unrelated.write_text(
+        "REFERENCE = 'from core.failing import fail'\\n",
+        encoding="utf-8",
+    )
+
+    queue = CandidateDiscoveryQueue(
+        knowledge,
+        root,
+        CandidateExperimentEngine(knowledge),
+    )
+    queue.refresh(reflection, diagnostics)
+    review = queue.review(reflection, diagnostics)
+    item = next(row for row in review["items"] if row["event_id"] == result["event_id"])
+
+    suggestions = item["related_test_suggestions"]
+    assert [row["path"] for row in suggestions] == ["tests/test_failing.py"]
+    assert len(suggestions[0]["source_sha256"]) == 64
+    assert suggestions[0]["evidence"] == "AST_IMPORT_REFERENCE_ONLY"
+    assert suggestions[0]["pinned"] is False
+    assert "pinned_regression_tests" in item["review_gaps"]
+    assert item["next_action"] == "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
+    assert item["candidate_ids"] == []
+    assert review["summary"]["candidate_count"] == 0
+
+    stored = json.loads(
+        (knowledge / "CANDIDATE_DISCOVERY_QUEUE.json").read_text(encoding="utf-8")
+    )
+    queue_item = next(row for row in stored["items"] if row["event_id"] == result["event_id"])
+    assert queue_item["state"] == "SOURCE_REVIEW_REQUIRED"
+    assert not queue_item.get("test_paths")
