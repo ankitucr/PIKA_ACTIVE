@@ -441,6 +441,8 @@ class ProductionPromotionManager:
         if (not admission or admission.get("admission_sha256") != plan["admission_sha256"]
                 or admission.get("admission_id") != plan["admission_id"]):
             raise ProductionPromotionError("Trusted-learning admission changed or is missing.")
+        if (approval_info["approver_key_sha256"] == admission.get("approver_key_sha256"):
+            raise ProductionPromotionError("Learning admission and production promotion must use distinct Ed25519 operator keys.")
         live_path = _path_no_symlink(self.root, _safe_target(plan["target"]))
         if _sha(live_path.read_bytes()) != plan["baseline_sha256"]:
             raise ProductionPromotionError("Live source no longer matches the approved baseline.")
