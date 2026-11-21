@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from core.native_cognition import NativeCognitionEngine
+from agents.native_cognition import NativeCognitionAgent
 from core.native_repair_generator import NativeRepairCandidateGenerator
 from core.native_code_analyzer import NativeCodeAnalyzer
 
@@ -225,3 +226,18 @@ def test_native_python_snippet_analysis_rejects_oversized_input(tmp_path: Path):
     assert result["max_bytes"] == 65_536
     assert result["source_executed"] is False
     assert result["source_modified"] is False
+
+
+
+def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
+    agent = NativeCognitionAgent(root=str(tmp_path))
+    assert set(agent.capabilities) == {
+        "python_static_analysis",
+        "python_syntax_validation",
+        "github_repository_learning",
+        "code_evidence_retrieval",
+        "engineering_knowledge_retrieval",
+    }
+    assert not {
+        "coding", "reasoning", "generation", "planning", "debugging",
+    }.intersection(agent.capabilities)
