@@ -178,7 +178,7 @@ class ProductionPromotionManager:
         return metadata, resolved
 
     def _load_report(self, report_path: str | Path, result_trust_config: str | Path) -> tuple[dict[str, Any], str, dict[str, Any]]:
-        path, raw = _protected_file(report_path, project_root=self.root, maximum=MAX_PLAN_BYTES)
+        path, raw = _protected_file(report_path, maximum=MAX_PLAN_BYTES)
         try:
             report = json.loads(raw.decode("utf-8"))
         except (UnicodeError, json.JSONDecodeError) as exc:
