@@ -180,26 +180,28 @@
         {
           "id": "37.4",
           "name": "Native Capability Gap Resolution",
-          "status": "planned",
+          "status": "in_progress",
           "outcomes": [
             "Map observed unsupported-native error codes to the exact native handler and runtime registration path",
             "Implement bounded deterministic handlers only for explicitly specified supported task contracts",
             "Keep unsupported operations explicit and fail-closed rather than claiming general reasoning or code generation",
             "Add intent, input-boundary, regression and negative tests for every new native handler",
             "Separate capability implementation evidence from user-task evaluation and trusted learning admission",
-            "Stop repeated identical calls when the requested native handler is explicitly unavailable"
+            "Stop repeated identical calls when the requested native handler is explicitly unavailable",
+            "Bounded native Python snippet analysis using AST parsing, with explicit input limits and no execution, imports, writes or persistence"
           ],
           "exit_criteria": [
             "Each new handler has an explicit input/output schema, bounded scope and deterministic regression suite",
             "Existing supported native operations preserve behavior",
             "Unknown operations remain explicitly unsupported and do not trigger unsafe fallback",
-            "No generated source is executed or promoted without the existing independent evidence and human approval gates"
+            "No generated source is executed or promoted without the existing independent evidence and human approval gates",
+            "User-supplied Python snippets are capped at 64 KiB, parsed as untrusted data, and report syntax/structure without execution or persistence"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T14:00:00+05:30",
-  "current_milestone": "37.2",
+  "updated_at": "2026-11-21T16:45:00+05:30",
+  "current_milestone": "37.4",
   "next_milestone": "37.3"
 }
