@@ -133,12 +133,21 @@
             "Bind report and payload hashes into an append-only journal",
             "Recover interrupted memory/ledger projections idempotently",
             "Preserve UNVERIFIED trust and block replay/promotion"
+          ],
+          "exit_criteria": [
+            "Every completed candidate-evaluation report is automatically offered to evidence-backed memory capture",
+            "Reports with invalid source/test hashes, pytest command, run summaries, performance threshold, or decision are rejected",
+            "Journal records bind exact report and canonical payload SHA-256 digests",
+            "Interrupted memory/ledger projections recover idempotently without duplicate evidence",
+            "Status verifies journal integrity and exact consistency with Experience Memory and Evolution Ledger projections",
+            "Local evidence remains UNVERIFIED_LOCAL, unattested, non-replayable, and not promotion eligible",
+            "Human approval and independent OS attestation remain required for any future production promotion"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T00:00:00+05:30",
+  "updated_at": "2026-11-21T08:30:00+05:30",
   "current_milestone": "37.2",
   "next_milestone": "37.3"
 }
