@@ -387,7 +387,10 @@ class VerifiedExperimentMemory:
             except (OSError, UnicodeError) as exc:
                 return {'valid': False, 'entries': len(journal_rows), 'error': type(exc).__name__}
 
-        ledger_state = self.ledger.verify()
+        try:
+            ledger_state = self.ledger.verify()
+        except (OSError, UnicodeError, ValueError) as exc:
+            return {'valid': False, 'entries': len(journal_rows), 'error': 'evolution_ledger_unreadable', 'error_type': type(exc).__name__}
         if not ledger_state.get('valid'):
             return {'valid': False, 'entries': len(journal_rows), 'error': 'evolution_ledger_invalid', 'ledger': ledger_state}
         ledger_digests = []
