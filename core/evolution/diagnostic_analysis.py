@@ -16,7 +16,7 @@ _CODE_OUTPUT = re.compile(
 )
 _PARSE = re.compile(r"json.*parse|syntaxerror|could not be parsed|invalid syntax", re.I)
 _NATIVE_UNSUPPORTED = re.compile(
-    r"\\b(?:UNSUPPORTED_NATIVE_OPERATION|NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED)\\b",
+    r"\b(?:UNSUPPORTED_NATIVE_OPERATION|NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED)\b",
     re.I,
 )
 _SECRET = re.compile(
