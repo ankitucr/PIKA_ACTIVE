@@ -46,10 +46,12 @@ class FakeExecutor:
         self.outcome = outcome
         self.calls = 0
         self.seen_source = None
+        self.seen_source_text = None
 
     def execute(self, source_dir: Path, argv: list[str], timeout: int):
         self.calls += 1
         self.seen_source = source_dir
+        self.seen_source_text = (source_dir / "core/sample.py").read_text(encoding="utf-8")
         now = time.time()
         passed = self.outcome == "PASSED"
         result = {
@@ -172,7 +174,7 @@ def test_host_attestor_verifies_hash_bound_source_and_signs_measured_result(tmp_
 
     assert executor.calls == 1
     assert executor.seen_source is not None
-    assert (executor.seen_source / "core/sample.py").read_text() == "VALUE = 1\n"
+    assert executor.seen_source_text == "VALUE = 1\n"
     assert policy.verify(attestation, challenge) is True
     assert attestation["schema"] == RESULT_ATTESTATION_SCHEMA
     assert attestation["result"]["outcome"] == "PASSED"
