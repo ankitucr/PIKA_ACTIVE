@@ -18,7 +18,7 @@ _DENIED_PARTS = frozenset({
 })
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _SECRET_ASSIGNMENT = re.compile(
-    r"""(?i)(api[_-]?key|access[_-]?token|password|secret)(\s*[:=]\s*)(['"]?)[^\s,'";]+(['"]?)"""
+    r"""(?i)((?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)"""
 )
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 
@@ -31,7 +31,7 @@ def _safe_function(value: Any) -> str:
 
 def _redact_line(value: Any) -> str:
     text = str(value)[:_MAX_LINE_CHARS]
-    text = _SECRET_ASSIGNMENT.sub(r"\1\2[REDACTED]", text)
+    text = _SECRET_ASSIGNMENT.sub(r"\1[REDACTED]", text)
     text = _BEARER.sub("Bearer [REDACTED]", text)
     return text
 
