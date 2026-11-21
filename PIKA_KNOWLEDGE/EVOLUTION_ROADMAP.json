@@ -92,7 +92,9 @@
         "Idempotent, recoverable memory and ledger projections with report/payload hashes",
         "Read-only per-discovery evidence-gap review and explicit physical workspace identity in status",
         "Distinguish unsupported native capability errors from code-output and provider failures, with source-directed review hints",
-        "Fast-fail deterministic unsupported native capability responses before workspace execution, repair generation and identical retries"
+        "Fast-fail deterministic unsupported native capability responses before workspace execution, repair generation and identical retries",
+        "Capture bounded, redacted Python traceback frames with exact current-source hashes for exception-backed failures",
+        "Attach only current hash-matched traceback source and test evidence to discovery items; stale snippets remain historical"
       ],
       "exit_criteria": [
         "Candidate staging changes only the declared file and records the exact baseline hash",
@@ -192,7 +194,8 @@
             "Require a distinct operator key for production promotion, exact source hash binding, rollback snapshot and same-filesystem atomic restore rehearsal",
             "Apply only the declared candidate target and immediately require an independently attested post-promotion smoke test",
             "Automatically restore baseline on failed post-promotion verification and support separately approved manual rollback",
-            "Provision separate host attestor, learning approval, production approval and rollback approval identities without exporting private keys"
+            "Provision separate host attestor, learning approval, production approval and rollback approval identities without exporting private keys",
+            "Capture exception-backed source context and connect current source/test hashes to discovery review"
           ],
           "exit_criteria": [
             "Independent Linux host is deployed and serves HTTPS through a TLS reverse proxy",
@@ -204,13 +207,16 @@
             "Production promotion requires a distinct operator key, valid learning admission, exact baseline/candidate hashes and rollback rehearsal",
             "Post-promotion smoke tests run through the independent host attestor; failed checks restore the baseline and verify restoration",
             "Manual rollback requires a third purpose-bound approval and consumes its approval nonce",
-            "No local runner, GitHub Actions workflow or fake signer is treated as the independent production attestor"
+            "No local runner, GitHub Actions workflow or fake signer is treated as the independent production attestor",
+            "Exception-backed telemetry captures only bounded in-project Python frames with redacted snippets and exact source hashes",
+            "Discovery rechecks source and test hashes; stale source context is historical and cannot satisfy current-source binding",
+            "Traceback frames never self-certify root cause, execute code, admit learning or promote production"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T16:00:00+05:30",
-  "current_milestone": "37.2",
-  "next_milestone": "37.3"
+  "updated_at": "2026-11-21T20:00:00+05:30",
+  "current_milestone": "37.4",
+  "next_milestone": "37.5"
 }
