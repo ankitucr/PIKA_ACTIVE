@@ -443,6 +443,7 @@ class ExecutionObserver:
         native_proposals = self._capture_native_proposals(
             token, attempts, outcome_status=outcome_status
         )
+        traceback_frames = self._capture_traceback_frames(exception)
 
         evaluation_checks = _dict(evaluation.get("checks"))
         quality_codes = evaluation_checks.get("quality_issue_codes", [])
@@ -495,10 +496,10 @@ class ExecutionObserver:
             "strategy": _safe_name(result_dict.get("strategy")),
             "error_types": error_types,
             "exception_type": type(exception).__name__ if exception is not None else None,
-            "traceback_frames": self._capture_traceback_frames(exception),
+            "traceback_frames": traceback_frames,
             "traceback_capture": (
                 "PROJECT_RELATIVE_HASH_BOUND_FRAMES"
-                if exception is not None and self._capture_traceback_frames(exception)
+                if exception is not None and traceback_frames
                 else (
                     "NO_IN_PROJECT_FRAMES" if exception is not None else "NO_EXCEPTION"
                 )
