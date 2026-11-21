@@ -82,3 +82,41 @@ def test_sensitive_strings_are_redacted_from_fingerprints():
     ])])
     encoded = str(result)
     assert "SECRET_VALUE" not in encoded
+
+
+
+def test_unsupported_native_operation_is_classified_as_capability_gap():
+    result = analyze_rows([row("evt-native-unsupported", [{
+        "attempt": 1,
+        "strategy": "agent",
+        "evaluation_passed": False,
+        "result_success": False,
+        "worker_error": "UNSUPPORTED_NATIVE_OPERATION",
+        "issue_texts": ["UNSUPPORTED_NATIVE_OPERATION"],
+    }])])
+    event = result["events"][0]
+    assert event["event_classification"] == "UNSUPPORTED_NATIVE_CAPABILITY"
+    assert event["attempt_classifications"][0]["classification"] == "UNSUPPORTED_NATIVE_CAPABILITY"
+    assert event["proposed_next_action"] == "MAP_NATIVE_CAPABILITY_GAP_TO_HANDLER_AND_REGRESSION_TESTS"
+    assert event["source_backed_root_cause_verified"] is False
+
+
+def test_workspace_generation_not_yet_supported_is_a_capability_gap():
+    result = analyze_rows([row("evt-native-codegen-gap", [{
+        "attempt": 1,
+        "strategy": "agent",
+        "evaluation_passed": False,
+        "result_success": False,
+        "worker_error": "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
+    }])])
+    assert result["events"][0]["event_classification"] == "UNSUPPORTED_NATIVE_CAPABILITY"
+
+
+def test_timeout_takes_precedence_over_native_capability_text():
+    result = analyze_rows([row("evt-native-timeout", [{
+        "attempt": 1,
+        "evaluation_passed": False,
+        "result_success": False,
+        "worker_error": "UNSUPPORTED_NATIVE_OPERATION after provider read timed out",
+    }])])
+    assert result["events"][0]["event_classification"] == "NETWORK_OR_PROVIDER_TIMEOUT"
