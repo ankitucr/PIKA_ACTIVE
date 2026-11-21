@@ -540,6 +540,7 @@ class CandidateDiscoveryQueue:
             if isinstance(row, dict) and isinstance(row.get("event_id"), str)
         } if isinstance(diagnostic_analysis.get("events"), list) else {}
         items = []
+        summary_items = []
         for item in queue["items"]:
             if not isinstance(item, dict):
                 continue
@@ -561,6 +562,7 @@ class CandidateDiscoveryQueue:
                 review_item.pop("target", None)
                 review_item.pop("source_sha256", None)
             gaps = _review_gaps(review_item)
+            summary_items.append(review_item)
             reflection_missing = _safe_evidence_gaps(
                 item.get("evidence_missing") or live_reflection.get("evidence_missing")
             )
@@ -604,6 +606,8 @@ class CandidateDiscoveryQueue:
                 "state": item.get("state", "UNKNOWN"),
                 "source_backed_root_cause_verified": False,
                 "candidate_ids": item.get("candidate_ids", []),
+                "target": current_context.get("target") if current_context else None,
+                "source_sha256": current_context.get("source_sha256") if current_context else None,
                 "source_context": current_context,
                 "traceback_context_status": (
                     "CURRENT_SOURCE_HASH_MATCH"
@@ -627,7 +631,7 @@ class CandidateDiscoveryQueue:
             "success": True,
             "schema": "pika.phase37.discovery-review.v1",
             "queue_path": str(self.path),
-            "summary": self._summarize(queue["items"]),
+            "summary": self._summarize(summary_items),
             "items": items,
             "policy": {
                 "mode": "READ_ONLY_EVIDENCE_GAP_REVIEW",
