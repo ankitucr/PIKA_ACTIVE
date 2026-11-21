@@ -130,7 +130,7 @@ class Ledger:
                 "previous_hash": verification["head_hash"],
             }
             row = dict(body, entry_hash=hashlib.sha256(canon(body).encode('utf-8')).hexdigest())
-            encoded = (canon(row) + '\\n').encode('utf-8')
+            encoded = (canon(row) + chr(10)).encode('utf-8')
             flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, 'O_NOFOLLOW', 0)
             ledger_fd = os.open(self.path, flags, 0o600)
             try:
