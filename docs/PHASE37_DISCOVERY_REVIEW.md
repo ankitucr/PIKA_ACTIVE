@@ -90,3 +90,11 @@ When a discovery has a current, hash-matched source context, review can scan a b
 These are suggestions, not pinned regression tests. AST imports do not prove that the test exercises the failing behavior, asserts the correct outcome or is suitable for candidate evaluation. Review therefore leaves `pinned_regression_tests` open, does not populate the queue's `test_paths`, and does not stage a candidate. An operator must inspect and explicitly pin appropriate test files before proposal staging.
 
 Scanning is bounded to 400 test files, each at most 500 KiB, with at most eight suggestions returned. Test source is parsed as text; it is never imported or executed by the suggestion scanner.
+
+
+## Returned worker traceback hints
+
+When a worker returns a Python traceback as plain text instead of raising an exception in the PIKA process, telemetry may parse up to eight bounded `File ... line ... in ...` references. These are stored separately as `traceback_text_hints` with the explicit source marker `RETURNED_TRACEBACK_TEXT_UNTRUSTED`. The referenced file must exist inside the current project root and pass the same path/symlink/size checks, but the frame itself still originates from worker-controlled text.
+
+Returned traceback hints are diagnostic leads only. They do not populate the trusted `traceback_frames` list, cannot bind a discovery target, cannot clear source-context gaps, and do not mark a root cause verified. The raw returned traceback is not persisted by this hint-capture path. Regression coverage verifies that a returned frame stays separate from live exception frames.
+
