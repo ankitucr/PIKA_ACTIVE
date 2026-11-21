@@ -4,7 +4,7 @@ import argparse
 import json
 import re
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 SCHEMA = "pika.evolution.diagnostic_analysis.v1"
@@ -31,6 +31,48 @@ def _text(value: Any, limit: int = 240) -> str:
     value = _SECRET.sub("[REDACTED]", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value[:limit]
+
+
+def _traceback_text_hints(value: Any) -> list[dict[str, Any]]:
+    """Keep worker-returned traceback frames separate from runtime evidence."""
+    if not isinstance(value, list):
+        return []
+    captured = []
+    for frame in value[:8]:
+        if not isinstance(frame, dict):
+            continue
+        raw_path = frame.get("path")
+        line = frame.get("line")
+        digest = frame.get("source_sha256")
+        if (
+            not isinstance(raw_path, str)
+            or not raw_path
+            or "\\" in raw_path
+            or "\x00" in raw_path
+            or isinstance(line, bool)
+            or not isinstance(line, int)
+            or line < 1
+            or not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or frame.get("hint_source") != "RETURNED_TRACEBACK_TEXT_UNTRUSTED"
+        ):
+            continue
+        path = PurePosixPath(raw_path)
+        if (
+            path.is_absolute()
+            or path.as_posix() != raw_path
+            or path.suffix != ".py"
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
+            continue
+        captured.append({
+            "path": path.as_posix(),
+            "line": line,
+            "function": _text(frame.get("function"), 80) or None,
+            "source_sha256": digest,
+            "hint_source": "RETURNED_TRACEBACK_TEXT_UNTRUSTED",
+        })
+    return captured
 
 
 def _attempt_inputs(attempt: dict[str, Any]) -> list[str]:
@@ -152,6 +194,9 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         events.append({
             "event_id": _text(obs.get("event_id"), 80) or None,
             "task_sha256": _text(obs.get("task_sha256"), 64) or None,
+            "traceback_text_hints": _traceback_text_hints(
+                obs.get("traceback_text_hints")
+            ),
             "outcome": outcome,
             "event_classification": event_class,
             "attempt_count": len(classified),
