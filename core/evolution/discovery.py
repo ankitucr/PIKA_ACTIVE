@@ -176,6 +176,101 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Discovery queue items must be a list.")
         return value
 
+    def _resolve_traceback_source_context(
+        self,
+        frames: Any,
+    ) -> dict[str, Any] | None:
+        """Resolve captured frames only when the current source still matches its hash."""
+        if not isinstance(frames, list):
+            return None
+        snippets: list[dict[str, Any]] = []
+        for frame in frames[:_MAX_CANDIDATES + 1]:
+            if not isinstance(frame, dict):
+                continue
+            try:
+                relative = _safe_python_path(frame.get("path"))
+            except ExperimentError:
+                continue
+            line_number = frame.get("line")
+            expected_hash = frame.get("source_sha256")
+            if (
+                isinstance(line_number, bool)
+                or not isinstance(line_number, int)
+                or line_number < 1
+                or not isinstance(expected_hash, str)
+                or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None
+            ):
+                continue
+
+            target = self.baseline.joinpath(*relative.parts)
+            cursor = self.baseline
+            unsafe_path = False
+            for part in relative.parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    unsafe_path = True
+                    break
+            if unsafe_path or not target.is_file():
+                continue
+            try:
+                if target.stat().st_size > 2_000_000:
+                    continue
+                source_bytes = target.read_bytes()
+                if hashlib.sha256(source_bytes).hexdigest() != expected_hash:
+                    continue
+                source_lines = source_bytes.decode("utf-8").splitlines()
+            except (OSError, UnicodeError):
+                continue
+            if line_number > len(source_lines):
+                continue
+
+            first = max(1, line_number - 2)
+            last = min(len(source_lines), line_number + 2)
+            context_lines = []
+            for number in range(first, last + 1):
+                value = source_lines[number - 1]
+                if re.search(r"(?i)-----BEGIN .*PRIVATE KEY-----", value):
+                    value = "[REDACTED_SENSITIVE_SOURCE_LINE]"
+                else:
+                    value = re.sub(
+                        r"""(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*(['"][^'"]*['"]|[^\s,;]+)""",
+                        r"\1=[REDACTED]",
+                        value,
+                    )
+                    value = re.sub(
+                        r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+",
+                        "Bearer [REDACTED]",
+                        value,
+                    )
+                context_lines.append({
+                    "line": number,
+                    "text": value[:240],
+                })
+            snippets.append({
+                "path": relative.as_posix(),
+                "line": line_number,
+                "function": (
+                    frame.get("function")[:80]
+                    if isinstance(frame.get("function"), str) else None
+                ),
+                "source_sha256": expected_hash,
+                "context_lines": context_lines,
+            })
+
+        if not snippets:
+            return None
+        primary = next(
+            (row for row in snippets if not row["path"].startswith("tests/")),
+            snippets[0],
+        )
+        return {
+            "schema": "pika.phase37.traceback-source-context.v1",
+            "binding": "CURRENT_SOURCE_HASH_MATCH",
+            "target": primary["path"],
+            "source_sha256": primary["source_sha256"],
+            "snippets": snippets,
+        }
+
     @staticmethod
     def _event_key(event_id: str, task_sha256: str | None) -> str:
         raw = _canonical({"event_id": event_id, "task_sha256": task_sha256})
@@ -198,6 +293,12 @@ class CandidateDiscoveryQueue:
             for row in diagnostic_events
             if isinstance(row, dict) and isinstance(row.get("event_id"), str)
         }
+        reflection_events = reflection.get("diagnosis_queue", [])
+        reflected_by_event = {
+            row.get("event_id"): row
+            for row in reflection_events
+            if isinstance(row, dict) and isinstance(row.get("event_id"), str)
+        } if isinstance(reflection_events, list) else {}
 
         prior = self._load()
         existing = {
@@ -287,6 +388,24 @@ class CandidateDiscoveryQueue:
                 previous["issue_fingerprints"] = safe_fingerprints
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
+                reflected = reflected_by_event.get(event_id, {})
+                source_frames = (
+                    reflected.get("traceback_frames")
+                    if isinstance(reflected.get("traceback_frames"), list)
+                    else previous.get("traceback_frames")
+                )
+                if isinstance(source_frames, list):
+                    previous["traceback_frames"] = source_frames[:_MAX_CANDIDATES + 1]
+                    current_context = self._resolve_traceback_source_context(source_frames)
+                    previous["source_context"] = current_context
+                    if current_context is not None:
+                        previous["target"] = current_context["target"]
+                        previous["source_sha256"] = current_context["source_sha256"]
+                        previous["traceback_context_status"] = "CURRENT_SOURCE_HASH_MATCH"
+                    else:
+                        previous.pop("target", None)
+                        previous.pop("source_sha256", None)
+                        previous["traceback_context_status"] = "STALE_OR_UNAVAILABLE"
                 previous["review_gaps"] = _review_gaps(previous)
                 refreshed += 1
                 continue
@@ -314,6 +433,8 @@ class CandidateDiscoveryQueue:
                 "attempt_classifications": classifications[:12],
                 "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
+                "traceback_frames": [],
+                "traceback_context_status": "NOT_CAPTURED_LEGACY",
                 "source_context": None,
                 "state": "SOURCE_REVIEW_REQUIRED",
                 "next_action": "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS",
@@ -321,6 +442,20 @@ class CandidateDiscoveryQueue:
                 "created_at": time.time(),
                 "last_seen_at": time.time(),
             }
+            reflected = reflected_by_event.get(event_id, {})
+            source_frames = reflected.get("traceback_frames")
+            if not isinstance(source_frames, list):
+                source_frames = diag.get("traceback_frames")
+            if isinstance(source_frames, list):
+                queue_item["traceback_frames"] = source_frames[:_MAX_CANDIDATES + 1]
+                current_context = self._resolve_traceback_source_context(source_frames)
+                queue_item["source_context"] = current_context
+                if current_context is not None:
+                    queue_item["target"] = current_context["target"]
+                    queue_item["source_sha256"] = current_context["source_sha256"]
+                    queue_item["traceback_context_status"] = "CURRENT_SOURCE_HASH_MATCH"
+                else:
+                    queue_item["traceback_context_status"] = "STALE_OR_UNAVAILABLE"
             queue_item["review_gaps"] = _review_gaps(queue_item)
             existing[discovery_id] = queue_item
             added += 1
@@ -408,9 +543,24 @@ class CandidateDiscoveryQueue:
         for item in queue["items"]:
             if not isinstance(item, dict):
                 continue
-            gaps = _review_gaps(item)
             live_reflection = reflection_by_event.get(item.get("event_id"), {})
             live_diagnostic = diagnostics_by_event.get(item.get("event_id"), {})
+            frames = (
+                live_reflection.get("traceback_frames")
+                if isinstance(live_reflection.get("traceback_frames"), list)
+                else item.get("traceback_frames")
+            )
+            current_context = self._resolve_traceback_source_context(frames)
+            review_item = dict(item)
+            if current_context is not None:
+                review_item["source_context"] = current_context
+                review_item["target"] = current_context["target"]
+                review_item["source_sha256"] = current_context["source_sha256"]
+            else:
+                review_item.pop("source_context", None)
+                review_item.pop("target", None)
+                review_item.pop("source_sha256", None)
+            gaps = _review_gaps(review_item)
             reflection_missing = _safe_evidence_gaps(
                 item.get("evidence_missing") or live_reflection.get("evidence_missing")
             )
@@ -454,6 +604,14 @@ class CandidateDiscoveryQueue:
                 "state": item.get("state", "UNKNOWN"),
                 "source_backed_root_cause_verified": False,
                 "candidate_ids": item.get("candidate_ids", []),
+                "source_context": current_context,
+                "traceback_context_status": (
+                    "CURRENT_SOURCE_HASH_MATCH"
+                    if current_context is not None
+                    else "STALE_OR_UNAVAILABLE"
+                    if isinstance(frames, list) and frames
+                    else "NOT_CAPTURED_LEGACY"
+                ),
                 "source_review_hint": source_review_hint,
                 "next_action": (
                     "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
