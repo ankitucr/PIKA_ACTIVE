@@ -89,7 +89,8 @@
         "Append-only experiment reports and reproducible test/source provenance",
         "Explicit promotion decision remains blocked until production attestation is deployed",
         "Automatic evidence-backed experiment memory from each candidate evaluation",
-        "Idempotent, recoverable memory and ledger projections with report/payload hashes"
+        "Idempotent, recoverable memory and ledger projections with report/payload hashes",
+        "Read-only per-discovery evidence-gap review and explicit physical workspace identity in status"
       ],
       "exit_criteria": [
         "Candidate staging changes only the declared file and records the exact baseline hash",
@@ -120,7 +121,8 @@
             "Live failure reflection joined with diagnostic signatures",
             "Stable discovery IDs bound to event and task hashes",
             "Raw issue text excluded from the queue",
-            "Native proposal staging bound to exact source and pinned tests"
+            "Native proposal staging bound to exact source and pinned tests",
+            "Per-item evidence-gap review without inferring root causes"
           ]
         },
         {
@@ -176,7 +178,7 @@
       ]
     }
   ],
-  "updated_at": "2026-11-21T10:15:00+05:30",
+  "updated_at": "2026-11-21T12:00:00+05:30",
   "current_milestone": "37.2",
   "next_milestone": "37.3"
 }
