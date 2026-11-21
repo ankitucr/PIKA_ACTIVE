@@ -46,3 +46,13 @@ This is a static handler match, not automatic proof of the specific event's root
 `PIKABrain` treats `UNSUPPORTED_NATIVE_OPERATION` and `NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED` from the registered native worker as terminal capability gaps for the current request. It records one failed attempt and a lesson, then returns a structured `UNSUPPORTED_NATIVE_CAPABILITY` result before Phase 32 workspace execution, Phase 33 repair generation, Phase 34 memory lookup or identical retries.
 
 This reduces wasted compute without converting an unavailable capability into a false success. The result explicitly states that no source was modified, no candidate was executed and promotion remains blocked. Once a corresponding native handler is implemented and covered by regression tests, that handler can serve the request normally.
+
+## Exception-backed traceback source context
+
+`ExecutionObserver.finish(..., exception=exc)` now captures a bounded Python traceback context when an exception object with a live traceback is available. The capture stores up to eight in-project Python frames, a small redacted source window, a SHA-256 of the exact file bytes, the relative source path, and line/function metadata. Paths outside the resolved project root, symlinks, non-Python files, oversized files, and excluded runtime/knowledge directories are not captured.
+
+Diagnostic analysis carries this evidence to discovery refresh. Discovery revalidates each source frame against the current file. If the file changed after the event, the snippet remains marked historical and does not satisfy the current-source-binding gap. Test files are suggested as pinned regression tests only when the traceback actually contains a current in-project test frame; their current hashes are stored and rechecked. A source frame is not itself a regression test, and a traceback is not proof of causation.
+
+The discovery summary now checks exact current source/test hashes rather than just the presence of paths. This evidence can reduce the first three review gaps for future exception-backed events, while the native proposal-envelope gap still requires a separately validated inert proposal. Existing historical queue entries cannot recover stack traces that were never recorded. Failures returned as ordinary error dictionaries, rather than raised Python exceptions, do not receive traceback context through this capture path yet.
+
+The capture stores no raw task, raw exception message, or absolute path. It does not execute source, modify source, generate a candidate, admit trusted learning, or change promotion state. `source_backed_root_cause_verified` remains false and a human must inspect the evidence before any candidate is staged.
