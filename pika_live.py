@@ -93,6 +93,7 @@ def _help() -> None:
 PIKA LIVE COMMANDS
   /help                          Show this help
   /status                        Brain, memory, ledger and safety status
+  /pc                            Read-only PC body and Docker sandbox status
   /evolve                        Run observe -> reflect -> plan now
   /self-analyze                  Analyze PIKA source and build improvement queue
   /learn <owner/repo>            Learn source structure from a GitHub repository
@@ -109,7 +110,7 @@ PIKA LIVE COMMANDS
 
 Enter any other text to send a task to PIKA Brain.
 Workspace edits, code execution and promotion remain blocked until the
-independently audited OS isolation gate is available.
+independently attested OS isolation gate is available.
 """.strip())
 
 
@@ -145,6 +146,9 @@ async def _handle_command(runtime: PIKALiveRuntime, line: str) -> bool:
         _help()
     elif command == "/status":
         _print_status(runtime)
+    elif command == "/pc":
+        from core.host.pc_body import PCBodyRuntime
+        _dump(PCBodyRuntime(runtime.root).status(), limit=10000)
     elif command == "/evolve":
         print("[PIKA] Running evolution cycle...")
         result = await asyncio.to_thread(runtime.evolve)
@@ -221,7 +225,7 @@ async def interactive(runtime: PIKALiveRuntime, heartbeat_seconds: int) -> None:
     print("Brain: ONLINE | Native cognition: ONLINE | Persistent Memory: ONLINE | Evolution heartbeat: ONLINE")
     print("External LLM/API: DISABLED | GitHub learning: /learn owner/repo")
     print("Self-repair: staged proposals enabled; execution/promotion safety-gated")
-    print("Type /help for commands. Type /quit to stop.\n")
+    print("Type /help for commands. Type /quit to stop. Use /pc to inspect the PC body.\n")
 
     stop = asyncio.Event()
     busy = asyncio.Event()
