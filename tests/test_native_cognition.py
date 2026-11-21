@@ -234,6 +234,7 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
     assert set(agent.capabilities) == {
         "python_static_analysis",
         "python_syntax_validation",
+        "python_snippet_comparison",
         "github_repository_learning",
         "code_evidence_retrieval",
         "engineering_knowledge_retrieval",
@@ -249,6 +250,128 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     capabilities = set(status["native_capabilities"])
     assert "python_static_analysis" in capabilities
     assert "python_syntax_validation" in capabilities
+    assert "python_snippet_comparison" in capabilities
     assert "github_repository_learning" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
+
+
+
+def test_native_python_comparison_reports_symbol_import_metric_and_finding_diffs(tmp_path: Path):
+    baseline = """import json
+
+def add(a, b):
+    return a + b
+
+def remove_me():
+    return None
+"""
+    candidate = """import math
+
+def add(a, b, offset=0):
+    return a + b + offset
+
+def new_api():
+    return math.pi
+
+def unsafe(value):
+    exec(value)
+"""
+    engine = NativeCognitionEngine(tmp_path)
+    result = engine.compare_python_snippets(baseline, candidate)
+
+    assert result["success"] is True
+    assert result["comparison_status"] == "STRUCTURAL_DIFF_COMPLETE"
+    assert result["schema"] == "pika.native-python-structural-comparison.v1"
+    assert "new_api" in result["symbols"]["added"]
+    assert "unsafe" in result["symbols"]["added"]
+    assert "remove_me" in result["symbols"]["removed"]
+    assert "add" in result["symbols"]["changed"]
+    assert result["imports"]["added"] == ["math"]
+    assert result["imports"]["removed"] == ["json"]
+    assert result["metrics_delta"]["functions"] == 1
+    assert any(x["rule"] == "dynamic_code_execution_surface" for x in result["static_findings"]["added"])
+    assert result["interpretation"]["candidate_is_better"] is None
+    assert result["interpretation"]["runtime_correctness_verified"] is False
+    assert result["interpretation"]["source_execution"] is False
+    assert result["interpretation"]["source_modification"] is False
+    assert result["interpretation"]["source_persistence"] is False
+    assert result["interpretation"]["promotion_allowed"] is False
+
+
+def test_native_python_comparison_id_is_deterministic_and_hash_bound(tmp_path: Path):
+    baseline = "def add(a, b):\n    return a + b\n"
+    candidate = "def add(a, b):\n    return a + b + 1\n"
+    engine = NativeCognitionEngine(tmp_path)
+    first = engine.compare_python_snippets(baseline, candidate)
+    second = engine.compare_python_snippets(baseline, candidate)
+    reversed_order = engine.compare_python_snippets(candidate, baseline)
+
+    assert first["comparison_id"] == second["comparison_id"]
+    assert first["comparison_id"] != reversed_order["comparison_id"]
+    assert first["baseline"]["sha256"] != first["candidate"]["sha256"]
+
+
+def test_native_python_comparison_invalid_syntax_is_incomplete_not_candidate_success(tmp_path: Path):
+    result = NativeCognitionEngine(tmp_path).compare_python_snippets(
+        "def valid():\n    return 1\n",
+        "def invalid(:\n    return 2\n",
+    )
+
+    assert result["success"] is True
+    assert result["comparison_status"] == "INCOMPLETE_INVALID_SYNTAX"
+    assert result["structural_comparison_performed"] is False
+    assert result["candidate"]["parse_status"] == "syntax_error"
+    assert result["promotion_allowed"] is False
+    assert result["source_executed"] is False
+
+
+def test_native_python_comparison_rejects_oversized_baseline_or_candidate(tmp_path: Path):
+    engine = NativeCognitionEngine(tmp_path)
+    oversized = "x = 1\n" * 12_000
+
+    result = engine.compare_python_snippets("x = 1\n", oversized)
+
+    assert result["success"] is False
+    assert result["error"] == "PYTHON_SOURCE_TOO_LARGE"
+    assert result["rejected_input"] == "candidate"
+    assert result["source_executed"] is False
+    assert result["source_modified"] is False
+    assert result["source_persisted"] is False
+
+
+def test_native_python_comparison_routes_two_explicit_fenced_blocks(tmp_path: Path):
+    task = (
+        "compare python snippets\n"
+        "```python\ndef add(a, b):\n    return a + b\n```\n"
+        "```python\ndef add(a, b, c=0):\n    return a + b + c\n```"
+    )
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(task))
+
+    assert result["success"] is True
+    assert result["raw"]["mode"] == "native_static_python_structural_comparison"
+    assert result["raw"]["comparison_status"] == "STRUCTURAL_DIFF_COMPLETE"
+    assert "changed: 1" in result["output"]
+    assert "\n" in result["output"]
+
+
+def test_native_python_comparison_requires_two_sources(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(
+        "compare python snippets",
+        context={"baseline_source": "x = 1\n"},
+    ))
+
+    assert result["success"] is False
+    assert result["error"] == "TWO_PYTHON_SOURCES_REQUIRED"
+
+
+def test_native_python_comparison_does_not_execute_source_payloads(tmp_path: Path):
+    marker = tmp_path / "must_not_exist.txt"
+    baseline = "def safe():\n    return True\n"
+    candidate = f"def payload():\n    exec({('open(' + repr(str(marker)) + ', ' + repr('w') + ').write(' + repr('owned') + ')')})\n"
+    result = NativeCognitionEngine(tmp_path).compare_python_snippets(baseline, candidate)
+
+    assert result["success"] is True
+    assert result["interpretation"]["source_execution"] is False
+    assert result["static_findings"]["added"]
+    assert marker.exists() is False
