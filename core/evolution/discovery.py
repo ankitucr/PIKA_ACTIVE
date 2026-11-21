@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .experiments import CandidateExperimentEngine, ExperimentError
+from .source_context import validate_source_context
 
 
 SCHEMA = "pika.phase37.discovery-queue.v1"
@@ -81,22 +82,86 @@ def _safe_evidence_gaps(value: Any) -> list[str]:
     return sorted({item for item in value if isinstance(item, str) and item in allowed})
 
 
-def _review_gaps(item: dict[str, Any]) -> list[str]:
+def _current_file_digest(root: Path, raw_path: Any) -> str | None:
+    try:
+        relative = _safe_python_path(raw_path)
+        cursor = root
+        for part in relative.parts:
+            if cursor.is_symlink():
+                return None
+            cursor = cursor / part
+            if cursor.is_symlink():
+                return None
+        resolved = cursor.resolve(strict=True)
+        resolved.relative_to(root.resolve(strict=True))
+        if not resolved.is_file() or resolved.stat().st_size > 1_000_000:
+            return None
+        return hashlib.sha256(resolved.read_bytes()).hexdigest()
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _review_gaps(
+    item: dict[str, Any], baseline_root: Path | None = None
+) -> list[str]:
     gaps = []
     source_context = item.get("source_context")
-    snippets = source_context.get("snippets") if isinstance(source_context, dict) else None
-    if not isinstance(snippets, list) or not snippets:
+    frames = source_context.get("frames") if isinstance(source_context, dict) else None
+    has_snippets = (
+        isinstance(frames, list)
+        and any(
+            isinstance(frame, dict)
+            and isinstance(frame.get("snippet"), list)
+            and frame.get("snippet")
+            for frame in frames
+        )
+    )
+    if not has_snippets:
         gaps.append("traceback_referenced_source_context")
+
     target = item.get("target")
     source_hash = item.get("source_sha256")
-    if not isinstance(target, str) or not target or not isinstance(source_hash, str) or re.fullmatch(r"[0-9a-f]{64}", source_hash) is None:
+    source_bound = (
+        isinstance(target, str)
+        and bool(target)
+        and isinstance(source_hash, str)
+        and re.fullmatch(r"[0-9a-f]{64}", source_hash) is not None
+    )
+    if source_bound and baseline_root is not None:
+        source_bound = _current_file_digest(baseline_root, target) == source_hash
+    if not source_bound:
         gaps.append("current_source_binding")
+
     test_paths = item.get("test_paths")
-    if not isinstance(test_paths, list) or not test_paths:
+    test_hashes = item.get("test_hashes")
+    tests_bound = (
+        isinstance(test_paths, list)
+        and bool(test_paths)
+        and isinstance(test_hashes, dict)
+        and set(test_paths) == set(test_hashes)
+        and all(
+            isinstance(path, str)
+            and isinstance(digest, str)
+            and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
+            for path, digest in test_hashes.items()
+        )
+    )
+    if tests_bound and baseline_root is not None:
+        tests_bound = all(
+            _current_file_digest(baseline_root, path) == digest
+            for path, digest in test_hashes.items()
+        )
+    if not tests_bound:
         gaps.append("pinned_regression_tests")
+
     candidate_ids = item.get("candidate_ids")
     proposal_id = item.get("proposal_id")
-    if not (isinstance(candidate_ids, list) and candidate_ids) and not (isinstance(proposal_id, str) and re.fullmatch(r"[0-9a-f]{32}", proposal_id)):
+    if not (
+        isinstance(candidate_ids, list) and candidate_ids
+    ) and not (
+        isinstance(proposal_id, str)
+        and re.fullmatch(r"[0-9a-f]{32}", proposal_id)
+    ):
         gaps.append("native_proposal_envelope")
     return gaps
 
@@ -180,6 +245,96 @@ class CandidateDiscoveryQueue:
     def _event_key(event_id: str, task_sha256: str | None) -> str:
         raw = _canonical({"event_id": event_id, "task_sha256": task_sha256})
         return hashlib.sha256(raw).hexdigest()[:24]
+
+    def _validated_proposal_id(
+        self, event_id: str, task_sha256: str | None, proposal_id: Any
+    ) -> str | None:
+        if (
+            not isinstance(proposal_id, str)
+            or re.fullmatch(r"[0-9a-f]{32}", proposal_id) is None
+            or not isinstance(task_sha256, str)
+        ):
+            return None
+        path = self.knowledge / "PHASE37_NATIVE_PROPOSALS" / f"{event_id}_{proposal_id}.json"
+        try:
+            if path.is_symlink() or not path.is_file() or path.stat().st_size > 1_500_000:
+                return None
+            envelope = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        if (
+            not isinstance(envelope, dict)
+            or envelope.get("schema") != "pika.phase37.native-proposal-envelope.v1"
+            or envelope.get("event_id") != event_id
+            or envelope.get("task_sha256") != task_sha256
+            or envelope.get("proposal_id") != proposal_id
+        ):
+            return None
+        unsigned = {key: value for key, value in envelope.items() if key != "proposal_id"}
+        if hashlib.sha256(_canonical(unsigned)).hexdigest()[:32] != proposal_id:
+            return None
+        proposal = envelope.get("proposal")
+        if (
+            not isinstance(proposal, dict)
+            or proposal.get("provider") != "pika-native"
+            or proposal.get("trust") != "UNVERIFIED_PROPOSAL"
+            or proposal.get("source_executed") is not False
+            or proposal.get("live_source_modified") is not False
+            or proposal.get("execution_allowed") is not False
+            or proposal.get("promotion_allowed") is not False
+        ):
+            return None
+        return proposal_id
+
+    def _attach_observed_evidence(
+        self, item: dict[str, Any], diagnostic: dict[str, Any]
+    ) -> None:
+        raw_context = diagnostic.get("source_context")
+        context = validate_source_context(raw_context, self.baseline)
+        if context is None:
+            context = validate_source_context(item.get("source_context"), self.baseline)
+        if context is not None:
+            item["source_context"] = context
+            current_frames = [
+                frame for frame in context["frames"]
+                if frame.get("current_source_matches") is True
+            ]
+            project_frames = [
+                frame for frame in current_frames
+                if frame.get("source_kind") == "project"
+            ]
+            if project_frames and not item.get("target"):
+                selected = project_frames[-1]
+                item["target"] = selected["path"]
+                item["source_sha256"] = selected["source_sha256"]
+                item["target_line"] = selected["line"]
+
+            test_frames = [
+                frame for frame in current_frames
+                if frame.get("source_kind") == "test"
+            ]
+            if test_frames and not item.get("test_paths"):
+                test_paths = list(dict.fromkeys(frame["path"] for frame in test_frames))[:3]
+                test_hashes = {
+                    frame["path"]: frame["source_sha256"]
+                    for frame in test_frames
+                    if frame["path"] in test_paths
+                }
+                item["test_paths"] = test_paths
+                item["test_hashes"] = test_hashes
+
+        proposal_ids = diagnostic.get("native_proposal_ids", [])
+        if not isinstance(proposal_ids, list):
+            proposal_ids = []
+        for raw_id in proposal_ids[:3]:
+            valid_id = self._validated_proposal_id(
+                str(item.get("event_id", "")),
+                item.get("task_sha256"),
+                raw_id,
+            )
+            if valid_id:
+                item["proposal_id"] = valid_id
+                break
 
     def refresh(
         self,
@@ -287,7 +442,8 @@ class CandidateDiscoveryQueue:
                 previous["issue_fingerprints"] = safe_fingerprints
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
-                previous["review_gaps"] = _review_gaps(previous)
+                self._attach_observed_evidence(previous, diag)
+                previous["review_gaps"] = _review_gaps(previous, self.baseline)
                 refreshed += 1
                 continue
 
@@ -315,13 +471,15 @@ class CandidateDiscoveryQueue:
                 "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
                 "source_context": None,
+                "native_proposal_ids": [],
                 "state": "SOURCE_REVIEW_REQUIRED",
                 "next_action": "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS",
                 "candidate_ids": [],
                 "created_at": time.time(),
                 "last_seen_at": time.time(),
             }
-            queue_item["review_gaps"] = _review_gaps(queue_item)
+            self._attach_observed_evidence(queue_item, diag)
+            queue_item["review_gaps"] = _review_gaps(queue_item, self.baseline)
             existing[discovery_id] = queue_item
             added += 1
         
@@ -360,7 +518,9 @@ class CandidateDiscoveryQueue:
         }
 
     @staticmethod
-    def _summarize(items: list[dict[str, Any]]) -> dict[str, Any]:
+    def _summarize(
+        items: list[dict[str, Any]], baseline_root: Path | None = None
+    ) -> dict[str, Any]:
         states: dict[str, int] = {}
         gap_counts: dict[str, int] = {}
         review_required = 0
@@ -369,7 +529,7 @@ class CandidateDiscoveryQueue:
             states[state] = states.get(state, 0) + 1
             if state == "SOURCE_REVIEW_REQUIRED":
                 review_required += 1
-            for gap in _review_gaps(item):
+            for gap in _review_gaps(item, baseline_root):
                 gap_counts[gap] = gap_counts.get(gap, 0) + 1
         return {
             "item_count": len(items),
@@ -408,7 +568,10 @@ class CandidateDiscoveryQueue:
         for item in queue["items"]:
             if not isinstance(item, dict):
                 continue
-            gaps = _review_gaps(item)
+            validated_context = validate_source_context(
+                item.get("source_context"), self.baseline
+            )
+            gaps = _review_gaps(item, self.baseline)
             live_reflection = reflection_by_event.get(item.get("event_id"), {})
             live_diagnostic = diagnostics_by_event.get(item.get("event_id"), {})
             reflection_missing = _safe_evidence_gaps(
@@ -453,6 +616,19 @@ class CandidateDiscoveryQueue:
                 "review_gaps": gaps,
                 "state": item.get("state", "UNKNOWN"),
                 "source_backed_root_cause_verified": False,
+                "source_context": {
+                    "frames": [
+                        {
+                            "path": frame["path"],
+                            "line": frame["line"],
+                            "source_sha256": frame["source_sha256"],
+                            "source_kind": frame["source_kind"],
+                            "current_source_matches": frame["current_source_matches"],
+                        }
+                        for frame in validated_context["frames"]
+                    ],
+                    "root_cause_verified": False,
+                } if validated_context is not None else None,
                 "candidate_ids": item.get("candidate_ids", []),
                 "source_review_hint": source_review_hint,
                 "next_action": (
@@ -469,7 +645,7 @@ class CandidateDiscoveryQueue:
             "success": True,
             "schema": "pika.phase37.discovery-review.v1",
             "queue_path": str(self.path),
-            "summary": self._summarize(queue["items"]),
+            "summary": self._summarize(queue["items"], self.baseline),
             "items": items,
             "policy": {
                 "mode": "READ_ONLY_EVIDENCE_GAP_REVIEW",
@@ -483,7 +659,7 @@ class CandidateDiscoveryQueue:
 
     def summary(self) -> dict[str, Any]:
         queue = self._load()
-        return self._summarize(queue["items"])
+        return self._summarize(queue["items"], self.baseline)
 
     def stage_native_proposal(
         self,
@@ -642,13 +818,19 @@ class CandidateDiscoveryQueue:
         item["target"] = target.as_posix()
         item["source_sha256"] = source_sha
         item["test_paths"] = list(normalized_tests)
+        item["test_hashes"] = {
+            path: _current_file_digest(self.baseline, path)
+            for path in normalized_tests
+        }
+        if any(value is None for value in item["test_hashes"].values()):
+            raise ExperimentError("Pinned regression test changed or became unsafe during staging.")
         item["source_backed_root_cause_verified"] = False
         item["proposal_trust"] = "UNVERIFIED_PROPOSAL"
         item["candidate_trust"] = "UNVERIFIED_LOCAL"
         item["promotion"] = "BLOCKED"
         item["staged_at"] = time.time()
         queue["updated_at"] = time.time()
-        queue["summary"] = self._summarize(queue["items"])
+        queue["summary"] = self._summarize(queue["items"], self.baseline)
         _atomic_json(self.path, queue)
         self.ledger.append("phase37_native_proposal_staged", {
             "discovery_id": discovery_id,
