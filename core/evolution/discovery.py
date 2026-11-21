@@ -23,6 +23,9 @@ SCHEMA = "pika.phase37.discovery-queue.v1"
 _MAX_ITEMS = 50
 _MAX_CANDIDATES = 3
 _MAX_PROPOSAL_BYTES = 500_000
+_MAX_TEST_SCAN = 400
+_MAX_TEST_SUGGESTIONS = 8
+_MAX_TEST_SOURCE_BYTES = 500_000
 
 
 _DIAGNOSTIC_CLASSES = frozenset({
@@ -199,6 +202,71 @@ class CandidateDiscoveryQueue:
         except OSError:
             return False
 
+    def _suggest_related_test_paths(self, target_value: Any) -> list[dict[str, Any]]:
+        """Suggest tests with an exact AST import reference; never pin them automatically."""
+        try:
+            target = _safe_python_path(target_value)
+        except ExperimentError:
+            return []
+        module_parts = list(target.with_suffix("").parts)
+        if module_parts and module_parts[-1] == "__init__":
+            module_parts.pop()
+        if not module_parts:
+            return []
+        module_name = ".".join(module_parts)
+        tests_root = self.baseline / "tests"
+        if tests_root.is_symlink() or not tests_root.is_dir():
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        try:
+            paths = sorted(tests_root.rglob("*.py"))
+        except OSError:
+            return []
+        for path in paths[:_MAX_TEST_SCAN]:
+            if not (path.name.startswith("test_") or path.name.endswith("_test.py")):
+                continue
+            try:
+                relative = path.relative_to(self.baseline)
+                cursor = self.baseline
+                unsafe_path = False
+                for part in relative.parts:
+                    cursor = cursor / part
+                    if cursor.is_symlink():
+                        unsafe_path = True
+                        break
+                if unsafe_path or not path.is_file() or path.stat().st_size > _MAX_TEST_SOURCE_BYTES:
+                    continue
+                source_bytes = path.read_bytes()
+                source = source_bytes.decode("utf-8")
+                tree = ast.parse(source, filename=relative.as_posix())
+            except (OSError, UnicodeError, SyntaxError, ValueError):
+                continue
+
+            matching_imports = 0
+            for node in ast.walk(tree):
+                imported_modules = []
+                if isinstance(node, ast.Import):
+                    imported_modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    imported_modules = [node.module]
+                if any(
+                    name == module_name or name.startswith(module_name + ".")
+                    for name in imported_modules
+                ):
+                    matching_imports += 1
+            if matching_imports:
+                candidates.append({
+                    "path": relative.as_posix(),
+                    "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                    "matching_import_count": matching_imports,
+                    "evidence": "AST_IMPORT_REFERENCE_ONLY",
+                    "pinned": False,
+                })
+                if len(candidates) >= _MAX_TEST_SUGGESTIONS:
+                    break
+        return candidates
+
     def _resolve_traceback_source_context(
         self,
         frames: Any,
@@ -256,7 +324,7 @@ class CandidateDiscoveryQueue:
                     value = "[REDACTED_SENSITIVE_SOURCE_LINE]"
                 else:
                     value = re.sub(
-                        r"""(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*(['"][^'"]*['"]|[^\s,;]+)""",
+                        r"""(?i)\b([A-Za-z_]*(?:api[_-]?key|access[_-]?token|password|secret|token|credential|private[_-]?key|authorization|auth)[A-Za-z_]*)\s*[:=]\s*(['"][^'"]*['"]|[^\s,;]+)""",
                         r"\1=[REDACTED]",
                         value,
                     )
@@ -638,6 +706,10 @@ class CandidateDiscoveryQueue:
                 "target": current_context.get("target") if current_context else None,
                 "source_sha256": current_context.get("source_sha256") if current_context else None,
                 "source_context": current_context,
+                "related_test_suggestions": (
+                    self._suggest_related_test_paths(current_context["target"])
+                    if current_context is not None else []
+                ),
                 "traceback_context_status": (
                     "CURRENT_SOURCE_HASH_MATCH"
                     if current_context is not None
@@ -652,7 +724,13 @@ class CandidateDiscoveryQueue:
                     else (
                         "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
                         if "traceback_referenced_source_context" in gaps
-                        else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                        else (
+                            "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
+                            if reviewed_tests := self._suggest_related_test_paths(
+                                current_context["target"] if current_context is not None else None
+                            )
+                            else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                        )
                     )
                 ),
             })
