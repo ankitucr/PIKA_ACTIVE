@@ -90,7 +90,8 @@
         "Explicit promotion decision remains blocked until production attestation is deployed",
         "Automatic evidence-backed experiment memory from each candidate evaluation",
         "Idempotent, recoverable memory and ledger projections with report/payload hashes",
-        "Read-only per-discovery evidence-gap review and explicit physical workspace identity in status"
+        "Read-only per-discovery evidence-gap review and explicit physical workspace identity in status",
+        "Distinguish unsupported native capability errors from code-output and provider failures, with source-directed review hints"
       ],
       "exit_criteria": [
         "Candidate staging changes only the declared file and records the exact baseline hash",
@@ -100,7 +101,7 @@
         "Every local run is labelled UNVERIFIED_LOCAL, unattested and not promotion eligible",
         "A later OS-isolated run can consume the same candidate and test manifest without changing the candidate identity"
       ],
-      "next": "37.3",
+      "next": "37.4",
       "sub_milestones": [
         {
           "id": "37.0",
@@ -173,6 +174,24 @@
             "The learning gate does not write memory, grant replay, modify source or promote production",
             "No runner or trust config means fail-closed execution; no local-venv or GitHub Actions fallback is treated as OS attestation",
             "Human approval, rollback proof and the separate promotion gate remain mandatory for production changes"
+          ]
+        },
+        {
+          "id": "37.4",
+          "name": "Native Capability Gap Resolution",
+          "status": "planned",
+          "outcomes": [
+            "Map observed unsupported-native error codes to the exact native handler and runtime registration path",
+            "Implement bounded deterministic handlers only for explicitly specified supported task contracts",
+            "Keep unsupported operations explicit and fail-closed rather than claiming general reasoning or code generation",
+            "Add intent, input-boundary, regression and negative tests for every new native handler",
+            "Separate capability implementation evidence from user-task evaluation and trusted learning admission"
+          ],
+          "exit_criteria": [
+            "Each new handler has an explicit input/output schema, bounded scope and deterministic regression suite",
+            "Existing supported native operations preserve behavior",
+            "Unknown operations remain explicitly unsupported and do not trigger unsafe fallback",
+            "No generated source is executed or promoted without the existing independent evidence and human approval gates"
           ]
         }
       ]
