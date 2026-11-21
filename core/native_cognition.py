@@ -359,6 +359,35 @@ class NativeCognitionEngine:
                 for _ in range(abs(delta))
             ])
 
+        added_details = [
+            {
+                "qualified_name": name,
+                "kind": candidate_symbols[name].get("kind"),
+                "signature": candidate_symbols[name].get("signature"),
+                "lineno": candidate_symbols[name].get("lineno"),
+            }
+            for name in added_names[:100]
+        ]
+        removed_details = [
+            {
+                "qualified_name": name,
+                "kind": baseline_symbols[name].get("kind"),
+                "signature": baseline_symbols[name].get("signature"),
+                "lineno": baseline_symbols[name].get("lineno"),
+            }
+            for name in removed_names[:100]
+        ]
+        changed_details = [
+            {
+                "qualified_name": name,
+                "baseline_signature": baseline_symbols[name].get("signature"),
+                "candidate_signature": candidate_symbols[name].get("signature"),
+                "baseline_kind": baseline_symbols[name].get("kind"),
+                "candidate_kind": candidate_symbols[name].get("kind"),
+            }
+            for name in changed_names[:100]
+        ]
+
         identity_payload = {
             "baseline_sha256": baseline["source_sha256"],
             "candidate_sha256": candidate["source_sha256"],
@@ -389,8 +418,11 @@ class NativeCognitionEngine:
             },
             "symbols": {
                 "added": added_names[:100],
+                "added_details": added_details,
                 "removed": removed_names[:100],
+                "removed_details": removed_details,
                 "changed": changed_names[:100],
+                "changed_details": changed_details,
                 "unchanged_count": len(common_names) - len(changed_names),
             },
             "imports": {
