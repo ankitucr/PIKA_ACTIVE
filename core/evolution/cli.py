@@ -29,6 +29,7 @@ def main() -> int:
             "prepare-learning-approval",
             "admit-learning",
             "promotion-plan",
+            "prepare-rollback-approval",
             "promote-candidate",
             "rollback-candidate",
         ),
@@ -152,11 +153,20 @@ def main() -> int:
             replay_journal=args.replay_journal,
             rollback_root=args.rollback_root,
         )
-    elif args.command == "rollback-candidate":
+    elif args.command == "prepare-rollback-approval":
         if not args.plan_file or not args.rollback_root:
-            parser.error("rollback-candidate requires --plan-file and --rollback-root")
-        result = evolution.rollback_candidate(
+            parser.error("prepare-rollback-approval requires --plan-file and --rollback-root")
+        result = evolution.prepare_rollback_approval(
             plan_file=args.plan_file, rollback_root=args.rollback_root
+        )
+    elif args.command == "rollback-candidate":
+        if not args.plan_file or not args.rollback_root or not args.operator_approval_file or not args.operator_trust_config:
+            parser.error("rollback-candidate requires --plan-file, --rollback-root, --operator-approval-file and --operator-trust-config")
+        result = evolution.rollback_candidate(
+            plan_file=args.plan_file,
+            approval_file=args.operator_approval_file,
+            approval_trust_config=args.operator_trust_config,
+            rollback_root=args.rollback_root,
         )
     elif args.command == "candidate-stage-native":
         if not args.discovery_id or not args.proposal_file:
