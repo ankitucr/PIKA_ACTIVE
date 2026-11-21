@@ -148,6 +148,7 @@ class OperatorApprovalTrustPolicy:
             "approved_at": float(approved_at),
             "expires_at": float(expires_at),
             "approval_sha256": hashlib.sha256(canonical(approval)).hexdigest(),
+            "approver_key_sha256": hashlib.sha256(key).hexdigest(),
         }
 
 
