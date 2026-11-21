@@ -181,6 +181,7 @@ class ResultAttestedCandidateExperimentEngine:
                     'verification_id': attestation['verification_id'],
                     'challenge_nonce': attestation['challenge_nonce'],
                     'measurement_sha256': attestation['measurement_sha256'],
+                    'challenge': dict(verified['challenge']),
                     'result': dict(result),
                     'attestation': dict(attestation),
                 })
