@@ -8,21 +8,22 @@ Type=simple
 User=pika-attestor
 Group=pika-attestor
 Environment=HOME=/var/lib/pika-attestor
+Environment=XDG_RUNTIME_DIR=/run/pika-attestor
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 WorkingDirectory=/opt/pika-attestor
 ExecStart=/opt/pika-attestor/venv/bin/python -m host_attestor.server --config /etc/pika-attestor/host-config.json
 Restart=on-failure
 RestartSec=3
+RuntimeDirectory=pika-attestor
+RuntimeDirectoryMode=0700
 UMask=0077
-NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictSUIDSGID=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
