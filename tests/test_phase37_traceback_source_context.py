@@ -165,3 +165,51 @@ def test_review_suggests_import_linked_tests_without_auto_pinning(tmp_path):
     queue_item = next(row for row in stored["items"] if row["event_id"] == result["event_id"])
     assert queue_item["state"] == "SOURCE_REVIEW_REQUIRED"
     assert not queue_item.get("test_paths")
+
+
+def test_returned_traceback_text_is_untrusted_hint_not_live_exception_frame(tmp_path):
+    from core.evolution.diagnostic_analysis import analyze_file
+
+    root = tmp_path / "project"
+    root.mkdir()
+    source = root / "core" / "hinted.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "def handler():\\n"
+        "    raise RuntimeError('hint target')\\n",
+        encoding="utf-8",
+    )
+
+    observer = ExecutionObserver(root / "PIKA_KNOWLEDGE", project_root=root)
+    token = observer.begin("returned traceback hint test")
+    returned_traceback = (
+        "Traceback (most recent call last):\\n"
+        f'  File "{source}", line 2, in handler\\n'
+    )
+    result = observer.finish(
+        token,
+        {
+            "success": False,
+            "error": returned_traceback,
+            "evaluation": {"passed": False, "issues": ["worker failed"]},
+            "attempts": [],
+        },
+    )
+
+    assert result["recorded"] is True
+    observation = json.loads(
+        observer.memory.path.read_text(encoding="utf-8").splitlines()[-1]
+    )["observation"]
+    assert observation["traceback_frames"] == []
+    hints = observation["traceback_text_hints"]
+    assert len(hints) == 1
+    assert hints[0]["path"] == "core/hinted.py"
+    assert hints[0]["line"] == 2
+    assert hints[0]["hint_source"] == "RETURNED_TRACEBACK_TEXT_UNTRUSTED"
+    assert observation["traceback_text_hint_capture"] == "UNTRUSTED_RETURNED_TEXT_FRAMES"
+    assert "Traceback (most recent call last)" not in json.dumps(observation)
+
+    diagnostic = analyze_file(observer.memory.path)
+    event = next(row for row in diagnostic["events"] if row["event_id"] == result["event_id"])
+    assert event["traceback_text_hints"] == hints
+    assert event["source_backed_root_cause_verified"] is False
