@@ -46,3 +46,13 @@ This is a static handler match, not automatic proof of the specific event's root
 `PIKABrain` treats `UNSUPPORTED_NATIVE_OPERATION` and `NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED` from the registered native worker as terminal capability gaps for the current request. It records one failed attempt and a lesson, then returns a structured `UNSUPPORTED_NATIVE_CAPABILITY` result before Phase 32 workspace execution, Phase 33 repair generation, Phase 34 memory lookup or identical retries.
 
 This reduces wasted compute without converting an unavailable capability into a false success. The result explicitly states that no source was modified, no candidate was executed and promotion remains blocked. Once a corresponding native handler is implemented and covered by regression tests, that handler can serve the request normally.
+
+## Phase 37.4 native Python snippet capability
+
+`NativeCognitionEngine` now exposes an explicit `validate python` / `analyze python snippet` operation. The caller supplies source through `context['source_code']` or one fenced `python` code block. Input is capped at 65,536 UTF-8 bytes and passed to the existing `NativeCodeAnalyzer.analyze_python_source()` AST parser.
+
+The result includes syntax validity, source digest, imports, bounded symbol metadata, structural patterns, static findings and AST metrics. Invalid syntax is a completed analysis with `code_valid=false`, not an execution attempt. The snippet is never imported, executed, modified, or persisted. Imported modules are not loaded, and AST findings do not prove runtime behavior or semantic correctness.
+
+`NativeCognitionAgent.capabilities` now lists only implemented handlers: Python static analysis, Python syntax validation, GitHub repository learning, code-evidence retrieval and engineering-knowledge retrieval. It no longer advertises generic coding, reasoning, generation, planning or debugging. This prevents capability-aware routing from treating unsupported generic work as a native feature.
+
+Regression coverage includes valid source, invalid syntax, fenced-source extraction, missing source, the 64 KiB input limit, read-only behavior and capability metadata.
