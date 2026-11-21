@@ -188,20 +188,22 @@
             "Add intent, input-boundary, regression and negative tests for every new native handler",
             "Separate capability implementation evidence from user-task evaluation and trusted learning admission",
             "Stop repeated identical calls when the requested native handler is explicitly unavailable",
-            "Bounded native Python snippet analysis using AST parsing, with explicit input limits and no execution, imports, writes or persistence"
+            "Bounded native Python snippet analysis using AST parsing, with explicit input limits and no execution, imports, writes or persistence",
+            "Advertise only implemented native capabilities so capability-aware routing does not select the native worker for unsupported generic coding, reasoning, planning or generation"
           ],
           "exit_criteria": [
             "Each new handler has an explicit input/output schema, bounded scope and deterministic regression suite",
             "Existing supported native operations preserve behavior",
             "Unknown operations remain explicitly unsupported and do not trigger unsafe fallback",
             "No generated source is executed or promoted without the existing independent evidence and human approval gates",
-            "User-supplied Python snippets are capped at 64 KiB, parsed as untrusted data, and report syntax/structure without execution or persistence"
+            "User-supplied Python snippets are capped at 64 KiB, parsed as untrusted data, and report syntax/structure without execution or persistence",
+            "Native agent capability metadata matches registered deterministic handlers and has a regression test against unsupported generic capability claims"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T16:45:00+05:30",
+  "updated_at": "2026-11-21T16:50:00+05:30",
   "current_milestone": "37.4",
   "next_milestone": "37.3"
 }
