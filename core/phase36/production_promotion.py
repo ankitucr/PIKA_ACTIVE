@@ -178,7 +178,14 @@ class ProductionPromotionManager:
         return metadata, resolved
 
     def _load_report(self, report_path: str | Path, result_trust_config: str | Path) -> tuple[dict[str, Any], str, dict[str, Any]]:
-        path, raw = _protected_file(report_path, maximum=MAX_PLAN_BYTES)
+        path = Path(report_path).expanduser()
+        if path.is_symlink() or not path.is_file():
+            raise ProductionPromotionError("Attested report must be a regular non-symlink file.")
+        path = path.resolve(strict=True)
+        report_metadata = path.stat()
+        if report_metadata.st_size > MAX_PLAN_BYTES or stat.S_IMODE(report_metadata.st_mode) & 0o022:
+            raise ProductionPromotionError("Attested report is oversized or group/world writable.")
+        raw = path.read_bytes()
         try:
             report = json.loads(raw.decode("utf-8"))
         except (UnicodeError, json.JSONDecodeError) as exc:
@@ -253,14 +260,29 @@ class ProductionPromotionManager:
         rehearsal.write_bytes(saved)
         rehearsal.chmod(0o600)
         rehearsal_sha = _sha(rehearsal.read_bytes())
+        target_mode = stat.S_IMODE(live_path.stat().st_mode)
+        target_rehearsal = live_path.parent / (
+            "." + live_path.name + ".pika-rollback-check-" + plan_id
+        )
+        try:
+            _atomic_replace(target_rehearsal, saved, target_mode)
+            target_rehearsal_sha = _sha(target_rehearsal.read_bytes())
+            if target_rehearsal_sha != baseline_sha:
+                raise ProductionPromotionError("Same-filesystem atomic rollback rehearsal hash mismatch.")
+        finally:
+            try:
+                target_rehearsal.unlink()
+            except FileNotFoundError:
+                pass
         if rehearsal_sha != baseline_sha or _sha(saved) != baseline_sha:
             raise ProductionPromotionError("Rollback rehearsal failed; promotion plan denied.")
         rollback_proof = {
             "rollback_id": plan_id,
             "snapshot_sha256": _sha(saved),
             "restore_rehearsal_sha256": rehearsal_sha,
+            "target_filesystem_rehearsal_sha256": target_rehearsal_sha,
             "target": target.as_posix(),
-            "mode": stat.S_IMODE(live_path.stat().st_mode),
+            "mode": target_mode,
             "rehearsal": "PASS",
         }
         rollback_proof_sha = _sha(_canonical(rollback_proof))
@@ -450,7 +472,9 @@ class ProductionPromotionManager:
         if backup.is_symlink() or not backup.is_file() or _sha(backup.read_bytes()) != plan["rollback"]["snapshot_sha256"]:
             raise ProductionPromotionError("Rollback snapshot verification failed.")
         rehearsal = self.rollback_root / plan["rollback"]["rollback_id"] / "restore-rehearsal.bin"
-        if rehearsal.is_symlink() or not rehearsal.is_file() or _sha(rehearsal.read_bytes()) != plan["rollback"]["restore_rehearsal_sha256"]:
+        if (rehearsal.is_symlink() or not rehearsal.is_file()
+                or _sha(rehearsal.read_bytes()) != plan["rollback"]["restore_rehearsal_sha256"]
+                or plan["rollback"].get("target_filesystem_rehearsal_sha256") != plan["baseline_sha256"]):
             raise ProductionPromotionError("Rollback rehearsal proof is missing or corrupt.")
         target_workspace = Path(metadata["workspace"]).resolve(strict=True)
         candidate_path = _path_no_symlink(target_workspace, _safe_target(plan["target"]))
