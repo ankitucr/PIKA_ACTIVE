@@ -154,7 +154,9 @@
             "Persist a process-safe replay journal outside the project workspace and reject reused nonces/verification IDs",
             "Load owner-only pinned result-attestor trust keys from outside the PIKA project root",
             "Run repeated hash-pinned baseline/candidate comparisons through a fail-closed externally injected result-attested runner",
-            "Keep signed failures available for comparison while trusted-learning admission remains a separate gate",
+            "Re-verify every stored run signature, source manifest, result, summary and decision before learning eligibility is considered",
+            "Allow operator admission eligibility only for complete candidate success with attested functional or threshold-qualified performance improvement",
+            "Keep signed failures available for comparison while trusted-learning admission remains separate and manual",
             "Keep production promotion human-approved, rollback-verified and blocked by default"
           ],
           "exit_criteria": [
@@ -163,15 +165,18 @@
             "Stale, forged, mismatched, malformed and replayed attestations are rejected",
             "The external backend enforces nonce/verification-ID uniqueness; local replay storage is defense in depth only",
             "Repeated baseline/candidate comparisons consume the same pinned test manifest and preserve exact source-tree identities",
-            "Signed failed, timed-out and no-test outcomes remain comparison evidence only and never automatically enter trusted learning",
-            "No runner or trust config means fail-closed execution; no local-vnev or GitHub Actions fallback is treated as OS attestation",
-            "Trusted learning admission is separate from human-governed production promotion"
+            "Stored comparison reports can be independently re-verified later using the signed host timestamp and current externally pinned public key",
+            "Regression, partial success, failed, timed-out, no-test and no-improvement outcomes cannot become learning-admission eligible",
+            "Only a fully passing candidate with an attested functional or threshold-qualified performance improvement is eligible for separate operator admission",
+            "The learning gate does not write memory, grant replay, modify source or promote production",
+            "No runner or trust config means fail-closed execution; no local-venv or GitHub Actions fallback is treated as OS attestation",
+            "Human approval, rollback proof and the separate promotion gate remain mandatory for production changes"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T09:45:00+05:30",
+  "updated_at": "2026-11-21T10:15:00+05:30",
   "current_milestone": "37.2",
   "next_milestone": "37.3"
 }
