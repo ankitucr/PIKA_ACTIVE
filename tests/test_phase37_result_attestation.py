@@ -391,3 +391,27 @@ def test_replay_guard_rejects_non_string_journal_identity_as_corruption(tmp_path
     store_path.chmod(0o600)
     with pytest.raises(ResultAttestationError, match='identity/time'):
         RunAttestationReplayGuard(store_path, project_root=project).consume(_sign(_challenge()))
+
+
+
+def test_replay_guard_requires_owner_only_host_directory(tmp_path):
+    project = tmp_path / 'project'
+    project.mkdir()
+    public_dir = tmp_path / 'public-host'
+    public_dir.mkdir(mode=0o755)
+    public_dir.chmod(0o755)
+    with pytest.raises(ResultAttestationError, match='owner-only'):
+        RunAttestationReplayGuard(public_dir / 'consumed.jsonl', project_root=project)
+
+
+def test_replay_guard_rejects_replay_journal_symlink(tmp_path):
+    project = tmp_path / 'project'
+    project.mkdir()
+    host = _host_directory(tmp_path)
+    target = host / 'target.jsonl'
+    target.write_text('', encoding='utf-8')
+    target.chmod(0o600)
+    alias = host / 'alias.jsonl'
+    alias.symlink_to(target)
+    with pytest.raises(ResultAttestationError, match='Symlinks'):
+        RunAttestationReplayGuard(alias, project_root=project)
