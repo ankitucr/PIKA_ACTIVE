@@ -12,7 +12,10 @@ from typing import Any
 
 from .ledger import Ledger
 from .memory import ExperienceMemory
-from .source_context import capture_exception_source_context
+from .source_context import (
+    capture_exception_source_context,
+    capture_traceback_text_source_context,
+)
 
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+"),
@@ -361,6 +364,24 @@ class ExecutionObserver:
             capture_exception_source_context(exception, self.root)
             if exception is not None else None
         )
+        if source_context is None:
+            traceback_candidates: list[str] = []
+            for key in ("traceback", "stacktrace", "error", "worker_error"):
+                value = result_dict.get(key)
+                if isinstance(value, str):
+                    traceback_candidates.append(value)
+            for attempt in reversed(attempts[-12:]):
+                attempt_result = _dict(_dict(attempt).get("result"))
+                for key in ("traceback", "stacktrace", "error", "worker_error"):
+                    value = attempt_result.get(key)
+                    if isinstance(value, str):
+                        traceback_candidates.append(value)
+            for candidate_traceback in traceback_candidates:
+                source_context = capture_traceback_text_source_context(
+                    candidate_traceback, self.root
+                )
+                if source_context is not None:
+                    break
         native_proposals = self._capture_native_proposals(
             token, attempts, outcome_status=outcome_status
         )
