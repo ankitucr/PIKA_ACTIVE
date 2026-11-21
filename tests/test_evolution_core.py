@@ -1,4 +1,5 @@
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 from core.evolution.controller import EvolutionController
 from core.evolution.ledger import Ledger
@@ -47,3 +48,13 @@ def test_repair_traversal_rejected(tmp_path):
 
 def test_status_sandbox_pending(tmp_path):
  assert EvolutionController(tmp_path).status()["safety"]["sandbox"]=="EXTERNAL_PENDING"
+
+
+def test_ledger_concurrent_appends_preserve_hash_chain(tmp_path):
+    ledger = Ledger(tmp_path / 'concurrent-ledger.jsonl')
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda index: ledger.append('concurrent_write', {'index': index}), range(80)))
+    result = ledger.verify()
+    assert result['valid'] is True
+    assert result['entries'] == 80
+    assert sorted(row['payload']['index'] for row in ledger.rows()) == list(range(80))
