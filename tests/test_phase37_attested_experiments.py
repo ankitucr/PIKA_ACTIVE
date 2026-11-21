@@ -10,6 +10,7 @@ import pytest
 from core.evolution.attested_experiments import CandidateAttestationError, ResultAttestedCandidateExperimentEngine
 from core.evolution.controller import EvolutionController
 from core.evolution.experiments import CandidateExperimentEngine
+from core.phase36.result_learning import ResultAttestedLearningGate, ResultLearningGateError
 from core.phase36.result_attestation import (
     RunAttestationReplayGuard,
     RunResultAttestationTrustPolicy,
@@ -194,3 +195,61 @@ def test_attested_evaluation_refuses_absent_external_runner(tmp_path):
     candidate_id = _candidate(engine, root)
     with pytest.raises(CandidateAttestationError, match='unavailable'):
         ResultAttestedCandidateExperimentEngine(engine, ResultBoundSandboxRunner()).evaluate_candidate(candidate_id)
+
+
+
+def test_result_attested_learning_gate_reverifies_every_run_before_eligibility(tmp_path):
+    root = _project(tmp_path / 'repo')
+    engine = CandidateExperimentEngine(tmp_path / 'knowledge')
+    candidate_id = _candidate(engine, root)
+    backend = SignedComparisonBackend(baseline_passed=False, candidate_passed=True)
+    runner = _runner(tmp_path, root, backend)
+    result = ResultAttestedCandidateExperimentEngine(engine, runner).evaluate_candidate(candidate_id)
+    report = json.loads(Path(result['report_path']).read_text(encoding='utf-8'))
+
+    gate = ResultAttestedLearningGate(_POLICY)
+    verified = gate.verify_report(report)
+    assert verified['valid'] is True
+    assert verified['all_signatures_valid'] is True
+    assert verified['candidate_all_runs_passed'] is True
+    assert verified['improvement_verified'] is True
+    assert verified['admission_eligible'] is True
+    assert verified['learning_admission'] == 'ELIGIBLE_PENDING_OPERATOR_ADMISSION'
+    assert verified['automatic_memory_write'] is False
+    assert verified['replay_allowed'] is False
+    assert verified['production_promotion'] == 'BLOCKED'
+
+
+def test_result_attested_learning_gate_rejects_signed_regression_for_learning(tmp_path):
+    root = _project(tmp_path / 'repo')
+    engine = CandidateExperimentEngine(tmp_path / 'knowledge')
+    candidate_id = _candidate(engine, root)
+    backend = SignedComparisonBackend(baseline_passed=True, candidate_passed=False)
+    runner = _runner(tmp_path, root, backend)
+    result = ResultAttestedCandidateExperimentEngine(engine, runner).evaluate_candidate(candidate_id)
+    report = json.loads(Path(result['report_path']).read_text(encoding='utf-8'))
+
+    verified = ResultAttestedLearningGate(_POLICY).verify_report(report)
+    assert verified['valid'] is True
+    assert verified['all_signatures_valid'] is True
+    assert verified['candidate_all_runs_passed'] is False
+    assert verified['improvement_verified'] is False
+    assert verified['admission_eligible'] is False
+    assert verified['learning_admission'] == 'REJECTED_NO_VERIFIED_IMPROVEMENT'
+
+
+def test_result_attested_learning_gate_rejects_tampered_run_and_aggregate_summary(tmp_path):
+    root = _project(tmp_path / 'repo')
+    engine = CandidateExperimentEngine(tmp_path / 'knowledge')
+    candidate_id = _candidate(engine, root)
+    backend = SignedComparisonBackend(baseline_passed=False, candidate_passed=True)
+    result = ResultAttestedCandidateExperimentEngine(engine, _runner(tmp_path, root, backend)).evaluate_candidate(candidate_id)
+    report = json.loads(Path(result['report_path']).read_text(encoding='utf-8'))
+    report['candidate']['runs'][0]['result']['exit_code'] = 17
+    with pytest.raises(ResultLearningGateError, match='signed attestation'):
+        ResultAttestedLearningGate(_POLICY).verify_report(report)
+
+    report = json.loads(Path(result['report_path']).read_text(encoding='utf-8'))
+    report['candidate']['passed_runs'] = 1
+    with pytest.raises(ResultLearningGateError, match='aggregate summary'):
+        ResultAttestedLearningGate(_POLICY).verify_report(report)
