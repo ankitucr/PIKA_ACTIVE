@@ -135,6 +135,7 @@ class NativeCodeAnalyzer:
                 signature = "class " + node.name + "(" + ", ".join(_unparse(x) for x in node.bases) + ")"
                 decorators = [_unparse(x) for x in node.decorator_list]
                 annotations: list[str] = []
+                annotation_types: list[str] = []
             else:
                 kind = "async_function" if isinstance(node, ast.AsyncFunctionDef) else "function"
                 positional_args = [*node.args.posonlyargs, *node.args.args]
@@ -190,6 +191,9 @@ class NativeCodeAnalyzer:
                 if node.args.kwarg:
                     all_args.append(node.args.kwarg)
                 annotations = [a.arg for a in all_args if a.annotation is not None]
+                annotation_types = [
+                    _unparse(a.annotation) for a in all_args if a.annotation is not None
+                ]
                 total_branches += sum(
                     isinstance(x, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler,
                                    ast.IfExp, ast.Assert, ast.Match))
@@ -205,6 +209,7 @@ class NativeCodeAnalyzer:
                 "docstring": (ast.get_docstring(node) or "")[:1200],
                 "decorators": decorators[:12],
                 "argument_annotations": annotations[:20],
+                "argument_annotation_types": annotation_types[:20],
             })
 
         names_lower = " ".join([relative_path, *[s["qualified_name"] for s in symbols], *all_names]).lower()
