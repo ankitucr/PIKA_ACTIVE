@@ -143,11 +143,33 @@
             "Local evidence remains UNVERIFIED_LOCAL, unattested, non-replayable, and not promotion eligible",
             "Human approval and independent OS attestation remain required for any future production promotion"
           ]
+        },
+        {
+          "id": "37.3",
+          "name": "Independent Run Verification & Trusted Learning Admission",
+          "status": "planned",
+          "outcomes": [
+            "Bridge Phase 37 candidate source/test manifests to the existing Phase 36 run-bound SandboxRunner",
+            "Bind every independent run to exact argv, timeout, sandbox policy, source hashes, fresh challenge nonce and verification identity",
+            "Verify detached Ed25519 attestation through externally pinned AttestorTrustPolicy and EvidenceAuthority",
+            "Extend evidence to represent completed failing runs without misclassifying them as trusted learning",
+            "Admit candidate knowledge only when the full comparison evidence and LearningTrustGate policy agree",
+            "Keep deny-all behavior when no independently administered OS backend and host trust configuration exist"
+          ],
+          "exit_criteria": [
+            "No local venv result or repository-controlled workflow can satisfy independent attestation",
+            "Host backend identity and public trust key are configured outside the project workspace with owner-only permissions",
+            "Every run receipt is fresh, signature-valid, and bound to exact source/test hashes, argv, timeout, and sandbox policy",
+            "Baseline and candidate outcomes are compared using the same pinned tests and a complete required run set",
+            "Stale, replayed, forged, mismatched, or incomplete evidence is rejected",
+            "Failed-run evidence is cryptographically bound but cannot independently authorize trusted learning",
+            "Trusted learning admission is separate from human-governed production promotion"
+          ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T08:30:00+05:30",
+  "updated_at": "2026-11-21T09:00:00+05:30",
   "current_milestone": "37.2",
   "next_milestone": "37.3"
 }
