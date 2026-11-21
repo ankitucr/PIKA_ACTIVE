@@ -316,8 +316,12 @@ class RunAttestationReplayGuard:
             if current.is_symlink():
                 raise ResultAttestationError('Symlinks are forbidden in the replay journal path.')
             current = current.parent
-        if stat.S_IMODE(self.path.parent.stat().st_mode) & 0o022:
-            raise ResultAttestationError('Replay journal parent must not be group/world writable.')
+        parent_metadata = self.path.parent.stat()
+        if stat.S_IMODE(parent_metadata.st_mode) & 0o077:
+            raise ResultAttestationError('Replay journal parent must be owner-only (0700).')
+        get_uid = getattr(os, 'geteuid', None)
+        if callable(get_uid) and parent_metadata.st_uid != get_uid():
+            raise ResultAttestationError('Replay journal parent must be owned by the current user.')
         self.lock_path = self.path.with_name(self.path.name + '.lock')
 
     def _open_lock(self) -> int:
@@ -422,6 +426,12 @@ class RunAttestationReplayGuard:
             flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, 'O_NOFOLLOW', 0)
             fd = os.open(self.path, flags, 0o600)
             try:
+                metadata = os.fstat(fd)
+                if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+                    raise ResultAttestationError('Replay journal append target must be a regular owner-only file.')
+                get_uid = getattr(os, 'geteuid', None)
+                if callable(get_uid) and metadata.st_uid != get_uid():
+                    raise ResultAttestationError('Replay journal append target must be owned by the current user.')
                 offset = 0
                 while offset < len(encoded):
                     written = os.write(fd, encoded[offset:])
