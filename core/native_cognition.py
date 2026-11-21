@@ -280,7 +280,7 @@ class NativeCognitionEngine:
                 f"- [{item.get('severity', 'unknown')}] {item.get('rule')} "
                 f"| line {item.get('line')} | {item.get('recommendation')}"
             )
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
