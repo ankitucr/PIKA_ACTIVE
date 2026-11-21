@@ -111,3 +111,44 @@ def test_unsupported_native_failures_have_machine_readable_non_retryable_contrac
     assert result["raw"]["failure_class"] == "unsupported_native_capability"
     assert result["raw"]["capability_gap"] is True
     assert result["raw"]["retryable"] is False
+
+
+
+def test_workspace_context_does_not_block_safe_native_self_inspection(tmp_path: Path):
+    project = tmp_path / "pika"
+    core = project / "core"
+    core.mkdir(parents=True)
+    source = core / "sample.py"
+    original = "VALUE = 7\n"
+    source.write_text(original, encoding="utf-8")
+
+    result = asyncio.run(
+        NativeCognitionEngine(project).execute(
+            "inspect PIKA architecture",
+            context={"workspace": {"enabled": True}},
+        )
+    )
+
+    assert result["success"] is True
+    assert result["agent"] == "native"
+    assert result["provider"] == "pika-native"
+    assert result["raw"]["mode"] == "native_static_self_analysis"
+    assert result["raw"]["source_modified"] is False
+    assert source.read_text(encoding="utf-8") == original
+
+
+def test_workspace_context_still_blocks_arbitrary_native_code_generation(tmp_path: Path):
+    project = tmp_path / "pika"
+    result = asyncio.run(
+        NativeCognitionEngine(project).execute(
+            "Build a full social media application",
+            context={"workspace": {"enabled": True}},
+        )
+    )
+
+    assert result["success"] is False
+    assert result["error"] == "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED"
+    assert result["failure_class"] == "unsupported_native_capability"
+    assert result["capability_gap"] is True
+    assert result["retryable"] is False
+    assert not (project / "data" / "pika_self_code_analysis.json").exists()
