@@ -12,8 +12,7 @@ COPY requirements.txt /tmp/requirements.txt
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
-    && python -m pip install pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2 \
-    && useradd --uid 65532 --create-home --shell /usr/sbin/nologin pika-runner
+    && python -m pip install pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
 
 USER 65532:65532
 WORKDIR /work
