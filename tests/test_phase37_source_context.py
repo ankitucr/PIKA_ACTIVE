@@ -114,6 +114,51 @@ def test_returned_python_traceback_text_is_bound_without_storing_raw_trace(tmp_p
     assert all(frame["current_source_matches"] is True for frame in context["frames"])
 
 
+def test_returned_traceback_is_review_hint_not_automatic_source_binding(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    exception = _raise_from_project(root)
+    traceback_text = "".join(
+        traceback.format_exception(type(exception), exception, exception.__traceback__)
+    )
+    observer = ExecutionObserver(root / "PIKA_KNOWLEDGE")
+    token = observer.begin("untrusted returned traceback text")
+    recorded = observer.finish(
+        token,
+        {
+            "success": False,
+            "error": traceback_text,
+            "evaluation": {"passed": False, "issues": ["failed"]},
+            "attempts": [],
+        },
+        elapsed_seconds=0.1,
+    )
+    analysis = analyze_file(root / "PIKA_KNOWLEDGE" / "EXPERIENCE_MEMORY.jsonl")
+    queue = CandidateDiscoveryQueue(
+        root / "PIKA_KNOWLEDGE", root, CandidateExperimentEngine(root / "PIKA_KNOWLEDGE")
+    )
+    queue.refresh(
+        {"diagnosis_queue": [{
+            "event_id": recorded["event_id"],
+            "task_sha256": token["task_sha256"],
+            "outcome": "FAILED",
+            "error_types": ["RuntimeError"],
+            "evidence_missing": [],
+        }]},
+        analysis,
+    )
+
+    item = queue._load()["items"][0]
+    assert item.get("source_context") is None
+    assert item["source_context_hint"]["capture_mode"] == "PYTHON_TRACEBACK_TEXT"
+    assert item.get("target") is None
+    assert item.get("test_paths") is None
+    assert "traceback_referenced_source_context" in item["review_gaps"]
+    reviewed = queue.review()
+    assert reviewed["items"][0]["source_context"] is None
+    assert reviewed["items"][0]["source_context_hint"]["trusted_runtime_traceback"] is False
+
+
 def test_plain_error_text_cannot_be_mistaken_for_traceback_source(tmp_path):
     root = tmp_path / "project"
     root.mkdir()
