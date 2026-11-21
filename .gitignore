@@ -70,6 +70,9 @@ backups/
 *.backup2
 *.backup3
 
+# Ephemeral process locks for private runtime journals
+/PIKA_KNOWLEDGE/*.lock
+
 # PIKA private runtime knowledge and personal state
 /PIKA_KNOWLEDGE/*LEDGER*.jsonl
 /PIKA_KNOWLEDGE/*MEMORY*.jsonl
