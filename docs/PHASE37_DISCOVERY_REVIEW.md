@@ -40,3 +40,9 @@ The repository's native runtime registers `NativeCognitionAgent` in `core/runtim
 `diagnostic_analysis.py` now classifies these exact codes as `UNSUPPORTED_NATIVE_CAPABILITY` instead of merging them into generic evaluator rejection. The review report points to `core/native_cognition.py`, `core/runtime.py`, and `agents/native_cognition.py` for inspection.
 
 This is a static handler match, not automatic proof of the specific event's root cause. Review output therefore keeps `source_backed_root_cause_verified=false`, candidate IDs empty and promotion blocked. The next engineering stage is bounded native capability implementation with explicit contracts and tests, not arbitrary code generation or an LLM/API fallback.
+
+## Native capability fast-fail
+
+`PIKABrain` treats `UNSUPPORTED_NATIVE_OPERATION` and `NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED` from the registered native worker as terminal capability gaps for the current request. It records one failed attempt and a lesson, then returns a structured `UNSUPPORTED_NATIVE_CAPABILITY` result before Phase 32 workspace execution, Phase 33 repair generation, Phase 34 memory lookup or identical retries.
+
+This reduces wasted compute without converting an unavailable capability into a false success. The result explicitly states that no source was modified, no candidate was executed and promotion remains blocked. Once a corresponding native handler is implemented and covered by regression tests, that handler can serve the request normally.
