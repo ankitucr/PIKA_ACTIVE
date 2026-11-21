@@ -23,7 +23,7 @@ on:
       - "pytest.ini"
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
+    branches: [main, phase37-3/result-bound-attestation]
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -57,7 +57,7 @@ jobs:
       - name: Check out trusted base workflow source
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
           path: trusted
           persist-credentials: false
           submodules: false
