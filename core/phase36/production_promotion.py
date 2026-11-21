@@ -394,6 +394,14 @@ class ProductionPromotionManager:
                         raise ProductionPromotionError(f"Promotion journal chain corrupt at line {number}.")
                     previous = expected
                     rows.append(row)
+            if kind == "promotion_started":
+                for old_row in rows:
+                    old_payload = old_row.get("payload", {})
+                    if old_row.get("event") == "promotion_started" and (
+                        old_payload.get("plan_id") == payload.get("plan_id")
+                        or old_payload.get("approval_nonce") == payload.get("approval_nonce")
+                    ):
+                        raise ProductionPromotionError("Promotion plan or approval nonce has already been consumed.")
             body = {"event": kind, "payload": payload, "previous_hash": previous}
             row = {**body, "entry_hash": _sha(_canonical(body))}
             encoded = _canonical(row) + b"\n"
@@ -463,7 +471,7 @@ class ProductionPromotionManager:
         if (not admission or admission.get("admission_sha256") != plan["admission_sha256"]
                 or admission.get("admission_id") != plan["admission_id"]):
             raise ProductionPromotionError("Trusted-learning admission changed or is missing.")
-        if (approval_info["approver_key_sha256"] == admission.get("approver_key_sha256"):
+        if approval_info["approver_key_sha256"] == admission.get("approver_key_sha256"):
             raise ProductionPromotionError("Learning admission and production promotion must use distinct Ed25519 operator keys.")
         live_path = _path_no_symlink(self.root, _safe_target(plan["target"]))
         if _sha(live_path.read_bytes()) != plan["baseline_sha256"]:
@@ -483,6 +491,17 @@ class ProductionPromotionManager:
             raise ProductionPromotionError("Candidate bytes changed after promotion plan.")
         mode = stat.S_IMODE(live_path.stat().st_mode)
 
+        # Consume the plan and operator approval before the first live write.
+        # Crashes require explicit reconciliation rather than approval replay.
+        self._append_event("promotion_started", {
+            "plan_id": plan["plan_id"],
+            "candidate_id": plan["candidate_id"],
+            "approval_nonce": approval["nonce"],
+            "approval_sha256": approval_info["approval_sha256"],
+            "baseline_sha256": plan["baseline_sha256"],
+            "candidate_sha256": plan["candidate_sha256"],
+            "rollback_snapshot_sha256": plan["rollback"]["snapshot_sha256"],
+        })
         _atomic_replace(live_path, candidate_bytes, mode)
         applied_hash = _sha(live_path.read_bytes())
         if applied_hash != plan["candidate_sha256"]:
