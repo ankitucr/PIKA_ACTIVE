@@ -116,13 +116,13 @@ def _extract_bundle(raw: bytes, destination: Path, expected: dict[str, str]) -> 
                 if total > MAX_BUNDLE_BYTES:
                     raise HostAttestorError("Expanded source archive exceeds the transfer limit.")
                 target = destination.joinpath(*rel.parts)
-                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
                 cursor = destination
                 for part in rel.parts[:-1]:
                     cursor = cursor / part
                     if cursor.is_symlink() or (cursor.exists() and not cursor.is_dir()):
                         raise HostAttestorError("Archive path collides with a non-directory.")
-                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
                 try:
                     offset = 0
                     while offset < len(data):
@@ -298,7 +298,7 @@ class HostAttestor:
         config = self.config
         required = {
             "schema", "backend_id", "attestor_id", "integration_type", "listen_host",
-            "listen_port", "token_file", "private_key_file", "runner_runtime",
+            "listen_port", "token_file", "token_sha256", "private_key_file", "runner_runtime",
             "runner_image", "storage_dir", "replay_journal_file", "max_bundle_bytes",
         }
         if not isinstance(config, dict) or set(config) != required or config.get("schema") != CONFIG_SCHEMA:
