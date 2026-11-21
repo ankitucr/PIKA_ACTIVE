@@ -255,9 +255,10 @@ class CandidateDiscoveryQueue:
             or not isinstance(task_sha256, str)
         ):
             return None
-        path = self.knowledge / "PHASE37_NATIVE_PROPOSALS" / f"{event_id}_{proposal_id}.json"
+        proposal_dir = self.knowledge / "PHASE37_NATIVE_PROPOSALS"
+        path = proposal_dir / f"{event_id}_{proposal_id}.json"
         try:
-            if path.is_symlink() or not path.is_file() or path.stat().st_size > 1_500_000:
+            if proposal_dir.is_symlink() or path.is_symlink() or not path.is_file() or path.stat().st_size > 1_500_000:
                 return None
             envelope = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
@@ -492,7 +493,7 @@ class CandidateDiscoveryQueue:
             "schema": SCHEMA,
             "updated_at": time.time(),
             "items": items,
-            "summary": self._summarize(items),
+            "summary": self._summarize(items, self.baseline),
             "policy": {
                 "source": "LIVE_REFLECTION_AND_DIAGNOSTIC_ANALYSIS",
                 "root_cause_claims": "NOT_INFERRED_FROM_FREQUENCY",
@@ -635,9 +636,21 @@ class CandidateDiscoveryQueue:
                     "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
                     if classification == "UNSUPPORTED_NATIVE_CAPABILITY"
                     else (
-                        "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
+                        "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
                         if "traceback_referenced_source_context" in gaps
-                        else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                        else (
+                            "BIND_CURRENT_SOURCE_HASH"
+                            if "current_source_binding" in gaps
+                            else (
+                                "PIN_REGRESSION_TEST_PATHS_AND_HASHES"
+                                if "pinned_regression_tests" in gaps
+                                else (
+                                    "ATTACH_NATIVE_PROPOSAL_ENVELOPE"
+                                    if "native_proposal_envelope" in gaps
+                                    else "HUMAN_REVIEW_ROOT_CAUSE_BEFORE_CANDIDATE_STAGING"
+                                )
+                            )
+                        )
                     )
                 ),
             })
