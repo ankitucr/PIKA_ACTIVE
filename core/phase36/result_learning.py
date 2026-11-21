@@ -5,6 +5,7 @@ import json
 import math
 import statistics
 import re
+import time
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
@@ -214,6 +215,18 @@ class ResultAttestedLearningGate:
                                            repetitions, float(threshold))
         if report.get("decision") != expected_decision:
             raise ResultLearningGateError("Reported comparison decision does not match signed run evidence.")
+
+        report_started = report.get("started_at")
+        report_finished = report.get("finished_at")
+        if (isinstance(report_started, bool) or not isinstance(report_started, (int, float))
+                or isinstance(report_finished, bool) or not isinstance(report_finished, (int, float))
+                or not math.isfinite(float(report_started)) or not math.isfinite(float(report_finished))
+                or report_started <= 0 or report_finished < report_started):
+            raise ResultLearningGateError("Report execution interval is invalid.")
+        if (report_started > min(signed_start_times) + 1.0
+                or report_finished < max(signed_finish_times) - 1.0
+                or report_started > time.time() + 30 or report_finished > time.time() + 30):
+            raise ResultLearningGateError("Report execution interval does not cover signed run timestamps.")
 
         candidate_passed = summaries["candidate"]["all_passed"]
         eligible_decisions = {
