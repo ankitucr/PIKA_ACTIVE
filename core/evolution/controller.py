@@ -242,8 +242,20 @@ class EvolutionController:
             result_attestor_config=result_attestor_config,
         )
 
-    def rollback_candidate(self, *, plan_file, rollback_root):
-        return self._production_promotion_manager(rollback_root).rollback(plan_file)
+    def prepare_rollback_approval(self, *, plan_file, rollback_root):
+        return self._production_promotion_manager(rollback_root).rollback_approval_payload(plan_file)
+
+    def rollback_candidate(
+        self, *, plan_file, approval_file, approval_trust_config, rollback_root,
+    ):
+        policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_ROLLBACK",
+        )
+        return self._production_promotion_manager(rollback_root).rollback(
+            plan_file, approval_path=approval_file, approval_policy=policy
+        )
 
     def record_experiment_memory(self, report_path):
         return self.verified_memory.record(report_path)
