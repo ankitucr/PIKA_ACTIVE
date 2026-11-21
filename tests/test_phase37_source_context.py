@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import traceback
 from pathlib import Path
 
 from core.evolution.diagnostic_analysis import analyze_file
@@ -8,6 +9,7 @@ from core.evolution.discovery import CandidateDiscoveryQueue
 from core.evolution.experiments import CandidateExperimentEngine
 from core.evolution.source_context import (
     capture_exception_source_context,
+    capture_traceback_text_source_context,
     validate_source_context,
 )
 from core.evolution.telemetry import ExecutionObserver
@@ -93,6 +95,71 @@ def test_source_context_validation_marks_changed_file_as_historical_not_current(
     assert frame["source_sha256"] == original_digest
     assert frame["current_source_matches"] is False
     assert frame["snippet"]
+
+
+def test_returned_python_traceback_text_is_bound_without_storing_raw_trace(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    exception = _raise_from_project(root)
+    traceback_text = "".join(
+        traceback.format_exception(type(exception), exception, exception.__traceback__)
+    )
+
+    context = capture_traceback_text_source_context(traceback_text, root)
+
+    assert context is not None
+    assert context["capture_mode"] == "PYTHON_TRACEBACK_TEXT"
+    assert any(frame["path"] == "core/broken.py" for frame in context["frames"])
+    assert any(frame["path"] == "tests/test_broken.py" for frame in context["frames"])
+    assert all(frame["current_source_matches"] is True for frame in context["frames"])
+
+
+def test_plain_error_text_cannot_be_mistaken_for_traceback_source(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    source = root / "core" / "broken.py"
+    source.parent.mkdir()
+    source.write_text("def fail():\n    return None\n", encoding="utf-8")
+
+    context = capture_traceback_text_source_context(
+        "RuntimeError in core/broken.py at line 2", root
+    )
+
+    assert context is None
+
+
+def test_telemetry_extracts_source_frames_from_returned_attempt_error(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    exception = _raise_from_project(root)
+    traceback_text = "".join(
+        traceback.format_exception(type(exception), exception, exception.__traceback__)
+    )
+    observer = ExecutionObserver(root / "PIKA_KNOWLEDGE")
+    token = observer.begin("returned error contains traceback")
+
+    recorded = observer.finish(
+        token,
+        {
+            "success": False,
+            "error": "worker returned a traceback",
+            "attempts": [{
+                "attempt": 1,
+                "result": {
+                    "success": False,
+                    "error": traceback_text,
+                },
+                "evaluation": {"passed": False, "issues": ["execution failed"]},
+            }],
+            "evaluation": {"passed": False, "issues": ["execution failed"]},
+        },
+        elapsed_seconds=0.1,
+    )
+
+    assert recorded["recorded"] is True
+    analysis = analyze_file(root / "PIKA_KNOWLEDGE" / "EXPERIENCE_MEMORY.jsonl")
+    event = next(row for row in analysis["events"] if row["event_id"] == recorded["event_id"])
+    assert event["source_context"]["capture_mode"] == "PYTHON_TRACEBACK_TEXT"
 
 
 def test_exception_outside_project_is_not_captured(tmp_path):
