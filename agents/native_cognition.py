@@ -17,7 +17,9 @@ class NativeCognitionAgent(Agent):
         "python_syntax_validation",
         "python_snippet_comparison",
         "github_repository_learning",
-        "code_evidence_retrieval",
+        "pika_self_ast_analysis",
+        "static_improvement_queue",
+        "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
     ]
 
