@@ -7,6 +7,7 @@ on:
       - ".github/workflows/pika-isolated-candidate-ci.yml"
       - ".github/workflows/pika-core-safety.yml"
       - "core/**"
+      - "host_attestor/**"
       - "tests/**"
       - "agents/**"
       - "memory/**"
@@ -182,7 +183,7 @@ jobs:
             cd /work/source
 
             echo "===== CANDIDATE SOURCE COMPILE ====="
-            python -m compileall -q core agents tests pika_live.py main.py pika.py remote_bridge
+            python -m compileall -q core agents tests host_attestor pika_live.py main.py pika.py remote_bridge
 
             echo "===== PREPARE CONTAINER-LOCAL DIAGNOSTIC VENV ====="
             python -m venv --system-site-packages .sandbox_venv
