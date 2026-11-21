@@ -190,6 +190,7 @@ class NativeCognitionEngine:
                 "pika_self_ast_analysis",
                 "python_static_analysis",
                 "python_syntax_validation",
+                "python_snippet_comparison",
                 "static_improvement_queue",
                 "lexical_code_evidence_retrieval",
                 "engineering_knowledge_retrieval",
