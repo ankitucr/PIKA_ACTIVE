@@ -108,6 +108,12 @@ class TrustedLearningAdmission:
             record = row["record"]
             if not isinstance(record, dict) or row["previous_hash"] != previous:
                 raise LearningAdmissionError(f"Admission journal chain mismatch at line {number}.")
+            if (record.get("schema") != ADMISSION_SCHEMA
+                    or record.get("trust") != "TRUSTED_OPERATOR_ADMITTED"
+                    or record.get("trusted_learning_allowed") is not True
+                    or record.get("replay_allowed") is not False
+                    or record.get("production_promotion_allowed") is not False):
+                raise LearningAdmissionError(f"Admission trust state is invalid at line {number}.")
             expected = hashlib.sha256(_canonical({
                 "record": record, "previous_hash": previous,
             })).hexdigest()
@@ -272,6 +278,10 @@ class TrustedLearningAdmission:
         except (OSError, UnicodeError, ValueError) as exc:
             return {"valid": False, "errors": [f"evolution_ledger_{type(exc).__name__}"]}
         missing_memory, missing_ledger, duplicates = [], [], []
+        for identity in set(memory_map) - set(expected):
+            errors.append(f"orphan_experience_memory_projection:{identity}")
+        for identity in set(ledger_map) - set(expected):
+            errors.append(f"orphan_evolution_ledger_projection:{identity}")
         for identity, payload in expected.items():
             memory_rows = memory_map.get(identity, [])
             ledger_rows = ledger_map.get(identity, [])
@@ -489,7 +499,13 @@ class TrustedLearningAdmission:
         lock_fd = self._open_lock()
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_SH)
-            for row in self._read_rows():
+            rows = self._read_rows()
+            projection = self._verify_projections([
+                (row["record"], row["entry_hash"]) for row in rows
+            ])
+            if not projection.get("valid"):
+                raise LearningAdmissionError("Trusted learning projections are incomplete or invalid.")
+            for row in rows:
                 record = row["record"]
                 if record.get("report_sha256") == report_sha256:
                     return {**record, "admission_sha256": row["entry_hash"]}
