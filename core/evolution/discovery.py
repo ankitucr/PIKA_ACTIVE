@@ -418,8 +418,8 @@ class CandidateDiscoveryQueue:
             classifications = item.get("attempt_classifications")
             observed_fingerprints = fingerprints if isinstance(fingerprints, list) else []
             classification = (
-                item.get("diagnostic_classification")
-                or _safe_classification(live_diagnostic.get("event_classification"))
+                _safe_classification(live_diagnostic.get("event_classification"))
+                or item.get("diagnostic_classification")
             )
             native_error_codes = [
                 code for code in (
