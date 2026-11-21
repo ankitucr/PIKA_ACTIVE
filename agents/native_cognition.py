@@ -9,8 +9,15 @@ from core.native_cognition import NativeCognitionEngine
 
 class NativeCognitionAgent(Agent):
     name = "native"
+    # Advertise only operations with implemented, deterministic handlers.
+    # Generic coding/reasoning/generation claims caused capability-aware routing
+    # to select this agent for tasks it must explicitly reject.
     capabilities = [
-        "coding", "reasoning", "generation", "analysis", "planning", "debugging",
+        "python_static_analysis",
+        "python_syntax_validation",
+        "github_repository_learning",
+        "code_evidence_retrieval",
+        "engineering_knowledge_retrieval",
     ]
 
     def __init__(self, root: str | None = None) -> None:
