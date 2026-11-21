@@ -82,7 +82,25 @@ class EvolutionController:
                 "sandbox": "EXTERNAL_PENDING",
                 "candidate_trust": "UNVERIFIED_LOCAL",
                 "independent_result_attestation": "DENY_ALL_UNTIL_EXTERNAL_BACKEND_AND_PINNED_TRUST_ARE_INJECTED",
-                "trusted_learning_admission": "PENDING_LEARNING_TRUST_GATE",
+                "trusted_learning_admission": "OPERATOR_APPROVAL_REQUIRED",
+                "production_gates": {
+                    "independent_os_attestation": {
+                        "implementation": "HOST_ATTESTOR_DEPLOYMENT_PACKAGE_READY",
+                        "status": "EXTERNAL_LINUX_HOST_DEPLOYMENT_REQUIRED",
+                        "actual_host_verified": False,
+                    },
+                    "trusted_learning_admission": {
+                        "status": "SEPARATE_ED25519_OPERATOR_APPROVAL_REQUIRED",
+                        "journal": self.trusted_learning.verify(),
+                        "automatic_admission": False,
+                    },
+                    "production_promotion": {
+                        "status": "SEPARATE_PRODUCTION_APPROVAL_AND_ROLLBACK_REQUIRED",
+                        "automatic_promotion": False,
+                        "post_promotion_attestation_required": True,
+                        "manual_rollback_approval_required": True,
+                    },
+                },
             },
         }
 
