@@ -85,6 +85,10 @@ backups/
 /host_attestor/*approval*.json
 /host_attestor/generated/
 
+# Phase 37.4 trusted admission and promotion runtime state
+/PIKA_KNOWLEDGE/TRUSTED_LEARNING_ADMISSIONS.jsonl
+/PIKA_KNOWLEDGE/PHASE37_PROMOTIONS/
+
 # PIKA private runtime knowledge and personal state
 /PIKA_KNOWLEDGE/*LEDGER*.jsonl
 /PIKA_KNOWLEDGE/*MEMORY*.jsonl
