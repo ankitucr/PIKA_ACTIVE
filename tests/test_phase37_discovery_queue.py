@@ -303,7 +303,7 @@ def test_discovery_review_reports_missing_evidence_without_mutating_queue(tmp_pa
         "pinned_regression_tests",
         "native_proposal_envelope",
     }
-    assert item["next_action"] == "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
+    assert item["next_action"] == "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
     assert result["policy"]["root_cause_inferred"] is False
     assert result["policy"]["source_modified"] is False
     assert queue_path.read_bytes() == before
