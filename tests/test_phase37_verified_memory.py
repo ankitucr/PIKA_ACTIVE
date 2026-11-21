@@ -93,3 +93,30 @@ def test_rejects_decision_that_contradicts_passing_runs(tmp_path):
     report.write_text(json.dumps(value), encoding='utf-8')
     with pytest.raises(VerifiedMemoryError):
         VerifiedExperimentMemory(tmp_path/'knowledge').record(report)
+
+
+def test_detects_experience_memory_projection_tampering(tmp_path):
+    report = tmp_path/'report.json'
+    make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    memory.record(report)
+    rows = memory.memory.path.read_text(encoding='utf-8').splitlines()
+    row = json.loads(rows[0])
+    row['observation']['decision'] = 'REGRESSION'
+    memory.memory.path.write_text(json.dumps(row) + '\\n', encoding='utf-8')
+    result = memory.verify()
+    assert result['valid'] is False
+    assert result['projections']['experience_memory']['errors']
+
+
+def test_detects_evolution_ledger_projection_tampering(tmp_path):
+    report = tmp_path/'report.json'
+    make_report(report)
+    memory = VerifiedExperimentMemory(tmp_path/'knowledge')
+    memory.record(report)
+    rows = memory.ledger.rows()
+    rows[-1]['payload']['promotion'] = 'ALLOWED'
+    memory.ledger.path.write_text('\\n'.join(json.dumps(row, sort_keys=True, separators=(',', ':')) for row in rows) + '\\n', encoding='utf-8')
+    result = memory.verify()
+    assert result['valid'] is False
+    assert result['error'] == 'evolution_ledger_invalid'
