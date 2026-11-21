@@ -201,7 +201,7 @@ def capture_exception_source_context(
         return None
     return {
         "schema": SCHEMA,
-        "capture_mode": "PYTHON_EXCEPTION_TRACEBACK",
+        "capture_mode": capture_mode,
         "frames": frames,
         "root_cause_verified": False,
         "source_execution_authorized": False,
@@ -219,6 +219,9 @@ def validate_source_context(
     exactly matches the hash captured with the traceback.
     """
     if not isinstance(context, dict) or context.get("schema") != SCHEMA:
+        return None
+    capture_mode = context.get("capture_mode")
+    if capture_mode not in {"PYTHON_EXCEPTION_TRACEBACK", "PYTHON_TRACEBACK_TEXT"}:
         return None
     raw_frames = context.get("frames")
     if not isinstance(raw_frames, list) or not raw_frames or len(raw_frames) > _MAX_FRAMES:
