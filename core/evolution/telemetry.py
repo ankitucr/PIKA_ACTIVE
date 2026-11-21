@@ -6,6 +6,7 @@ import json
 import os
 import re
 import time
+import traceback as traceback_module
 import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -26,6 +27,8 @@ _NATIVE_GENERATION_MODES = frozenset({
     "validated_structured_worker_proposal",
 })
 _MAX_PROPOSAL_BYTES = 500_000
+_MAX_TRACEBACK_FRAMES = 8
+_MAX_TRACEBACK_SOURCE_BYTES = 2_000_000
 
 
 def _safe_name(value: Any, limit: int = 80) -> str | None:
@@ -97,10 +100,21 @@ def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
 class ExecutionObserver:
     """Records bounded Brain metadata and inert native proposals; observations remain untrusted."""
 
-    def __init__(self, knowledge_dir: str | Path):
+    def __init__(
+        self,
+        knowledge_dir: str | Path,
+        *,
+        project_root: str | Path | None = None,
+    ):
         knowledge = Path(knowledge_dir).expanduser().resolve()
         knowledge.mkdir(parents=True, exist_ok=True)
         self.knowledge = knowledge
+        if project_root is not None:
+            self.project_root = Path(project_root).expanduser().resolve()
+        elif knowledge.name == "PIKA_KNOWLEDGE":
+            self.project_root = knowledge.parent
+        else:
+            self.project_root = None
         self.proposal_dir = knowledge / "PHASE37_NATIVE_PROPOSALS"
         self.memory = ExperienceMemory(knowledge / "EXPERIENCE_MEMORY.jsonl")
         self.ledger = Ledger(knowledge / "EVOLUTION_LEDGER.jsonl")
@@ -163,6 +177,77 @@ class ExecutionObserver:
                 _dict(result.get("phase33_generation")).get("success") is True
             ),
         }
+
+    def _capture_traceback_frames(
+        self,
+        exception: BaseException | None,
+    ) -> list[dict[str, Any]]:
+        """Capture bounded, project-relative traceback references, never raw tracebacks."""
+        root = self.project_root
+        if (
+            not isinstance(exception, BaseException)
+            or exception.__traceback__ is None
+            or not isinstance(root, Path)
+            or not root.is_dir()
+        ):
+            return []
+
+        captured: list[dict[str, Any]] = []
+        try:
+            extracted = traceback_module.extract_tb(exception.__traceback__)
+        except Exception:
+            return []
+
+        # The innermost in-project frames are usually the most actionable.
+        for frame in reversed(extracted):
+            if len(captured) >= _MAX_TRACEBACK_FRAMES:
+                break
+            try:
+                candidate = Path(frame.filename)
+                if not candidate.is_absolute():
+                    candidate = root / candidate
+                candidate = Path(os.path.abspath(candidate))
+                relative = candidate.relative_to(root)
+                if (
+                    not relative.parts
+                    or relative.suffix != ".py"
+                    or any(part in {"", ".", ".."} for part in relative.parts)
+                ):
+                    continue
+
+                cursor = root
+                unsafe_path = False
+                for part in relative.parts:
+                    cursor = cursor / part
+                    if cursor.is_symlink():
+                        unsafe_path = True
+                        break
+                if unsafe_path or not cursor.is_file():
+                    continue
+                resolved = cursor.resolve(strict=True)
+                if resolved != cursor or not resolved.is_relative_to(root):
+                    continue
+                if cursor.stat().st_size > _MAX_TRACEBACK_SOURCE_BYTES:
+                    continue
+                source_bytes = cursor.read_bytes()
+                source = source_bytes.decode("utf-8")
+                line_number = frame.lineno
+                if (
+                    isinstance(line_number, bool)
+                    or not isinstance(line_number, int)
+                    or line_number < 1
+                    or line_number > len(source.splitlines())
+                ):
+                    continue
+                captured.append({
+                    "path": relative.as_posix(),
+                    "line": line_number,
+                    "function": _safe_name(frame.name, 80),
+                    "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                })
+            except (OSError, UnicodeError, ValueError):
+                continue
+        return captured
 
     def _capture_native_proposals(
         self,
@@ -410,6 +495,14 @@ class ExecutionObserver:
             "strategy": _safe_name(result_dict.get("strategy")),
             "error_types": error_types,
             "exception_type": type(exception).__name__ if exception is not None else None,
+            "traceback_frames": self._capture_traceback_frames(exception),
+            "traceback_capture": (
+                "PROJECT_RELATIVE_HASH_BOUND_FRAMES"
+                if exception is not None and self._capture_traceback_frames(exception)
+                else (
+                    "NO_IN_PROJECT_FRAMES" if exception is not None else "NO_EXCEPTION"
+                )
+            ),
             "phase32_seen": any(
                 bool(_dict(_dict(x).get("result")).get("workspace_execution"))
                 for x in attempts
