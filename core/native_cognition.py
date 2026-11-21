@@ -184,6 +184,17 @@ class NativeCognitionEngine:
                 if isinstance(record, dict)
             ),
             "engineering_knowledge_file": str(self.data / "pika_native_engineering_knowledge.json"),
+            "native_capabilities": [
+                "github_repository_learning",
+                "pika_self_ast_analysis",
+                "python_static_analysis",
+                "python_syntax_validation",
+                "static_improvement_queue",
+                "lexical_code_evidence_retrieval",
+                "engineering_knowledge_retrieval",
+            ],
+            "arbitrary_workspace_code_generation": "UNSUPPORTED",
+            "source_execution_during_static_analysis": False,
         }
 
     @staticmethod
@@ -391,7 +402,7 @@ class NativeCognitionEngine:
 
         return self._failure(
             "UNSUPPORTED_NATIVE_OPERATION",
-            "This request is outside the current verified native capability set. Current supported operations: GitHub repository learning, PIKA source AST analysis, static improvement-queue generation, and lexical code-evidence retrieval. No LLM/API fallback is enabled.",
+            "This request is outside the current verified native capability set. Current supported operations: GitHub repository learning, PIKA source AST analysis, bounded Python snippet analysis, static improvement-queue generation, and code/engineering-evidence retrieval. Arbitrary workspace code generation is unsupported. No LLM/API fallback is enabled.",
         )
 
     @staticmethod
