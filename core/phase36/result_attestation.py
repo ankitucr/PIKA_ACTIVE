@@ -225,7 +225,9 @@ class RunResultAttestationTrustPolicy:
             return False
         identity = attestation.get('attestor_id')
         backend_id = attestation.get('backend_id')
-        if not isinstance(identity, str) or not identity or identity.casefold().startswith(self.RESERVED_PREFIXES):
+        if not isinstance(identity, str) or not identity or identity != identity.strip() or len(identity) > 128 or identity.casefold().startswith(self.RESERVED_PREFIXES):
+            return False
+        if not isinstance(backend_id, str) or not backend_id or backend_id != backend_id.strip():
             return False
         trusted = self._trusted.get(identity)
         if trusted is None or backend_id not in trusted['backend_ids']:
@@ -296,6 +298,8 @@ class RunAttestationReplayGuard:
 
     def __init__(self, path: str | Path, *, project_root: str | Path,
                  max_bytes: int = MAX_REPLAY_JOURNAL_BYTES):
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1024:
+            raise ValueError('max_bytes must be an integer of at least 1024.')
         self.path = Path(os.path.abspath(Path(path).expanduser()))
         self.project_root = Path(project_root).expanduser().resolve()
         self.max_bytes = max_bytes
@@ -372,16 +376,23 @@ class RunAttestationReplayGuard:
                 raise ResultAttestationError(f'Replay journal corruption at line {number}.') from exc
             if not isinstance(row, dict) or set(row) != {'challenge_nonce', 'verification_id', 'result_sha256', 'recorded_at', 'previous_hash', 'entry_hash'}:
                 raise ResultAttestationError(f'Invalid replay journal row at line {number}.')
-            if row['previous_hash'] != previous or row['challenge_nonce'] in nonces or row['verification_id'] in verification_ids:
+            nonce = row.get('challenge_nonce')
+            verification_id = row.get('verification_id')
+            recorded_at = row.get('recorded_at')
+            if (not _is_digest(nonce) or not _is_digest(row.get('result_sha256'))
+                    or not isinstance(verification_id, str) or not verification_id.strip()
+                    or isinstance(recorded_at, bool) or not isinstance(recorded_at, (int, float))
+                    or not math.isfinite(float(recorded_at)) or recorded_at <= 0):
+                raise ResultAttestationError(f'Invalid replay journal identity/time at line {number}.')
+            if row['previous_hash'] != previous or nonce in nonces or verification_id in verification_ids:
                 raise ResultAttestationError(f'Replay journal chain or identity violation at line {number}.')
             body = {key: value for key, value in row.items() if key != 'entry_hash'}
-            expected = hashlib.sha256(_canonical(body)).hexdigest()
+            try:
+                expected = hashlib.sha256(_canonical(body)).hexdigest()
+            except (TypeError, ValueError):
+                raise ResultAttestationError(f'Invalid replay journal payload at line {number}.')
             if row['entry_hash'] != expected:
                 raise ResultAttestationError(f'Replay journal hash mismatch at line {number}.')
-            if not _is_digest(row['challenge_nonce']) or not _is_digest(row['result_sha256']):
-                raise ResultAttestationError(f'Invalid replay journal digest at line {number}.')
-            if not isinstance(row['verification_id'], str) or not row['verification_id']:
-                raise ResultAttestationError(f'Invalid replay verification ID at line {number}.')
             nonces.add(row['challenge_nonce'])
             verification_ids.add(row['verification_id'])
             previous = expected
@@ -392,7 +403,7 @@ class RunAttestationReplayGuard:
         nonce = attestation.get('challenge_nonce')
         verification_id = attestation.get('verification_id')
         result_sha = attestation.get('result_sha256')
-        if not _is_digest(nonce) or not isinstance(verification_id, str) or not verification_id or not _is_digest(result_sha):
+        if not _is_digest(nonce) or not isinstance(verification_id, str) or not verification_id.strip() or not _is_digest(result_sha):
             raise ResultAttestationError('Invalid attestation replay identity.')
         lock_fd = self._open_lock()
         try:
