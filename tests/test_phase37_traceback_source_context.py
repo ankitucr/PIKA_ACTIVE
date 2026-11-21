@@ -128,15 +128,15 @@ def test_review_suggests_import_linked_tests_without_auto_pinning(tmp_path):
     test_file = root / "tests" / "test_failing.py"
     test_file.parent.mkdir(parents=True)
     test_file.write_text(
-        "from core.failing import fail\\n"
-        "raise RuntimeError('this file must only be parsed, never imported')\\n"
-        "def test_failure_contract():\\n"
-        "    assert callable(fail)\\n",
+        "from core.failing import fail\n"
+        "raise RuntimeError('this file must only be parsed, never imported')\n"
+        "def test_failure_contract():\n"
+        "    assert callable(fail)\n",
         encoding="utf-8",
     )
     unrelated = root / "tests" / "test_unrelated.py"
     unrelated.write_text(
-        "REFERENCE = 'from core.failing import fail'\\n",
+        "REFERENCE = 'from core.failing import fail'\n",
         encoding="utf-8",
     )
 
