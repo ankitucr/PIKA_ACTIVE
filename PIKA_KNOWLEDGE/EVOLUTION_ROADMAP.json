@@ -210,10 +210,17 @@
             "Source changes after the observed failure invalidate the prior traceback binding instead of silently refreshing its hash",
             "A matching source frame never marks root cause verified or auto-selects pinned tests; test paths and proposal envelopes still require explicit evidence"
             ,
+            "Test discovery parses no more than 400 bounded test files and returns no more than eight hash-pinned AST import suggestions",
+            "Suggested test references remain pinned=false, do not populate candidate test_paths, and cannot clear the pinned_regression_tests review gap",
+            "The test suggestion scanner parses source as AST data and never imports or executes test modules"
+            ,
             "Capture bounded project-relative traceback frame references only for in-project exceptions, without storing raw traceback strings, local variables, raw task text or model output",
             "Re-resolve traceback paths beneath the project root and expose source excerpts only when the current full-file SHA-256 still matches the observed hash",
             "Reject stale, missing, symlinked and out-of-root traceback source references; redact sensitive source lines before review",
             "Keep traceback evidence separate from verified root-cause claims; regression tests remain explicitly pinned and native proposal envelopes remain event-bound"
+            ,
+            "Suggest bounded AST-import-linked regression test paths for hash-bound source contexts, including each test file SHA-256 and an explicit unpinned evidence label",
+            "Never convert import references into pinned regression evidence automatically; require operator review and explicit test-path selection"
           ]
         }
       ]
