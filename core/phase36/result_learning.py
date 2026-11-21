@@ -4,6 +4,8 @@ import hashlib
 import json
 import math
 import statistics
+import re
+from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 from .result_attestation import (
@@ -88,6 +90,12 @@ class ResultAttestedLearningGate:
         if report.get("human_review_required") is not True:
             raise ResultLearningGateError("Human review requirement is missing.")
 
+        experiment_id = report.get("experiment_id")
+        candidate_id = report.get("candidate_id")
+        if not isinstance(experiment_id, str) or not re.fullmatch(r"[0-9a-f]{32}", experiment_id):
+            raise ResultLearningGateError("Invalid experiment identity.")
+        if not isinstance(candidate_id, str) or not re.fullmatch(r"[0-9a-f]{32}", candidate_id):
+            raise ResultLearningGateError("Invalid candidate identity.")
         repetitions = report.get("repetitions")
         if isinstance(repetitions, bool) or not isinstance(repetitions, int) or not 1 <= repetitions <= 5:
             raise ResultLearningGateError("Invalid attested repetition count.")
@@ -130,6 +138,8 @@ class ResultAttestedLearningGate:
                 raise ResultLearningGateError("Baseline and candidate tests are not byte-identical.")
 
         target = report.get("target")
+        if not isinstance(target, str) or PurePosixPath(target).as_posix() != target or PurePosixPath(target).is_absolute() or any(part in {"", ".", ".."} for part in PurePosixPath(target).parts):
+            raise ResultLearningGateError("Invalid declared candidate target path.")
         baseline_target_hash = report.get("baseline_sha256")
         candidate_target_hash = report.get("candidate_sha256")
         if (not isinstance(target, str) or baseline_manifest.get(target) != baseline_target_hash
@@ -145,7 +155,10 @@ class ResultAttestedLearningGate:
         ).hexdigest():
             raise ResultLearningGateError("Candidate tree digest does not match its source manifest.")
 
-        all_ids: set[str] = set()
+        seen_nonces: set[str] = set()
+        seen_verification_ids: set[str] = set()
+        signed_start_times: list[float] = []
+        signed_finish_times: list[float] = []
         summaries: dict[str, dict[str, Any]] = {}
         for label, manifest in (("baseline", baseline_manifest), ("candidate", candidate_manifest)):
             recorded = report.get(label)
@@ -171,22 +184,28 @@ class ResultAttestedLearningGate:
                     raise ResultLearningGateError(f"{label} run source manifest differs from report.")
                 if run.get("result") != attestation.get("result"):
                     raise ResultLearningGateError(f"{label} result differs from signed attestation.")
+                if run.get("outcome") != attestation["result"].get("outcome"):
+                    raise ResultLearningGateError(f"{label} outcome label differs from signed result.")
                 if run.get("result_sha256") != attestation.get("result_sha256"):
                     raise ResultLearningGateError(f"{label} result digest differs from signed attestation.")
                 if run.get("verification_id") != attestation.get("verification_id"):
                     raise ResultLearningGateError(f"{label} verification identity differs from signature.")
                 if run.get("challenge_nonce") != attestation.get("challenge_nonce"):
                     raise ResultLearningGateError(f"{label} challenge nonce differs from signature.")
+                if run.get("measurement_sha256") != attestation.get("measurement_sha256"):
+                    raise ResultLearningGateError(f"{label} measurement digest differs from signed attestation.")
                 nonce = attestation["challenge_nonce"]
                 verification_id = attestation["verification_id"]
-                if nonce in all_ids or verification_id in all_ids:
+                if nonce in seen_nonces or verification_id in seen_verification_ids:
                     raise ResultLearningGateError("Run nonce or verification ID was reused in the report.")
-                all_ids.add(nonce)
-                all_ids.add(verification_id)
+                seen_nonces.add(nonce)
+                seen_verification_ids.add(verification_id)
                 result = attestation["result"]
                 duration = round(float(result["finished_at"]) - float(result["started_at"]), 6)
                 if run.get("duration_s") != duration:
                     raise ResultLearningGateError(f"{label} duration does not match signed timestamps.")
+                signed_start_times.append(float(result["started_at"]))
+                signed_finish_times.append(float(result["finished_at"]))
             if not self._summary_matches(recorded, runs):
                 raise ResultLearningGateError(f"{label} aggregate summary does not match signed run outcomes.")
             summaries[label] = recorded
