@@ -44,7 +44,8 @@ def test_repeat_record_is_idempotent(tmp_path):
     second = memory.record(report)
     assert first['already_recorded'] is False
     assert second['already_recorded'] is True
-    assert memory.verify() == {'valid': True, 'entries': 1}
+    assert memory.verify()['valid'] is True
+    assert memory.verify()['entries'] == 1
     assert len(memory.memory.recent(100)) == 1
     ledger_rows = [row for row in memory.ledger.rows() if row.get('event_type') == 'phase37_experiment_memory_recorded']
     assert len(ledger_rows) == 1
@@ -103,7 +104,7 @@ def test_detects_experience_memory_projection_tampering(tmp_path):
     rows = memory.memory.path.read_text(encoding='utf-8').splitlines()
     row = json.loads(rows[0])
     row['observation']['decision'] = 'REGRESSION'
-    memory.memory.path.write_text(json.dumps(row) + '\\n', encoding='utf-8')
+    memory.memory.path.write_text(json.dumps(row) + chr(10), encoding='utf-8')
     result = memory.verify()
     assert result['valid'] is False
     assert result['projections']['experience_memory']['errors']
@@ -116,7 +117,7 @@ def test_detects_evolution_ledger_projection_tampering(tmp_path):
     memory.record(report)
     rows = memory.ledger.rows()
     rows[-1]['payload']['promotion'] = 'ALLOWED'
-    memory.ledger.path.write_text('\\n'.join(json.dumps(row, sort_keys=True, separators=(',', ':')) for row in rows) + '\\n', encoding='utf-8')
+    memory.ledger.path.write_text(chr(10).join(json.dumps(row, sort_keys=True, separators=(',', ':')) for row in rows) + chr(10), encoding='utf-8')
     result = memory.verify()
     assert result['valid'] is False
     assert result['error'] == 'evolution_ledger_invalid'
