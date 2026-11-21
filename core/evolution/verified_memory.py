@@ -354,8 +354,10 @@ class VerifiedExperimentMemory:
             finally:
                 os.close(fd)
 
-        expected = {row['payload_sha256'] for row in journal_rows}
+        expected_payloads = {row['payload_sha256']: row['payload'] for row in journal_rows}
+        expected = set(expected_payloads)
         memory_digests: list[str] = []
+        memory_projection_errors: list[str] = []
         memory_path = self.memory.path
         if memory_path.is_symlink():
             return {'valid': False, 'entries': len(journal_rows), 'error': 'experience_memory_symlink_rejected'}
@@ -372,11 +374,16 @@ class VerifiedExperimentMemory:
                         return {'valid': False, 'entries': len(journal_rows), 'error': f'experience_memory_json_error_line_{number}'}
                     observation = row.get('observation') if isinstance(row, dict) else None
                     if isinstance(observation, dict) and observation.get('schema') == SCHEMA:
-                        if observation.get('trust') != 'UNVERIFIED' or observation.get('replay_allowed') is not False or observation.get('promotion_allowed') is not False:
-                            return {'valid': False, 'entries': len(journal_rows), 'error': f'experience_memory_trust_boundary_line_{number}'}
                         digest = observation.get('payload_sha256')
-                        if isinstance(digest, str):
-                            memory_digests.append(digest)
+                        if not isinstance(digest, str) or digest not in expected_payloads:
+                            memory_projection_errors.append(f'orphan_memory_projection_line_{number}')
+                            continue
+                        if row.get('category') != 'phase37_experiment' or row.get('trust') != 'UNVERIFIED' or row.get('replay_allowed') is not False:
+                            memory_projection_errors.append(f'memory_trust_boundary_line_{number}')
+                        projected_payload = {key: value for key, value in observation.items() if key != 'payload_sha256'}
+                        if projected_payload != expected_payloads[digest]:
+                            memory_projection_errors.append(f'memory_payload_mismatch_line_{number}')
+                        memory_digests.append(digest)
             except (OSError, UnicodeError) as exc:
                 return {'valid': False, 'entries': len(journal_rows), 'error': type(exc).__name__}
 
@@ -384,13 +391,28 @@ class VerifiedExperimentMemory:
         if not ledger_state.get('valid'):
             return {'valid': False, 'entries': len(journal_rows), 'error': 'evolution_ledger_invalid', 'ledger': ledger_state}
         ledger_digests = []
+        ledger_projection_errors: list[str] = []
         try:
-            for row in self.ledger.rows():
+            for number, row in enumerate(self.ledger.rows(), 1):
                 body = row.get('payload') if isinstance(row, dict) else None
                 if isinstance(body, dict) and row.get('event_type') == 'phase37_experiment_memory_recorded':
                     digest = body.get('payload_sha256')
-                    if isinstance(digest, str):
-                        ledger_digests.append(digest)
+                    if not isinstance(digest, str) or digest not in expected_payloads:
+                        ledger_projection_errors.append(f'orphan_ledger_projection_entry_{number}')
+                        continue
+                    expected_payload = expected_payloads[digest]
+                    expected_body = {
+                        'experiment_id': expected_payload['experiment_id'],
+                        'candidate_id': expected_payload['candidate_id'],
+                        'report_sha256': expected_payload['report_sha256'],
+                        'payload_sha256': digest,
+                        'trust': 'UNVERIFIED',
+                        'replay_allowed': False,
+                        'promotion': 'BLOCKED',
+                    }
+                    if body != expected_body:
+                        ledger_projection_errors.append(f'ledger_payload_mismatch_entry_{number}')
+                    ledger_digests.append(digest)
         except (OSError, UnicodeError, ValueError) as exc:
             return {'valid': False, 'entries': len(journal_rows), 'error': type(exc).__name__}
 
@@ -400,12 +422,12 @@ class VerifiedExperimentMemory:
         missing_ledger = sorted(expected - ledger_set)
         duplicate_memory = sorted(digest for digest in expected if memory_digests.count(digest) > 1)
         duplicate_ledger = sorted(digest for digest in expected if ledger_digests.count(digest) > 1)
-        projections_valid = not (missing_memory or missing_ledger or duplicate_memory or duplicate_ledger)
+        projections_valid = not (missing_memory or missing_ledger or duplicate_memory or duplicate_ledger or memory_projection_errors or ledger_projection_errors)
         return {
             'valid': projections_valid,
             'entries': len(journal_rows),
             'projections': {
-                'experience_memory': {'valid': not missing_memory and not duplicate_memory, 'missing': missing_memory, 'duplicates': duplicate_memory},
-                'evolution_ledger': {'valid': not missing_ledger and not duplicate_ledger, 'missing': missing_ledger, 'duplicates': duplicate_ledger, 'ledger_entries': ledger_state.get('entries', 0)},
+                'experience_memory': {'valid': not missing_memory and not duplicate_memory and not memory_projection_errors, 'missing': missing_memory, 'duplicates': duplicate_memory, 'errors': memory_projection_errors},
+                'evolution_ledger': {'valid': not missing_ledger and not duplicate_ledger and not ledger_projection_errors, 'missing': missing_ledger, 'duplicates': duplicate_ledger, 'errors': ledger_projection_errors, 'ledger_entries': ledger_state.get('entries', 0)},
             },
         }
