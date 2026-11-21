@@ -81,3 +81,12 @@ Reflection carries these frame references into the diagnosis queue. Discovery re
 A matching traceback frame is source context, not proof of root cause. `source_backed_root_cause_verified` remains false. Regression-test paths still need to be explicitly pinned, and the native proposal envelope still needs to match the discovery event and task hash. Existing historical observations without traceback frames are intentionally not backfilled from error labels or guessed source locations.
 
 The new regression suite covers in-project frame capture, hash binding, stale-source rejection, redaction and the no-exception path. No exception locals, arbitrary source execution, live source writes, trusted-learning admission or promotion are enabled by this feature.
+
+
+## AST-linked regression test suggestions
+
+When a discovery has a current, hash-matched source context, review can scan a bounded set of Python tests under `tests/` and parse their ASTs to find explicit imports of the target module. It returns the test path, test source SHA-256, matching import count and the evidence label `AST_IMPORT_REFERENCE_ONLY`.
+
+These are suggestions, not pinned regression tests. AST imports do not prove that the test exercises the failing behavior, asserts the correct outcome or is suitable for candidate evaluation. Review therefore leaves `pinned_regression_tests` open, does not populate the queue's `test_paths`, and does not stage a candidate. An operator must inspect and explicitly pin appropriate test files before proposal staging.
+
+Scanning is bounded to 400 test files, each at most 500 KiB, with at most eight suggestions returned. Test source is parsed as text; it is never imported or executed by the suggestion scanner.
