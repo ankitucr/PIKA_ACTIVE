@@ -176,6 +176,29 @@ class CandidateDiscoveryQueue:
             raise ExperimentError("Discovery queue items must be a list.")
         return value
 
+    def _current_source_binding(self, target_value: Any, expected_hash: Any) -> bool:
+        """Check a previously staged target/hash pair against the live project file."""
+        try:
+            relative = _safe_python_path(target_value)
+        except ExperimentError:
+            return False
+        if not isinstance(expected_hash, str) or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None:
+            return False
+        target = self.baseline.joinpath(*relative.parts)
+        cursor = self.baseline
+        for part in relative.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                return False
+        if not target.is_file():
+            return False
+        try:
+            if target.stat().st_size > 2_000_000:
+                return False
+            return hashlib.sha256(target.read_bytes()).hexdigest() == expected_hash
+        except OSError:
+            return False
+
     def _resolve_traceback_source_context(
         self,
         frames: Any,
@@ -403,8 +426,11 @@ class CandidateDiscoveryQueue:
                         previous["source_sha256"] = current_context["source_sha256"]
                         previous["traceback_context_status"] = "CURRENT_SOURCE_HASH_MATCH"
                     else:
-                        previous.pop("target", None)
-                        previous.pop("source_sha256", None)
+                        if not self._current_source_binding(
+                            previous.get("target"), previous.get("source_sha256")
+                        ):
+                            previous.pop("target", None)
+                            previous.pop("source_sha256", None)
                         previous["traceback_context_status"] = "STALE_OR_UNAVAILABLE"
                 previous["review_gaps"] = _review_gaps(previous)
                 refreshed += 1
@@ -559,8 +585,11 @@ class CandidateDiscoveryQueue:
                 review_item["source_sha256"] = current_context["source_sha256"]
             else:
                 review_item.pop("source_context", None)
-                review_item.pop("target", None)
-                review_item.pop("source_sha256", None)
+                if not self._current_source_binding(
+                    review_item.get("target"), review_item.get("source_sha256")
+                ):
+                    review_item.pop("target", None)
+                    review_item.pop("source_sha256", None)
             gaps = _review_gaps(review_item)
             summary_items.append(review_item)
             reflection_missing = _safe_evidence_gaps(
