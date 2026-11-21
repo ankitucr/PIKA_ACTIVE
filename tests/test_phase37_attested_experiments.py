@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -11,10 +12,12 @@ from core.evolution.attested_experiments import CandidateAttestationError, Resul
 from core.evolution.controller import EvolutionController
 from core.evolution.experiments import CandidateExperimentEngine
 from core.phase36.result_learning import ResultAttestedLearningGate, ResultLearningGateError
+from core.evolution.cli import main as evolution_cli_main
 from core.phase36.result_attestation import (
     RunAttestationReplayGuard,
     RunResultAttestationTrustPolicy,
     ResultBoundSandboxRunner,
+    TRUST_CONFIG_SCHEMA,
 )
 
 _SERIALIZATION = pytest.importorskip('cryptography.hazmat.primitives.serialization')
@@ -253,3 +256,45 @@ def test_result_attested_learning_gate_rejects_tampered_run_and_aggregate_summar
     report['candidate']['passed_runs'] = 1
     with pytest.raises(ResultLearningGateError, match='aggregate summary'):
         ResultAttestedLearningGate(_POLICY).verify_report(report)
+
+
+
+def test_operator_cli_reverifies_attested_report_with_external_public_key(tmp_path, monkeypatch, capsys):
+    root = _project(tmp_path / 'repo')
+    controller = EvolutionController(root)
+    candidate_id = _candidate(controller.experiments, root)
+    backend = SignedComparisonBackend(baseline_passed=False, candidate_passed=True)
+    report_result = ResultAttestedCandidateExperimentEngine(
+        controller.experiments, _runner(tmp_path, root, backend)
+    ).evaluate_candidate(candidate_id)
+    report_path = Path(report_result['report_path'])
+
+    host = _runner_config_dir = tmp_path / 'external-host-config'
+    host.mkdir(mode=0o700)
+    host.chmod(0o700)
+    trust_path = host / 'attestors.json'
+    trust_path.write_text(json.dumps({
+        'schema': TRUST_CONFIG_SCHEMA,
+        'max_age_seconds': 300,
+        'attestors': {
+            _ATTESTOR: {
+                'public_key_hex': _PUBLIC_KEY.hex(),
+                'backend_ids': [_BACKEND],
+            }
+        },
+    }), encoding='utf-8')
+    trust_path.chmod(0o600)
+
+    monkeypatch.setattr(sys, 'argv', [
+        'pika-evolution',
+        'verify-attested-learning',
+        '--root', str(root),
+        '--report-file', str(report_path),
+        '--attestor-config', str(trust_path),
+    ])
+    assert evolution_cli_main() == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output['valid'] is True
+    assert output['admission_eligible'] is True
+    assert output['automatic_memory_write'] is False
+    assert output['production_promotion'] == 'BLOCKED'
