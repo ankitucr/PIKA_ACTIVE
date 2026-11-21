@@ -135,7 +135,13 @@ def _validate_group(group: Any, repetitions: int) -> dict[str, Any]:
     }
 
 
-def _validate_decision(decision: str, baseline: dict[str, Any], candidate: dict[str, Any], repetitions: int) -> None:
+def _validate_decision(
+    decision: str,
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+    repetitions: int,
+    performance_threshold: float,
+) -> None:
     base_ok, cand_ok = baseline['all_passed'], candidate['all_passed']
     if cand_ok and not base_ok:
         expected = "FUNCTIONAL_IMPROVEMENT_UNVERIFIED"
@@ -144,17 +150,21 @@ def _validate_decision(decision: str, baseline: dict[str, Any], candidate: dict[
     elif candidate['passed_runs'] > baseline['passed_runs']:
         expected = "PARTIAL_IMPROVEMENT_UNVERIFIED"
     elif base_ok and cand_ok:
-        if decision == 'PERFORMANCE_IMPROVEMENT_UNVERIFIED':
-            same_tests = baseline['tests_passed'] == candidate['tests_passed']
-            faster = candidate['median_duration_s'] < baseline['median_duration_s']
-            if repetitions < 3 or not same_tests or not faster:
-                raise VerifiedMemoryError("Performance-improvement decision is not supported by run evidence.")
-            return
-        expected = 'NO_SIGNIFICANT_IMPROVEMENT'
+        base_time = baseline['median_duration_s']
+        candidate_time = candidate['median_duration_s']
+        qualifies = (
+            repetitions >= 3
+            and baseline['tests_passed'] == candidate['tests_passed']
+            and isinstance(base_time, (int, float))
+            and isinstance(candidate_time, (int, float))
+            and base_time > 0
+            and candidate_time <= base_time * (1.0 - performance_threshold)
+        )
+        expected = 'PERFORMANCE_IMPROVEMENT_UNVERIFIED' if qualifies else 'NO_SIGNIFICANT_IMPROVEMENT'
     else:
         expected = 'NO_VERIFIED_IMPROVEMENT'
     if decision != expected:
-        raise VerifiedMemoryError("Experiment decision contradicts baseline/candidate run outcomes.")
+        raise VerifiedMemoryError("Experiment decision contradicts baseline/candidate run outcomes and performance threshold.")
 
 
 class VerifiedExperimentMemory:
@@ -303,7 +313,16 @@ class VerifiedExperimentMemory:
         decision = report.get('decision')
         if not isinstance(decision, str) or decision not in ALLOWED_DECISIONS:
             raise VerifiedMemoryError("Unknown experiment decision.")
-        _validate_decision(decision, baseline, candidate, repetitions)
+        performance_threshold = report.get('performance_threshold', 0.10)
+        if isinstance(performance_threshold, bool) or not isinstance(performance_threshold, (int, float)) or not math.isfinite(float(performance_threshold)) or not 0 <= performance_threshold <= 0.5:
+            raise VerifiedMemoryError('Performance threshold must be finite and between 0 and 0.5.')
+        _validate_decision(decision, baseline, candidate, repetitions, float(performance_threshold))
+        argv = report.get('argv')
+        if not isinstance(argv, list) or len(argv) < 4 or argv[:3] != ['python', '-m', 'pytest'] or any(not isinstance(value, str) or not value for value in argv):
+            raise VerifiedMemoryError('Experiment argv must be a valid explicit pytest command.')
+        timeout = report.get('timeout')
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 900:
+            raise VerifiedMemoryError('Experiment timeout must be between 1 and 900 seconds.')
         target = _safe_repo_path(report.get('target'))
         baseline_sha = _sha(report.get('baseline_sha256'))
         candidate_sha = _sha(report.get('candidate_sha256'))
@@ -320,7 +339,9 @@ class VerifiedExperimentMemory:
             'report_sha256': report_sha, 'report_path': str(source), 'target': target,
             'baseline_sha256': baseline_sha, 'candidate_sha256': candidate_sha,
             'test_hashes': clean_tests, 'decision': decision, 'baseline': baseline,
-            'candidate': candidate, 'repetitions': repetitions, 'recorded_at': time.time(),
+            'candidate': candidate, 'argv': list(argv), 'timeout': timeout,
+            'performance_threshold': float(performance_threshold),
+            'repetitions': repetitions, 'recorded_at': time.time(),
             'evidence_class': 'LOCAL_DIAGNOSTIC_ONLY', 'trust': 'UNVERIFIED',
             'replay_allowed': False, 'promotion_allowed': False, 'human_review_required': True
         }
