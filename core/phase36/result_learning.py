@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import statistics
 from typing import Any, Mapping
@@ -134,12 +136,12 @@ class ResultAttestedLearningGate:
                 or candidate_manifest.get(target) != candidate_target_hash
                 or baseline_target_hash == candidate_target_hash):
             raise ResultLearningGateError("Declared candidate target hashes do not match the full manifests.")
-        if report.get("baseline_tree_sha256") != __import__("hashlib").sha256(
-            __import__("json").dumps(baseline_manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        if report.get("baseline_tree_sha256") != hashlib.sha256(
+            json.dumps(baseline_manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest():
             raise ResultLearningGateError("Baseline tree digest does not match its source manifest.")
-        if report.get("candidate_tree_sha256") != __import__("hashlib").sha256(
-            __import__("json").dumps(candidate_manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        if report.get("candidate_tree_sha256") != hashlib.sha256(
+            json.dumps(candidate_manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest():
             raise ResultLearningGateError("Candidate tree digest does not match its source manifest.")
 
@@ -157,7 +159,11 @@ class ResultAttestedLearningGate:
                 attestation = run.get("attestation")
                 if not isinstance(challenge, dict) or not isinstance(attestation, dict):
                     raise ResultLearningGateError(f"{label} run is missing its challenge or signature.")
-                if not self.trust_policy.verify(attestation, challenge):
+                verified_at = attestation.get("verified_at")
+                if (isinstance(verified_at, bool) or not isinstance(verified_at, (int, float))
+                        or not math.isfinite(float(verified_at))):
+                    raise ResultLearningGateError(f"{label} run attestation timestamp is invalid.")
+                if not self.trust_policy.verify(attestation, challenge, now=float(verified_at)):
                     raise ResultLearningGateError(f"{label} run has an invalid or untrusted result attestation.")
                 if challenge.get("argv") != argv or challenge.get("timeout") != timeout:
                     raise ResultLearningGateError(f"{label} run command or timeout differs from report.")
