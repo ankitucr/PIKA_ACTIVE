@@ -15,6 +15,7 @@ class NativeCognitionAgent(Agent):
     capabilities = [
         "python_static_analysis",
         "python_syntax_validation",
+        "python_snippet_comparison",
         "github_repository_learning",
         "code_evidence_retrieval",
         "engineering_knowledge_retrieval",
