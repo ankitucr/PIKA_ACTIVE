@@ -21,6 +21,7 @@ def main() -> int:
             "candidate-stage",
             "candidate-evaluate",
             "discover-candidates",
+            "review-discoveries",
             "candidate-stage-native",
             "record-experiment-memory",
             "verify-experiment-memory",
@@ -69,6 +70,8 @@ def main() -> int:
         evolution.ledger.append("experience_recorded", {"category": args.category})
     elif args.command == "discover-candidates":
         result = evolution.refresh_candidate_discovery()
+    elif args.command == "review-discoveries":
+        result = evolution.review_candidate_discoveries()
     elif args.command == "record-experiment-memory":
         if not args.report_file:
             parser.error("record-experiment-memory requires --report-file")
