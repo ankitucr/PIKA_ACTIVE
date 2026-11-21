@@ -35,9 +35,11 @@ def main():
     if args.learning_approver_id == args.promotion_approver_id:
         parser.error("Learning and promotion approver IDs must be different.")
     configs = []
+    rollback_id = "pika-rollback-approver-01"
     for purpose, identity, stem in (
         ("TRUSTED_LEARNING_ADMISSION", args.learning_approver_id, "learning"),
         ("PRODUCTION_PROMOTION", args.promotion_approver_id, "promotion"),
+        ("PRODUCTION_ROLLBACK", rollback_id, "rollback"),
     ):
         key = Ed25519PrivateKey.generate()
         private = key.private_bytes(
