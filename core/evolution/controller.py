@@ -186,8 +186,10 @@ class EvolutionController:
         return self.discovery.refresh(reflection, diagnostics)
 
     def review_candidate_discoveries(self):
-        """Read-only report of evidence gaps for all queued failure discoveries."""
-        return self.discovery.review()
+        """Read-only report of queue gaps joined to current live reflection/diagnostics."""
+        reflection = reflect(self.memory.path, live_only=True)
+        diagnostics = analyze_file(self.memory.path)
+        return self.discovery.review(reflection, diagnostics)
 
     def stage_native_proposal(self, discovery_id, proposal, *, test_paths=None):
         """Stage a native repair proposal against its exact current source and tests."""
