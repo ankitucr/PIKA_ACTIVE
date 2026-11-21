@@ -57,3 +57,18 @@ result = controller.evaluate_candidate_attested(candidate_id, result_runner=runn
 ## Exit proof
 
 Phase 37.3 is complete only after a separately administered OS backend provides independently measured result signatures; adversarial tests reject forged, stale, replayed and mismatched receipts; repeated comparisons preserve exact source/test identity; signed failures remain comparison-only; and trusted-learning admission remains separate from human production promotion.
+## Durable learning-evidence re-verification
+
+`core/phase36/result_learning.py` provides `ResultAttestedLearningGate`. It re-verifies every baseline and candidate Ed25519 result signature using the signed attestor timestamp, then independently checks run outcomes, durations, non-reused challenge/verification identities, full source manifests, byte-identical test hashes, aggregate summaries and the reported decision.
+
+Only a fully passing candidate with a result-attested functional or threshold-qualified performance improvement is marked `ELIGIBLE_PENDING_OPERATOR_ADMISSION`. Failed, partial, regression or no-improvement reports are comparison evidence only. The gate never writes Experience Memory, never grants replay, and never promotes source.
+
+Operator CLI (requires the externally administered owner-only public-key config and the report file):
+
+```bash
+python -m core.evolution.cli verify-attested-learning --root . \\
+  --report-file PIKA_KNOWLEDGE/PHASE37_EXPERIMENTS/runs/result_attested/REPORT.json \\
+  --attestor-config /etc/pika/trust/result-attestors.json
+```
+
+The config must remain outside the PIKA project root. Missing or invalid trust configuration fails closed.
