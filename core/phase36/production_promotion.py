@@ -498,6 +498,7 @@ class ProductionPromotionManager:
             "candidate_id": plan["candidate_id"],
             "approval_nonce": approval["nonce"],
             "approval_sha256": approval_info["approval_sha256"],
+            "promotion_approver_key_sha256": approval_info["approver_key_sha256"],
             "baseline_sha256": plan["baseline_sha256"],
             "candidate_sha256": plan["candidate_sha256"],
             "rollback_snapshot_sha256": plan["rollback"]["snapshot_sha256"],
@@ -565,6 +566,7 @@ class ProductionPromotionManager:
             "admission_sha256": plan["admission_sha256"],
             "promotion_approval_sha256": approval_info["approval_sha256"],
             "promotion_approver_id": approval_info["approver_id"],
+            "promotion_approver_key_sha256": approval_info["approver_key_sha256"],
             "post_promotion_result_sha256": post["result_attestation"]["result_sha256"],
             "rollback_snapshot_sha256": plan["rollback"]["snapshot_sha256"],
             "rollback_rehearsal": "PASS",
@@ -603,6 +605,34 @@ class ProductionPromotionManager:
             "rollback_snapshot_sha256": plan["rollback"]["snapshot_sha256"],
         }
 
+    def _promotion_approver_keys(self, plan_id: str) -> set[str]:
+        keys: set[str] = set()
+        if not self.journal.exists():
+            return keys
+        if self.journal.is_symlink() or self.journal.stat().st_size > MAX_PROMOTION_JOURNAL_BYTES:
+            raise ProductionPromotionError("Promotion ledger is unsafe or oversized.")
+        previous = "0" * 64
+        for number, line in enumerate(self.journal.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                row = json.loads(line)
+                body = {
+                    "event": row["event"],
+                    "payload": row["payload"],
+                    "previous_hash": row["previous_hash"],
+                }
+                expected = _sha(_canonical(body))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ProductionPromotionError(f"Promotion ledger is corrupt at line {number}.") from exc
+            if row.get("previous_hash") != previous or row.get("entry_hash") != expected:
+                raise ProductionPromotionError(f"Promotion ledger hash chain failed at line {number}.")
+            previous = expected
+            payload = row.get("payload", {})
+            if payload.get("plan_id") == plan_id:
+                key_sha = payload.get("promotion_approver_key_sha256")
+                if isinstance(key_sha, str):
+                    keys.add(key_sha)
+        return keys
+
     def rollback(
         self,
         plan_path: str | Path,
@@ -621,6 +651,12 @@ class ProductionPromotionManager:
             approval_info = approval_policy.verify(approval, expected_payload)
         except OperatorApprovalError as exc:
             raise ProductionPromotionError(f"Production rollback approval rejected: {exc}") from exc
+        admission = self.admission.find_report(plan["report_sha256"])
+        if not admission:
+            raise ProductionPromotionError("Trusted learning admission is missing or invalid before rollback.")
+        used_keys = {admission["approver_key_sha256"]} | self._promotion_approver_keys(plan["plan_id"])
+        if approval_info["approver_key_sha256"] in used_keys:
+            raise ProductionPromotionError("Manual rollback must use a third distinct Ed25519 operator key.")
         row_start = self._append_event("manual_rollback_started", {
             "plan_id": plan["plan_id"],
             "candidate_id": plan["candidate_id"],
