@@ -70,3 +70,14 @@ Invalid syntax yields `INCOMPLETE_INVALID_SYNTAX`; no structural diff is claimed
 ## Signature-level fidelity
 
 The AST analyzer now preserves Python's positional-only `/`, positional parameter defaults, `*args`, keyword-only `*`, keyword-only defaults, `**kwargs`, argument annotations and return annotations in structural signatures. Existing `argument_annotations` continues to contain annotated parameter names for compatibility; the additive `argument_annotation_types` field contains the annotation expressions themselves. Regression tests cover the full signature shape.
+
+
+## Hash-bound traceback source context
+
+Failure telemetry now captures only a bounded set of project-relative Python traceback frame references for uncaught exceptions: relative path, line number, function name and the SHA-256 of the source file at observation time. Raw traceback strings, local variables, raw task text and raw model output are not added to the observation.
+
+Reflection carries these frame references into the diagnosis queue. Discovery review then re-opens the referenced file inside the configured PIKA project root, rejects symlinked or out-of-root paths, checks the full current file hash, and builds a small source excerpt from the current file. Sensitive key/token/password assignments and private-key marker lines are redacted before the excerpt is surfaced. A changed or missing file is marked `STALE_OR_UNAVAILABLE` and does not satisfy source-binding gaps.
+
+A matching traceback frame is source context, not proof of root cause. `source_backed_root_cause_verified` remains false. Regression-test paths still need to be explicitly pinned, and the native proposal envelope still needs to match the discovery event and task hash. Existing historical observations without traceback frames are intentionally not backfilled from error labels or guessed source locations.
+
+The new regression suite covers in-project frame capture, hash binding, stale-source rejection, redaction and the no-exception path. No exception locals, arbitrary source execution, live source writes, trusted-learning admission or promotion are enabled by this feature.
