@@ -89,3 +89,24 @@ def test_native_modules_have_no_external_inference_imports():
 def test_cross_language_extensions_available_to_lexical_index():
     from core import git_learning_loop
     assert {".py", ".js", ".ts", ".dart", ".html"}.issubset(git_learning_loop.SOURCE_EXTENSIONS)
+
+
+
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        "UNSUPPORTED_NATIVE_OPERATION",
+        "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
+    ],
+)
+def test_unsupported_native_failures_have_machine_readable_non_retryable_contract(error_code):
+    result = NativeCognitionEngine._failure(error_code, "No verified native handler.")
+    assert result["success"] is False
+    assert result["agent"] == "native"
+    assert result["error"] == error_code
+    assert result["failure_class"] == "unsupported_native_capability"
+    assert result["capability_gap"] is True
+    assert result["retryable"] is False
+    assert result["raw"]["failure_class"] == "unsupported_native_capability"
+    assert result["raw"]["capability_gap"] is True
+    assert result["raw"]["retryable"] is False
