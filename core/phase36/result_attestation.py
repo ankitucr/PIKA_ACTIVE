@@ -257,12 +257,16 @@ class RunResultAttestationTrustPolicy:
                 or not math.isfinite(float(verified_at)) or verified_at <= 0
                 or verified_at > current + 30 or current - verified_at > self.max_age_seconds):
             return False
-        if verified_at < result['finished_at'] - 2:
+        if verified_at < result['finished_at'] - 2 or result['finished_at'] > current + 30:
+            return False
+        if result['finished_at'] - result['started_at'] > challenge['timeout'] + 60:
+            return False
+        if current - challenge['issued_at'] > self.max_age_seconds or challenge['issued_at'] > current + 30:
             return False
         if challenge['issued_at'] > result['started_at'] + 30:
             return False
         verification_id = attestation.get('verification_id')
-        if not isinstance(verification_id, str) or not verification_id or len(verification_id) > 256:
+        if not isinstance(verification_id, str) or not verification_id.strip() or len(verification_id) > 256:
             return False
         if attestation.get('signature_algorithm') != 'ed25519':
             return False
