@@ -78,6 +78,13 @@ backups/
 /PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/
 /PIKA_KNOWLEDGE/PHASE37_EXPERIMENTS/
 
+# Never commit provisioned host identities, tokens, or offline approvals
+/host_attestor/*.pem
+/host_attestor/*token*
+/host_attestor/host-config*.json
+/host_attestor/*approval*.json
+/host_attestor/generated/
+
 # PIKA private runtime knowledge and personal state
 /PIKA_KNOWLEDGE/*LEDGER*.jsonl
 /PIKA_KNOWLEDGE/*MEMORY*.jsonl
