@@ -371,3 +371,23 @@ def test_attestation_signing_payload_rejects_unexpected_fields():
     attestation = _sign(challenge)
     attestation['untrusted_extra'] = True
     assert _POLICY.verify(attestation, challenge) is False
+
+
+def test_policy_rejects_malformed_backend_identity_without_raising():
+    challenge = _challenge()
+    attestation = _sign(challenge)
+    forged = dict(attestation, backend_id=['not-a-string'])
+    assert _POLICY.verify(forged, challenge) is False
+
+
+def test_replay_guard_rejects_non_string_journal_identity_as_corruption(tmp_path):
+    project = tmp_path / 'project'
+    project.mkdir()
+    store_path = _host_directory(tmp_path) / 'malformed.jsonl'
+    store_path.write_text(json.dumps({
+        'challenge_nonce': [], 'verification_id': [], 'result_sha256': '0' * 64,
+        'recorded_at': time.time(), 'previous_hash': '0' * 64, 'entry_hash': '0' * 64
+    }) + chr(10), encoding='utf-8')
+    store_path.chmod(0o600)
+    with pytest.raises(ResultAttestationError, match='identity/time'):
+        RunAttestationReplayGuard(store_path, project_root=project).consume(_sign(_challenge()))
