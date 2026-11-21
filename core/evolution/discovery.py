@@ -383,24 +383,45 @@ class CandidateDiscoveryQueue:
             "promotion": "BLOCKED",
         }
 
-    def review(self) -> dict[str, Any]:
+    def review(
+        self,
+        reflection: dict[str, Any] | None = None,
+        diagnostic_analysis: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return a bounded read-only evidence-gap report; never infer a root cause."""
         queue = self._load()
+        reflection = reflection if isinstance(reflection, dict) else {}
+        diagnostic_analysis = diagnostic_analysis if isinstance(diagnostic_analysis, dict) else {}
+        reflection_by_event = {
+            row.get("event_id"): row
+            for row in reflection.get("diagnosis_queue", [])
+            if isinstance(row, dict) and isinstance(row.get("event_id"), str)
+        } if isinstance(reflection.get("diagnosis_queue"), list) else {}
+        diagnostics_by_event = {
+            row.get("event_id"): row
+            for row in diagnostic_analysis.get("events", [])
+            if isinstance(row, dict) and isinstance(row.get("event_id"), str)
+        } if isinstance(diagnostic_analysis.get("events"), list) else {}
         items = []
         for item in queue["items"]:
             if not isinstance(item, dict):
                 continue
             gaps = _review_gaps(item)
+            live_reflection = reflection_by_event.get(item.get("event_id"), {})
+            live_diagnostic = diagnostics_by_event.get(item.get("event_id"), {})
+            reflection_missing = _safe_evidence_gaps(
+                item.get("evidence_missing") or live_reflection.get("evidence_missing")
+            )
             fingerprints = item.get("issue_fingerprints")
             classifications = item.get("attempt_classifications")
             items.append({
                 "discovery_id": item.get("discovery_id"),
                 "event_id": item.get("event_id"),
                 "outcome": item.get("outcome"),
-                "diagnostic_classification": item.get("diagnostic_classification"),
+                "diagnostic_classification": item.get("diagnostic_classification") or _safe_classification(live_diagnostic.get("event_classification")),
                 "issue_fingerprints": fingerprints[:12] if isinstance(fingerprints, list) else [],
                 "attempt_classifications": classifications[:12] if isinstance(classifications, list) else [],
-                "reflection_evidence_missing": item.get("evidence_missing", []),
+                "reflection_evidence_missing": reflection_missing,
                 "review_gaps": gaps,
                 "state": item.get("state", "UNKNOWN"),
                 "source_backed_root_cause_verified": False,
