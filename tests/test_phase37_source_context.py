@@ -37,10 +37,12 @@ def _raise_from_project(root: Path, *, test_frame: bool = True):
         encoding="utf-8",
     )
     try:
+        test_namespace = {"fail": namespace["fail"]}
         exec(
             compile(test_path.read_text(encoding="utf-8"), str(test_path), "exec"),
-            {"fail": namespace["fail"]},
+            test_namespace,
         )
+        test_namespace["test_failure"]()
     except RuntimeError as exc:
         return exc
     raise AssertionError("fixture did not raise")
@@ -76,6 +78,10 @@ def test_source_context_validation_marks_changed_file_as_historical_not_current(
     context = capture_exception_source_context(exception, root)
     assert context is not None
 
+    original_digest = next(
+        row["source_sha256"] for row in context["frames"]
+        if row["path"] == "core/broken.py"
+    )
     (root / "core" / "broken.py").write_text(
         "def fail():\n    return None\n",
         encoding="utf-8",
@@ -84,7 +90,7 @@ def test_source_context_validation_marks_changed_file_as_historical_not_current(
 
     assert checked is not None
     frame = next(row for row in checked["frames"] if row["path"] == "core/broken.py")
-    assert frame["source_sha256"] == context["frames"][0]["source_sha256"] or len(frame["source_sha256"]) == 64
+    assert frame["source_sha256"] == original_digest
     assert frame["current_source_matches"] is False
     assert frame["snippet"]
 
