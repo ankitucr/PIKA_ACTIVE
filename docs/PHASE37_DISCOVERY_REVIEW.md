@@ -58,3 +58,11 @@ The result includes syntax validity, source digest, imports, bounded symbol meta
 Regression coverage includes valid source, invalid syntax, fenced-source extraction, missing source, the 64 KiB input limit, read-only behavior and capability metadata.
 
 `NativeCognitionEngine.status()` now exposes the implemented native capability inventory and explicitly reports arbitrary workspace code generation as `UNSUPPORTED`; the status contract is covered by regression tests.
+
+## Python baseline/candidate structural comparison
+
+`NativeCognitionEngine.compare_python_snippets(baseline_source, candidate_source)` provides a second bounded native operation. The task router accepts `compare python snippets` with the two explicit context fields or exactly two fenced Python blocks.
+
+The operation applies the existing 65,536-byte limit independently to each input and uses the deterministic AST analyzer. It returns a deterministic comparison ID bound to both source SHA-256 values, added/removed/changed symbol names and signatures, import changes, AST metric deltas, and added/removed static findings.
+
+Invalid syntax yields `INCOMPLETE_INVALID_SYNTAX`; no structural diff is claimed. A completed structural comparison does not claim that a candidate is better, semantically equivalent or runtime-correct. Both inputs remain untrusted data and are never imported, executed, modified or persisted. Promotion remains false.
