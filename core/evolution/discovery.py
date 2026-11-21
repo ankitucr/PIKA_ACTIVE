@@ -72,6 +72,33 @@ def _safe_classification(value: Any) -> str | None:
     return value if value in _DIAGNOSTIC_CLASSES else None
 
 
+def _safe_evidence_gaps(value: Any) -> list[str]:
+    allowed = {"evaluator_result", "error_trace", "source_backed_diagnosis"}
+    if not isinstance(value, list):
+        return []
+    return sorted({item for item in value if isinstance(item, str) and item in allowed})
+
+
+def _review_gaps(item: dict[str, Any]) -> list[str]:
+    gaps = []
+    source_context = item.get("source_context")
+    snippets = source_context.get("snippets") if isinstance(source_context, dict) else None
+    if not isinstance(snippets, list) or not snippets:
+        gaps.append("traceback_referenced_source_context")
+    target = item.get("target")
+    source_hash = item.get("source_sha256")
+    if not isinstance(target, str) or not target or not isinstance(source_hash, str) or re.fullmatch(r"[0-9a-f]{64}", source_hash) is None:
+        gaps.append("current_source_binding")
+    test_paths = item.get("test_paths")
+    if not isinstance(test_paths, list) or not test_paths:
+        gaps.append("pinned_regression_tests")
+    candidate_ids = item.get("candidate_ids")
+    proposal_id = item.get("proposal_id")
+    if not (isinstance(candidate_ids, list) and candidate_ids) and not (isinstance(proposal_id, str) and re.fullmatch(r"[0-9a-f]{32}", proposal_id)):
+        gaps.append("native_proposal_envelope")
+    return gaps
+
+
 def _canonical(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -238,9 +265,11 @@ class CandidateDiscoveryQueue:
                 diag.get("event_classification")
             )
 
+            evidence_missing = _safe_evidence_gaps(item.get("evidence_missing"))
             previous = existing.get(discovery_id)
             if previous is not None:
                 previous["last_seen_at"] = time.time()
+                previous["evidence_missing"] = evidence_missing
                 previous["diagnostic_classification"] = diagnostic_classification
                 previous["agent"] = _bounded_text(item.get("agent"), 80)
                 previous["strategy"] = _bounded_text(item.get("strategy"), 80)
@@ -256,6 +285,7 @@ class CandidateDiscoveryQueue:
                 previous["issue_fingerprints"] = safe_fingerprints
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
+                previous["review_gaps"] = _review_gaps(previous)
                 refreshed += 1
                 continue
 
@@ -280,13 +310,16 @@ class CandidateDiscoveryQueue:
                 "diagnostic_classification": diagnostic_classification,
                 "repeated_issue_fingerprints": safe_fingerprints[:8],
                 "attempt_classifications": classifications[:12],
+                "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
+                "source_context": None,
                 "state": "SOURCE_REVIEW_REQUIRED",
-                "next_action": "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS",
+                "next_action": "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS",
                 "candidate_ids": [],
                 "created_at": time.time(),
                 "last_seen_at": time.time(),
             }
+            queue_item["review_gaps"] = _review_gaps(queue_item)
             existing[discovery_id] = queue_item
             added += 1
         
@@ -327,9 +360,15 @@ class CandidateDiscoveryQueue:
     @staticmethod
     def _summarize(items: list[dict[str, Any]]) -> dict[str, Any]:
         states: dict[str, int] = {}
+        gap_counts: dict[str, int] = {}
+        review_required = 0
         for item in items:
             state = item.get("state", "UNKNOWN")
             states[state] = states.get(state, 0) + 1
+            if state == "SOURCE_REVIEW_REQUIRED":
+                review_required += 1
+            for gap in _review_gaps(item):
+                gap_counts[gap] = gap_counts.get(gap, 0) + 1
         return {
             "item_count": len(items),
             "states": dict(sorted(states.items())),
@@ -337,9 +376,55 @@ class CandidateDiscoveryQueue:
                 len(item.get("candidate_ids", []))
                 for item in items if isinstance(item.get("candidate_ids"), list)
             ),
+            "source_review_required_count": review_required,
+            "review_gap_counts": dict(sorted(gap_counts.items())),
             "source_backed_root_causes_verified": 0,
             "automatic_execution": False,
             "promotion": "BLOCKED",
+        }
+
+    def review(self) -> dict[str, Any]:
+        """Return a bounded read-only evidence-gap report; never infer a root cause."""
+        queue = self._load()
+        items = []
+        for item in queue["items"]:
+            if not isinstance(item, dict):
+                continue
+            gaps = _review_gaps(item)
+            fingerprints = item.get("issue_fingerprints")
+            classifications = item.get("attempt_classifications")
+            items.append({
+                "discovery_id": item.get("discovery_id"),
+                "event_id": item.get("event_id"),
+                "outcome": item.get("outcome"),
+                "diagnostic_classification": item.get("diagnostic_classification"),
+                "issue_fingerprints": fingerprints[:12] if isinstance(fingerprints, list) else [],
+                "attempt_classifications": classifications[:12] if isinstance(classifications, list) else [],
+                "reflection_evidence_missing": item.get("evidence_missing", []),
+                "review_gaps": gaps,
+                "state": item.get("state", "UNKNOWN"),
+                "source_backed_root_cause_verified": False,
+                "candidate_ids": item.get("candidate_ids", []),
+                "next_action": (
+                    "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS"
+                    if "traceback_referenced_source_context" in gaps
+                    else "ATTACH_SOURCE_BOUND_NATIVE_PROPOSAL_AND_TEST_PATHS"
+                ),
+            })
+        return {
+            "success": True,
+            "schema": "pika.phase37.discovery-review.v1",
+            "queue_path": str(self.path),
+            "summary": self._summarize(queue["items"]),
+            "items": items,
+            "policy": {
+                "mode": "READ_ONLY_EVIDENCE_GAP_REVIEW",
+                "root_cause_inferred": False,
+                "source_modified": False,
+                "candidate_executed": False,
+                "trusted_learning_allowed": False,
+                "promotion": "BLOCKED",
+            },
         }
 
     def summary(self) -> dict[str, Any]:
