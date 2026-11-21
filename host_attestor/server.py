@@ -62,6 +62,18 @@ def _json_no_duplicates(pairs):
     return result
 
 
+def _absolute_no_symlinks(path: str | Path, *, must_exist: bool = True) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    cursor = absolute
+    while True:
+        if cursor.is_symlink():
+            raise HostAttestorError("Symlinks are forbidden in protected host paths.")
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    return absolute.resolve(strict=must_exist)
+
+
 def _read_owner_file(path: Path, *, maximum: int = 65536) -> bytes:
     if path.is_symlink() or not path.is_file():
         raise HostAttestorError(f"Protected host file is missing or is a symlink: {path.name}")
@@ -70,6 +82,11 @@ def _read_owner_file(path: Path, *, maximum: int = 65536) -> bytes:
         raise HostAttestorError(f"{path.name} must have owner-only permissions.")
     if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
         raise HostAttestorError(f"{path.name} must be owned by the attestor service user.")
+    parent_meta = path.parent.stat()
+    if stat.S_IMODE(parent_meta.st_mode) & 0o077:
+        raise HostAttestorError(f"{path.parent.name} must have owner-only permissions.")
+    if hasattr(os, "geteuid") and parent_meta.st_uid != os.geteuid():
+        raise HostAttestorError(f"{path.parent.name} must be owned by the attestor service user.")
     if metadata.st_size < 1 or metadata.st_size > maximum:
         raise HostAttestorError(f"{path.name} has an invalid size.")
     return path.read_bytes()
@@ -290,7 +307,7 @@ class PodmanResultExecutor:
 
 class HostAttestor:
     def __init__(self, config_path: str | Path, *, executor=None):
-        self.config_path = Path(config_path).expanduser().resolve(strict=True)
+        self.config_path = _absolute_no_symlinks(config_path, must_exist=True)
         config_raw = _read_owner_file(self.config_path)
         try:
             self.config = json.loads(config_raw.decode("utf-8"), object_pairs_hook=_json_no_duplicates)
@@ -318,12 +335,12 @@ class HostAttestor:
             raise HostAttestorError("Invalid host service port.")
         if config["max_bundle_bytes"] != MAX_BUNDLE_BYTES:
             raise HostAttestorError("Host bundle limit must match the protocol limit.")
-        self.token_file = Path(config["token_file"]).expanduser().resolve(strict=True)
+        self.token_file = _absolute_no_symlinks(config["token_file"], must_exist=True)
         token = _read_owner_file(self.token_file, maximum=4096).decode("utf-8").strip()
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         if len(token) < 32 or not hmac.compare_digest(token_hash, config.get("token_sha256", "")):
             raise HostAttestorError("Bearer token does not match the pinned token hash.")
-        self.private_key_path = Path(config["private_key_file"]).expanduser().resolve(strict=True)
+        self.private_key_path = _absolute_no_symlinks(config["private_key_file"], must_exist=True)
         key_raw = _read_owner_file(self.private_key_path, maximum=16384)
         key = serialization.load_pem_private_key(key_raw, password=None)
         if not isinstance(key, Ed25519PrivateKey):
@@ -333,20 +350,71 @@ class HostAttestor:
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw,
         ).hex()
-        self.storage_dir = Path(config["storage_dir"]).expanduser().resolve()
+        self.storage_dir = _absolute_no_symlinks(config["storage_dir"], must_exist=False)
         self.storage_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.storage_dir.chmod(0o700)
+        if self.storage_dir.is_symlink():
+            raise HostAttestorError("Attestor storage directory symlink rejected.")
         self.executor = executor or PodmanResultExecutor(
             runtime=config["runner_runtime"], image=config["runner_image"],
             storage_dir=self.storage_dir,
         )
         self.audit_path = self.storage_dir / "attestation-audit.jsonl"
         self.audit_lock = self.storage_dir / "attestation-audit.lock"
-        replay_path = Path(config["replay_journal_file"]).expanduser().resolve()
+        self.nonce_path = self.storage_dir / "reserved-challenges.jsonl"
+        self.nonce_lock = self.storage_dir / "reserved-challenges.lock"
+        replay_path = _absolute_no_symlinks(config["replay_journal_file"], must_exist=False)
         self.replay_guard = RunAttestationReplayGuard(
             replay_path, project_root=Path(__file__).resolve().parents[1]
         )
         self.semaphore = threading.BoundedSemaphore(1)
+
+    def _reserve_challenge_nonce(self, nonce: str) -> None:
+        if not isinstance(nonce, str) or len(nonce) != 64:
+            raise HostAttestorError("Challenge nonce is invalid.")
+        lock_fd = os.open(self.nonce_lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+                raise HostAttestorError("Challenge nonce lock is not a regular file.")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            previous = "0" * 64
+            seen = set()
+            if self.nonce_path.exists():
+                if self.nonce_path.is_symlink() or self.nonce_path.stat().st_size > 100 * 1024 * 1024:
+                    raise HostAttestorError("Challenge nonce journal is unsafe or oversized.")
+                for number, line in enumerate(self.nonce_path.read_text(encoding="utf-8").splitlines(), 1):
+                    row = json.loads(line)
+                    body = {key: value for key, value in row.items() if key != "entry_hash"}
+                    expected = hashlib.sha256(_canonical(body)).hexdigest()
+                    if row.get("previous_hash") != previous or row.get("entry_hash") != expected:
+                        raise HostAttestorError(f"Challenge nonce journal corrupt at line {number}.")
+                    old_nonce = row.get("challenge_nonce")
+                    if not isinstance(old_nonce, str) or old_nonce in seen:
+                        raise HostAttestorError("Challenge nonce journal contains a duplicate or invalid identity.")
+                    seen.add(old_nonce)
+                    previous = expected
+            if nonce in seen:
+                raise HostAttestorError("Challenge nonce has already been reserved; replay denied before execution.")
+            body = {
+                "challenge_nonce": nonce,
+                "reserved_at": time.time(),
+                "previous_hash": previous,
+            }
+            row = {**body, "entry_hash": hashlib.sha256(_canonical(body)).hexdigest()}
+            encoded = _canonical(row) + b"\\n"
+            out = os.open(self.nonce_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            try:
+                written = os.write(out, encoded)
+                if written != len(encoded):
+                    raise OSError("Short challenge nonce reservation.")
+                os.fsync(out)
+            finally:
+                os.close(out)
+        finally:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
 
     def _append_audit(self, attestation: dict[str, Any], measurement: dict[str, Any]) -> None:
         fd = os.open(self.audit_lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -376,7 +444,7 @@ class HostAttestor:
                 "previous_hash": previous,
             }
             row = {**body, "entry_hash": hashlib.sha256(_canonical(body)).hexdigest()}
-            encoded = _canonical(row) + b"\\n"
+            encoded = _canonical(row) + b"\n"
             out = os.open(self.audit_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
             try:
                 written = os.write(out, encoded)
@@ -442,6 +510,7 @@ class HostAttestor:
                 source_dir.mkdir(mode=0o700)
                 _extract_bundle(bundle, source_dir, hashes)
                 source_dir.chmod(0o755)
+                self._reserve_challenge_nonce(challenge["challenge_nonce"])
                 result, measurement = self.executor.execute(source_dir, argv, challenge["timeout"])
         finally:
             self.semaphore.release()
