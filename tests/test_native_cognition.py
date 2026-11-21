@@ -241,3 +241,14 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
     }.intersection(agent.capabilities)
+
+
+
+def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
+    status = NativeCognitionEngine(tmp_path).status()
+    capabilities = set(status["native_capabilities"])
+    assert "python_static_analysis" in capabilities
+    assert "python_syntax_validation" in capabilities
+    assert "github_repository_learning" in capabilities
+    assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
+    assert status["source_execution_during_static_analysis"] is False
