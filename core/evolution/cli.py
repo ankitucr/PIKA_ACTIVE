@@ -26,6 +26,11 @@ def main() -> int:
             "record-experiment-memory",
             "verify-experiment-memory",
             "verify-attested-learning",
+            "prepare-learning-approval",
+            "admit-learning",
+            "promotion-plan",
+            "promote-candidate",
+            "rollback-candidate",
         ),
     )
     parser.add_argument("--root", default=".")
@@ -38,6 +43,14 @@ def main() -> int:
     parser.add_argument("--proposal-file")
     parser.add_argument("--report-file")
     parser.add_argument("--attestor-config")
+    parser.add_argument("--operator-approval-file")
+    parser.add_argument("--operator-trust-config")
+    parser.add_argument("--plan-file")
+    parser.add_argument("--rollback-root")
+    parser.add_argument("--attestor-url")
+    parser.add_argument("--attestor-token-file")
+    parser.add_argument("--attestor-backend-id")
+    parser.add_argument("--replay-journal")
     parser.add_argument("--baseline-root")
     parser.add_argument("--test-path", action="append", default=[])
     parser.add_argument("--expected-base-sha256")
@@ -95,6 +108,55 @@ def main() -> int:
         )
         result = evolution.verify_attested_learning_report(
             report, trust_policy=trust_policy
+        )
+    elif args.command == "prepare-learning-approval":
+        if not args.report_file or not args.attestor_config:
+            parser.error("prepare-learning-approval requires --report-file and --attestor-config")
+        result = evolution.prepare_learning_approval(
+            args.report_file, result_attestor_config=args.attestor_config
+        )
+    elif args.command == "admit-learning":
+        if not all((args.report_file, args.attestor_config, args.operator_approval_file, args.operator_trust_config)):
+            parser.error("admit-learning requires --report-file, --attestor-config, --operator-approval-file and --operator-trust-config")
+        result = evolution.admit_attested_learning(
+            args.report_file,
+            result_attestor_config=args.attestor_config,
+            operator_approval_file=args.operator_approval_file,
+            operator_trust_config=args.operator_trust_config,
+        )
+    elif args.command == "promotion-plan":
+        if not all((args.candidate_id, args.report_file, args.attestor_config, args.rollback_root)):
+            parser.error("promotion-plan requires --candidate-id, --report-file, --attestor-config and --rollback-root")
+        result = evolution.prepare_production_promotion(
+            args.candidate_id,
+            report_path=args.report_file,
+            result_attestor_config=args.attestor_config,
+            rollback_root=args.rollback_root,
+        )
+    elif args.command == "promote-candidate":
+        required = (
+            args.plan_file, args.operator_approval_file, args.operator_trust_config,
+            args.attestor_config, args.attestor_url, args.attestor_token_file,
+            args.attestor_backend_id, args.replay_journal, args.rollback_root,
+        )
+        if not all(required):
+            parser.error("promote-candidate requires --plan-file, operator approval/config, attestor config/url/token/backend, replay journal and rollback root")
+        result = evolution.promote_candidate(
+            plan_file=args.plan_file,
+            approval_file=args.operator_approval_file,
+            approval_trust_config=args.operator_trust_config,
+            result_attestor_config=args.attestor_config,
+            attestor_url=args.attestor_url,
+            attestor_token_file=args.attestor_token_file,
+            attestor_backend_id=args.attestor_backend_id,
+            replay_journal=args.replay_journal,
+            rollback_root=args.rollback_root,
+        )
+    elif args.command == "rollback-candidate":
+        if not args.plan_file or not args.rollback_root:
+            parser.error("rollback-candidate requires --plan-file and --rollback-root")
+        result = evolution.rollback_candidate(
+            plan_file=args.plan_file, rollback_root=args.rollback_root
         )
     elif args.command == "candidate-stage-native":
         if not args.discovery_id or not args.proposal_file:
