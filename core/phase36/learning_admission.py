@@ -141,7 +141,14 @@ class TrustedLearningAdmission:
 
     @staticmethod
     def _load_report(path: str | Path) -> tuple[Path, dict[str, Any], str]:
-        source, raw = _protected_file(path, maximum=MAX_REPORT_BYTES)
+        source = Path(path).expanduser()
+        if source.is_symlink() or not source.is_file():
+            raise LearningAdmissionError("Attested report must be a regular non-symlink file.")
+        source = source.resolve(strict=True)
+        metadata = source.stat()
+        if metadata.st_size > MAX_REPORT_BYTES or stat.S_IMODE(metadata.st_mode) & 0o022:
+            raise LearningAdmissionError("Attested report is oversized or group/world writable.")
+        raw = source.read_bytes()
         try:
             report = json.loads(raw.decode("utf-8"))
         except (UnicodeError, json.JSONDecodeError) as exc:
@@ -149,6 +156,36 @@ class TrustedLearningAdmission:
         if not isinstance(report, dict):
             raise LearningAdmissionError("Attested comparison report must be an object.")
         return source, report, hashlib.sha256(raw).hexdigest()
+
+    def approval_payload(
+        self,
+        report_path: str | Path,
+        *,
+        result_attestor_config: str | Path,
+        result_policy=None,
+    ) -> dict[str, Any]:
+        source, report, report_sha = self._load_report(report_path)
+        if result_policy is None:
+            result_policy = load_result_attestation_trust_policy(
+                result_attestor_config, project_root=self.root
+            )
+        try:
+            eligibility = ResultAttestedLearningGate(result_policy).verify_report(report)
+        except ResultLearningGateError as exc:
+            raise LearningAdmissionError(f"Result-attested learning verification failed: {exc}") from exc
+        if eligibility.get("admission_eligible") is not True:
+            raise LearningAdmissionError("Comparison is not eligible for trusted learning admission.")
+        return {
+            "action": "ADMIT_TRUSTED_LEARNING",
+            "report_sha256": report_sha,
+            "experiment_id": report["experiment_id"],
+            "candidate_id": report["candidate_id"],
+            "decision": eligibility["decision"],
+            "evidence_class": "INDEPENDENT_OS_RESULT_ATTESTATION",
+            "all_signatures_valid": True,
+            "candidate_all_runs_passed": True,
+            "improvement_verified": True,
+        }
 
     def admit(
         self,
@@ -171,17 +208,11 @@ class TrustedLearningAdmission:
             raise LearningAdmissionError(f"Result-attested learning verification failed: {exc}") from exc
         if eligibility.get("admission_eligible") is not True:
             raise LearningAdmissionError("Comparison is not eligible for trusted learning admission.")
-        payload = {
-            "action": "ADMIT_TRUSTED_LEARNING",
-            "report_sha256": report_sha,
-            "experiment_id": report["experiment_id"],
-            "candidate_id": report["candidate_id"],
-            "decision": eligibility["decision"],
-            "evidence_class": "INDEPENDENT_OS_RESULT_ATTESTATION",
-            "all_signatures_valid": True,
-            "candidate_all_runs_passed": True,
-            "improvement_verified": True,
-        }
+        payload = self.approval_payload(
+            report_path,
+            result_attestor_config=result_attestor_config,
+            result_policy=result_policy,
+        )
         approval_path, approval_raw = _protected_file(
             operator_approval_path, project_root=self.root, maximum=1_000_000
         )
@@ -203,6 +234,7 @@ class TrustedLearningAdmission:
             "decision": eligibility["decision"],
             "result_attestor_count": eligibility["baseline_runs_verified"] + eligibility["candidate_runs_verified"],
             "approver_id": approval_info["approver_id"],
+            "approver_key_sha256": approval_info["approver_key_sha256"],
             "approval_sha256": approval_info["approval_sha256"],
             "approval_nonce": approval["nonce"],
             "admitted_at": time.time(),
