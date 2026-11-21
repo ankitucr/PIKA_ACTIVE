@@ -20,8 +20,12 @@ from core.phase36.result_learning import ResultAttestedLearningGate
 
 class EvolutionController:
     def __init__(self, root="."):
-        self.root = Path(root).resolve()
+        requested_root = Path(root).expanduser()
+        self.root_input = str(requested_root.absolute())
+        self.root_input_is_symlink = requested_root.is_symlink()
+        self.root = requested_root.resolve()
         self.knowledge = self.root / "PIKA_KNOWLEDGE"
+        self.knowledge_real = self.knowledge.resolve()
         self.knowledge.mkdir(parents=True, exist_ok=True)
         self.identity = load_identity(self.knowledge)
         self.ledger = Ledger(self.knowledge / "EVOLUTION_LEDGER.jsonl")
@@ -43,6 +47,16 @@ class EvolutionController:
             "identity": self.identity["name"],
             "mission": self.identity["mission"],
             "python_file_count": inventory.get("python_file_count"),
+            "workspace_identity": {
+                "requested_root": self.root_input,
+                "project_root": str(self.root),
+                "knowledge_root": str(self.knowledge_real),
+                "root_input_is_symlink": self.root_input_is_symlink,
+                "knowledge_within_project": (
+                    self.knowledge_real == self.root
+                    or self.root in self.knowledge_real.parents
+                ),
+            },
             "ledger": ledger,
             "phase37": {
                 **self.experiments.summary(),
@@ -170,6 +184,10 @@ class EvolutionController:
         )
         temp.replace(diagnostic_path)
         return self.discovery.refresh(reflection, diagnostics)
+
+    def review_candidate_discoveries(self):
+        """Read-only report of evidence gaps for all queued failure discoveries."""
+        return self.discovery.review()
 
     def stage_native_proposal(self, discovery_id, proposal, *, test_paths=None):
         """Stage a native repair proposal against its exact current source and tests."""
