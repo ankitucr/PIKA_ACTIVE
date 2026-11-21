@@ -18,7 +18,9 @@ _DENIED_PARTS = frozenset({
 })
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _TRACE_FRAME = re.compile(
-    r'^\s*File "([^"\n]{1,1024})", line ([1-9][0-9]{0,8}), in ([^\r\n]{1,120})\s*_SECRET_ASSIGNMENT = re.compile(
+    r'''^\s*File "([^"\n]{1,1024})", line ([1-9][0-9]{0,8}), in ([^\r\n]{1,120})\s*$'''
+)
+_SECRET_ASSIGNMENT = re.compile(
     r"""(?i)((?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)"""
 )
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
