@@ -201,6 +201,87 @@ class NativeCognitionEngine:
                     found.append(value)
         return found
 
+    def analyze_python_snippet(self, source: str) -> dict[str, Any]:
+        """Analyze a bounded user-supplied Python snippet as data; never execute or persist it."""
+        if not isinstance(source, str) or not source.strip():
+            return {
+                "success": False,
+                "error": "PYTHON_SOURCE_REQUIRED",
+                "source_executed": False,
+                "source_modified": False,
+            }
+        encoded = source.encode("utf-8", errors="replace")
+        if len(encoded) > 65_536:
+            return {
+                "success": False,
+                "error": "PYTHON_SOURCE_TOO_LARGE",
+                "max_bytes": 65_536,
+                "actual_bytes": len(encoded),
+                "source_executed": False,
+                "source_modified": False,
+            }
+        result = self.analyzer.analyze_python_source(
+            source,
+            relative_path="submitted_snippet.py",
+            repository="user_supplied",
+            untrusted_source=True,
+        )
+        return {
+            "success": True,
+            "mode": "native_static_python_snippet_analysis",
+            "code_valid": result.get("parse_status") == "parsed",
+            "parse_status": result.get("parse_status"),
+            "parse_error": result.get("parse_error"),
+            "source_sha256": result.get("sha256"),
+            "source_bytes": result.get("bytes"),
+            "imports": result.get("imports", []),
+            "symbols": result.get("symbols", [])[:100],
+            "patterns": result.get("patterns", []),
+            "findings": result.get("findings", [])[:100],
+            "metrics": result.get("metrics", {}),
+            "source_executed": False,
+            "source_modified": False,
+            "source_persisted": False,
+            "trust": "UNTRUSTED_USER_SUPPLIED_SOURCE",
+            "limits": [
+                "AST structure only; no runtime behavior or semantic correctness is proven",
+                "Imports and dependencies are not loaded",
+                "The supplied source is not executed, modified, or persisted",
+            ],
+        }
+
+    @staticmethod
+    def _python_source_from_request(task: str, context: dict[str, Any]) -> str | None:
+        source = context.get("source_code")
+        if isinstance(source, str) and source.strip():
+            return source
+        match = re.search(r"```(?:python|py)\s*\n(.*?)```", task, re.I | re.S)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _format_python_snippet_report(result: dict[str, Any]) -> str:
+        metrics = result.get("metrics", {})
+        lines = [
+            "PIKA NATIVE PYTHON STATIC ANALYSIS",
+            f"Syntax: {'VALID' if result.get('code_valid') else 'INVALID'}",
+            f"Source SHA-256: {result.get('source_sha256')}",
+            f"Bytes: {result.get('source_bytes', 0)}",
+            f"Classes: {metrics.get('classes', 0)} | functions: {metrics.get('functions', 0)} | async: {metrics.get('async_functions', 0)}",
+            f"Imports: {metrics.get('imports', 0)} | calls: {metrics.get('calls', 0)} | branches: {metrics.get('branch_nodes', 0)}",
+            f"Structural patterns: {', '.join(result.get('patterns', [])) or 'none detected'}",
+            f"Static findings: {len(result.get('findings', []))}",
+            "Policy: untrusted source parsed as data; never imported, executed, modified, or persisted.",
+            "Limit: AST structure is not proof of runtime behavior or semantic correctness.",
+        ]
+        if result.get("parse_error"):
+            lines.append(f"Parser: {result['parse_error']}")
+        for item in result.get("findings", [])[:8]:
+            lines.append(
+                f"- [{item.get('severity', 'unknown')}] {item.get('rule')} "
+                f"| line {item.get('line')} | {item.get('recommendation')}"
+            )
+        return "\\n".join(lines)
+
     async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
         text = str(task or "").strip()
@@ -226,6 +307,29 @@ class NativeCognitionEngine:
             result = await asyncio.to_thread(self.analyze_self)
             output = self._format_self_report(result)
             return self._response(result.get("success", False), output, knowledge_consumed=False, raw=result)
+
+        python_analysis_markers = (
+            "validate python", "check python syntax", "analyze python snippet",
+            "analyse python snippet", "inspect python snippet", "review python snippet",
+            "static analysis of this python", "analyze this python code",
+            "analyse this python code",
+        )
+        if any(marker in lower for marker in python_analysis_markers):
+            source = self._python_source_from_request(text, context)
+            if source is None:
+                return self._failure(
+                    "PYTHON_SOURCE_REQUIRED",
+                    "Provide Python source in context['source_code'] or one fenced ```python code block. The native analyzer only parses source; it never executes it.",
+                )
+            result = await asyncio.to_thread(self.analyze_python_snippet, source)
+            if not result.get("success"):
+                return self._failure(result.get("error", "PYTHON_ANALYSIS_FAILED"), "Python source analysis could not be completed.")
+            return self._response(
+                True,
+                self._format_python_snippet_report(result),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         if any(marker in lower for marker in ("learning status", "native brain status", "github learning status", "knowledge status")):
             result = self.status()
