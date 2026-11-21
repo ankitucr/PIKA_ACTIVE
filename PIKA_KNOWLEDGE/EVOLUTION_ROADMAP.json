@@ -179,27 +179,38 @@
         },
         {
           "id": "37.4",
-          "name": "Native Capability Gap Resolution",
-          "status": "planned",
+          "name": "Independent OS Attestation, Trusted Learning Admission & Production Promotion",
+          "status": "implemented_pending_external_host_deployment",
           "outcomes": [
-            "Map observed unsupported-native error codes to the exact native handler and runtime registration path",
-            "Implement bounded deterministic handlers only for explicitly specified supported task contracts",
-            "Keep unsupported operations explicit and fail-closed rather than claiming general reasoning or code generation",
-            "Add intent, input-boundary, regression and negative tests for every new native handler",
-            "Separate capability implementation evidence from user-task evaluation and trusted learning admission",
-            "Stop repeated identical calls when the requested native handler is explicitly unavailable"
+            "Provision an independent HTTPS host attestor that verifies a canonical challenge and exact source archive before execution",
+            "Run fixed pytest commands in a rootless Podman container with no network, read-only rootfs, dropped capabilities, non-root UID and resource limits",
+            "Sign measured pass/fail/timeout/no-test results with a host-owned Ed25519 private key",
+            "Pin host public keys and backend identities in an owner-only trust file outside PIKA",
+            "Consume challenge nonces before execution and persist host replay plus measurement audit journals",
+            "Require an independent operator signature over the exact result-attested report before trusted-learning admission",
+            "Keep trusted admission hash-chained, append-only, non-replayable and separate from source promotion",
+            "Require a distinct operator key for production promotion, exact source hash binding, rollback snapshot and same-filesystem atomic restore rehearsal",
+            "Apply only the declared candidate target and immediately require an independently attested post-promotion smoke test",
+            "Automatically restore baseline on failed post-promotion verification and support separately approved manual rollback",
+            "Provision separate host attestor, learning approval, production approval and rollback approval identities without exporting private keys"
           ],
           "exit_criteria": [
-            "Each new handler has an explicit input/output schema, bounded scope and deterministic regression suite",
-            "Existing supported native operations preserve behavior",
-            "Unknown operations remain explicitly unsupported and do not trigger unsafe fallback",
-            "No generated source is executed or promoted without the existing independent evidence and human approval gates"
+            "Independent Linux host is deployed and serves HTTPS through a TLS reverse proxy",
+            "Host rootless Podman runtime and digest-pinned runner image are verified on the host",
+            "Host public trust config and bearer token are installed outside PIKA with owner-only permissions",
+            "Forged, stale, mismatched, replayed or malformed results are rejected before trusted admission",
+            "Only fully passing, independently signed improvements can be considered for learning admission",
+            "Trusted learning admission requires a separate valid Ed25519 operator approval bound to the exact report hash",
+            "Production promotion requires a distinct operator key, valid learning admission, exact baseline/candidate hashes and rollback rehearsal",
+            "Post-promotion smoke tests run through the independent host attestor; failed checks restore the baseline and verify restoration",
+            "Manual rollback requires a third purpose-bound approval and consumes its approval nonce",
+            "No local runner, GitHub Actions workflow or fake signer is treated as the independent production attestor"
           ]
         }
       ]
     }
   ],
-  "updated_at": "2026-11-21T14:00:00+05:30",
+  "updated_at": "2026-11-21T16:00:00+05:30",
   "current_milestone": "37.2",
   "next_milestone": "37.3"
 }
