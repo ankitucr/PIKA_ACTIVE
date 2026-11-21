@@ -426,24 +426,24 @@ class NativeCognitionEngine:
         candidate = context.get("candidate_source")
         if isinstance(baseline, str) and isinstance(candidate, str):
             return baseline, candidate
-        blocks = re.findall(r"\x60\x60\x60(?:python|py)\\s*\\n(.*?)\x60\x60\x60", task, re.I | re.S)
+        blocks = re.findall(r"\x60\x60\x60(?:python|py)\s*\n(.*?)\x60\x60\x60", task, re.I | re.S)
         return (blocks[0], blocks[1]) if len(blocks) == 2 else None
 
     @staticmethod
     def _format_python_comparison_report(result: dict[str, Any]) -> str:
         if result.get("comparison_status") == "INCOMPLETE_INVALID_SYNTAX":
             return (
-                "PIKA NATIVE PYTHON STRUCTURAL COMPARISON\\n"
-                f"Status: {result['comparison_status']}\\n"
-                f"Baseline syntax: {result['baseline'].get('parse_status')}\\n"
-                f"Candidate syntax: {result['candidate'].get('parse_status')}\\n"
-                "No structural diff was attempted because both snippets must parse.\\n"
+                "PIKA NATIVE PYTHON STRUCTURAL COMPARISON\n"
+                f"Status: {result['comparison_status']}\n"
+                f"Baseline syntax: {result['baseline'].get('parse_status')}\n"
+                f"Candidate syntax: {result['candidate'].get('parse_status')}\n"
+                "No structural diff was attempted because both snippets must parse.\n"
                 "Neither source was executed, modified or persisted."
             )
         symbols = result["symbols"]
         imports = result["imports"]
         metrics = result["metrics_delta"]
-        return "\\n".join([
+        return "\n".join([
             "PIKA NATIVE PYTHON STRUCTURAL COMPARISON",
             f"Status: {result['comparison_status']}",
             f"Comparison ID: {result['comparison_id']}",
