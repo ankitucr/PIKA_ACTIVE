@@ -292,6 +292,11 @@ def unsafe(value):
     assert "unsafe" in result["symbols"]["added"]
     assert "remove_me" in result["symbols"]["removed"]
     assert "add" in result["symbols"]["changed"]
+    changed_detail = next(x for x in result["symbols"]["changed_details"] if x["qualified_name"] == "add")
+    assert changed_detail["baseline_signature"] == "add(a, b)"
+    assert changed_detail["candidate_signature"] == "add(a, b, offset=0)"
+    assert any(x["qualified_name"] == "new_api" for x in result["symbols"]["added_details"])
+    assert any(x["qualified_name"] == "remove_me" for x in result["symbols"]["removed_details"])
     assert result["imports"]["added"] == ["math"]
     assert result["imports"]["removed"] == ["json"]
     assert result["metrics_delta"]["functions"] == 1
