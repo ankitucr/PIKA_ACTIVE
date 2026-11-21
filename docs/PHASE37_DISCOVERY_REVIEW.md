@@ -56,3 +56,5 @@ The result includes syntax validity, source digest, imports, bounded symbol meta
 `NativeCognitionAgent.capabilities` now lists only implemented handlers: Python static analysis, Python syntax validation, GitHub repository learning, code-evidence retrieval and engineering-knowledge retrieval. It no longer advertises generic coding, reasoning, generation, planning or debugging. This prevents capability-aware routing from treating unsupported generic work as a native feature.
 
 Regression coverage includes valid source, invalid syntax, fenced-source extraction, missing source, the 64 KiB input limit, read-only behavior and capability metadata.
+
+`NativeCognitionEngine.status()` now exposes the implemented native capability inventory and explicitly reports arbitrary workspace code generation as `UNSUPPORTED`; the status contract is covered by regression tests.
