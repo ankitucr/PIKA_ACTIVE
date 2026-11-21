@@ -385,3 +385,28 @@ def test_native_python_comparison_does_not_execute_source_payloads(tmp_path: Pat
     assert result["interpretation"]["source_execution"] is False
     assert result["static_findings"]["added"]
     assert marker.exists() is False
+
+
+
+def test_native_code_analyzer_preserves_complete_python_signature_defaults_and_kinds():
+    source = """def transform(a, /, b: int = 1, *values: str, enabled: bool = True, **options: object) -> None:
+    return None
+
+
+def keyword_only(value, *, enabled=False):
+    return value
+"""
+    analyzed = NativeCodeAnalyzer().analyze_python_source(
+        source,
+        relative_path="submitted_signatures.py",
+        repository="user_supplied",
+        untrusted_source=True,
+    )
+    symbols = {item["name"]: item for item in analyzed["symbols"]}
+
+    assert symbols["transform"]["signature"] == (
+        "transform(a, /, b: int=1, *values: str, enabled: bool=True, **options: object) -> None"
+    )
+    assert symbols["keyword_only"]["signature"] == "keyword_only(value, *, enabled=False)"
+    assert set(symbols["transform"]["argument_annotations"]) == {"int", "str", "bool", "object"}
+    assert analyzed["executed"] is False
