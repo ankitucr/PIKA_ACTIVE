@@ -1551,8 +1551,15 @@ class PIKABrain:
         if observer is None:
             try:
                 from core.evolution.telemetry import ExecutionObserver
+                project_root = Path(__file__).resolve().parents[1]
+                knowledge_root = (
+                    Path(__import__("os").environ["PIKA_KNOWLEDGE_DIR"])
+                    if __import__("os").environ.get("PIKA_KNOWLEDGE_DIR")
+                    else project_root / "PIKA_KNOWLEDGE"
+                )
                 observer = ExecutionObserver(
-                    (Path(__import__("os").environ["PIKA_KNOWLEDGE_DIR"]) if __import__("os").environ.get("PIKA_KNOWLEDGE_DIR") else Path(__file__).resolve().parents[1] / "PIKA_KNOWLEDGE")
+                    knowledge_root,
+                    project_root=project_root,
                 )
                 self._evolution_feedback_observer = observer
             except Exception as exc:
