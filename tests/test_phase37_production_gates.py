@@ -505,7 +505,7 @@ def test_replayed_promotion_approval_is_rejected_even_after_manual_restore(tmp_p
         payload=rollback_payload, key_stem="replay-rollback",
     )
     manager.rollback(prepared["plan_path"], approval_path=rollback_path, approval_policy=rollback_policy)
-    with pytest.raises(ProductionPromotionError, match="baseline"):
+    with pytest.raises(ProductionPromotionError, match="already been consumed"):
         manager.promote(
             plan_path=prepared["plan_path"],
             approval_path=approval_path,
