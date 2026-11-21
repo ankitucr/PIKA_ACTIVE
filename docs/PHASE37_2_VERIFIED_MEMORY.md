@@ -31,3 +31,7 @@ python -m core.evolution.cli record-experiment-memory --root . --report-file PIK
 ## Trust boundary
 
 These records are local diagnostic evidence only. They remain `UNVERIFIED`, cannot be replayed as trusted learning, and cannot authorize candidate promotion. Independent OS attestation, trusted-learning admission, and human approval remain separate requirements.
+
+## Concurrent ledger integrity
+
+`core/evolution/ledger.py` serializes readers with shared file locks and appenders with an exclusive process-level lock file. Each append validates the current hash-chain head while holding that lock, writes one complete JSONL record, and calls `fsync` before releasing the lock. The concurrent append regression test checks that parallel writers preserve a valid contiguous chain.
