@@ -10,7 +10,7 @@ Make every queued failure discovery inspectable without turning an unverified ob
 python -m core.evolution.cli review-discoveries --root .
 ```
 
-The command is read-only. It does not refresh the queue, write source, run candidates, create proposals, or change trust.
+The command is read-only. It does not refresh or rewrite the queue, write source, run candidates, create proposals, or change trust. The controller joins current live Reflection and Diagnostic Analysis by `event_id`, so older queue records can regain their missing-evidence explanation without mutating the queue.
 
 ## Per-item review fields
 
