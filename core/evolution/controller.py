@@ -169,6 +169,7 @@ class EvolutionController:
         phase37 = {
             **self.experiments.summary(),
             "discovery": self.discovery.summary(),
+            "experiment_memory": self.verified_memory.verify(),
         }
         self.ledger.append("evolution_cycle", {
             "failures": reflection["failure_count"],
