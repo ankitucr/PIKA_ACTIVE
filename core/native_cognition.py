@@ -209,12 +209,6 @@ class NativeCognitionEngine:
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
 
-        if isinstance(context.get("workspace"), dict):
-            return self._failure(
-                "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
-                "This native Brain build does not yet synthesize arbitrary workspace applications. No model/API fallback is enabled; no workspace files were generated.",
-            )
-
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
         if github_action:
             repositories = self._repositories_from_task(text)
@@ -280,6 +274,16 @@ class NativeCognitionEngine:
             result = await asyncio.to_thread(self.analyze_self)
             output = self._format_self_report(result)
             return self._response(result.get("success", False), output, knowledge_consumed=False, raw=result)
+
+        # Workspace context can accompany tasks handled by existing safe
+        # native operations (self-analysis, repository learning and evidence
+        # retrieval). Only reject after those bounded handlers have had a
+        # chance to run; arbitrary workspace code generation remains unsupported.
+        if isinstance(context.get("workspace"), dict):
+            return self._failure(
+                "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
+                "This native Brain build does not yet synthesize arbitrary workspace applications. No model/API fallback is enabled; no workspace files were generated.",
+            )
 
         return self._failure(
             "UNSUPPORTED_NATIVE_OPERATION",
