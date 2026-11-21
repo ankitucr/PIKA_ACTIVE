@@ -32,3 +32,11 @@ The command is read-only. It does not refresh or rewrite the queue, write source
 - Candidate staging remains separately source-bound and inert.
 - Local diagnostic runs remain `UNVERIFIED_LOCAL`; result attestation and learning admission remain separate gates.
 - Production promotion remains `BLOCKED`.
+
+## Unsupported native operation findings
+
+The repository's native runtime registers `NativeCognitionAgent` in `core/runtime.py`. `NativeCognitionEngine.execute()` in `core/native_cognition.py` explicitly returns `UNSUPPORTED_NATIVE_OPERATION` for requests outside its current verified operation set, and returns `NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED` when a workspace context is supplied.
+
+`diagnostic_analysis.py` now classifies these exact codes as `UNSUPPORTED_NATIVE_CAPABILITY` instead of merging them into generic evaluator rejection. The review report points to `core/native_cognition.py`, `core/runtime.py`, and `agents/native_cognition.py` for inspection.
+
+This is a static handler match, not automatic proof of the specific event's root cause. Review output therefore keeps `source_backed_root_cause_verified=false`, candidate IDs empty and promotion blocked. The next engineering stage is bounded native capability implementation with explicit contracts and tests, not arbitrary code generation or an LLM/API fallback.
