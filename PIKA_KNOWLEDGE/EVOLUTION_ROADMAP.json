@@ -204,6 +204,16 @@
             "Native status reports implemented deterministic handlers and explicitly marks arbitrary workspace generation unsupported",
             "Two-snippet comparison is deterministic and hash-bound, reports added/removed/changed symbols and findings, rejects invalid/oversized input, and never executes, modifies or persists source",
             "AST symbol signature metadata preserves full Python parameter kinds/default values and additive annotation type metadata without breaking the legacy annotation-name field"
+            ,
+            "Project exception telemetry stores at most eight relative Python frame references with source hashes, and never stores exception locals",
+            "Discovery review only presents current source excerpts after project-root, symlink, file-size, UTF-8 and full-source-hash checks",
+            "Source changes after the observed failure invalidate the prior traceback binding instead of silently refreshing its hash",
+            "A matching source frame never marks root cause verified or auto-selects pinned tests; test paths and proposal envelopes still require explicit evidence"
+            ,
+            "Capture bounded project-relative traceback frame references only for in-project exceptions, without storing raw traceback strings, local variables, raw task text or model output",
+            "Re-resolve traceback paths beneath the project root and expose source excerpts only when the current full-file SHA-256 still matches the observed hash",
+            "Reject stale, missing, symlinked and out-of-root traceback source references; redact sensitive source lines before review",
+            "Keep traceback evidence separate from verified root-cause claims; regression tests remain explicitly pinned and native proposal envelopes remain event-bound"
           ]
         }
       ]
