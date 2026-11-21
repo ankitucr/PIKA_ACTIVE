@@ -117,10 +117,39 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
             continue
         raw_errs = o.get("error_types", [])
         errs = [e for e in raw_errs if isinstance(e, str)] if isinstance(raw_errs, list) else []
+        raw_frames = o.get("traceback_frames", [])
+        safe_frames = []
+        if isinstance(raw_frames, list):
+            for frame in raw_frames[:8]:
+                if not isinstance(frame, dict):
+                    continue
+                path = frame.get("path")
+                line_number = frame.get("line")
+                source_hash = frame.get("source_sha256")
+                if (
+                    not isinstance(path, str)
+                    or not path
+                    or isinstance(line_number, bool)
+                    or not isinstance(line_number, int)
+                    or line_number < 1
+                    or not isinstance(source_hash, str)
+                    or len(source_hash) != 64
+                    or any(char not in "0123456789abcdef" for char in source_hash.lower())
+                ):
+                    continue
+                safe_frames.append({
+                    "path": path[:240],
+                    "line": line_number,
+                    "function": (
+                        frame.get("function")[:80]
+                        if isinstance(frame.get("function"), str) else None
+                    ),
+                    "source_sha256": source_hash.lower(),
+                })
         missing = []
         if o.get("evaluation_passed") is None:
             missing.append("evaluator_result")
-        if state in {"FAILED", "ERROR"} and not errs:
+        if state in {"FAILED", "ERROR"} and not safe_frames:
             missing.append("error_trace")
         missing.append("source_backed_diagnosis")
         diagnosis_queue.append({
@@ -129,6 +158,7 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
             "attempt_count": o.get("attempt_count"), "evidence_missing": missing,
             "issue_texts": sorted({t for a in (o.get("attempts") or []) if isinstance(a, dict) for t in (a.get("issue_texts") or []) if isinstance(t, str)})[:10],
             "worker_errors": sorted({a.get("worker_error") for a in (o.get("attempts") or []) if isinstance(a, dict) and a.get("worker_error")})[:5],
+            "traceback_frames": safe_frames,
         })
     diagnosis_queue = diagnosis_queue[:20]
 
