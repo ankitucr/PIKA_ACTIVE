@@ -345,7 +345,7 @@ def test_knowledge_graph_has_deterministic_nodes_edges_and_degrees():
     assert graph["persisted"] is False
     assert graph["trust"] == "UNVERIFIED_GRAPH_SNAPSHOT"
     nodes = {node["label"]: node for node in graph["nodes"]}
-    assert nodes["frontend"]["out_degree"] == 1
+    assert nodes["frontend"]["out_degree"] == 2
     assert nodes["frontend"]["in_degree"] == 0
     assert nodes["api"]["in_degree"] >= 1
     assert nodes["database"]["in_degree"] == 1
