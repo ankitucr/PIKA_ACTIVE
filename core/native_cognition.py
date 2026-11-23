@@ -548,7 +548,7 @@ class NativeCognitionEngine:
                     result.get("error", "NATIVE_REASONING_FAILED"),
                     result.get("message", "Native reasoning rejected the supplied facts."),
                 )
-            output = "\\n".join([
+            output = "\n".join([
                 "PIKA NATIVE FACT REASONING",
                 f"Status: {result.get('completion_status')}",
                 f"Input facts: {result.get('base_fact_count')} (records supplied: {result.get('input_record_count')})",
