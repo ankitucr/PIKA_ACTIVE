@@ -213,15 +213,6 @@ class TaskAnalyzer:
             "figure out",
             "determine",
         ]
-
-        if any(
-            marker in text
-            for marker in reasoning_markers
-        ):
-            capabilities.append("reasoning")
-
-        # Phase 39: route only explicit fact-based inference to the native
-        # symbolic engine. General reasoning remains a separate capability.
         native_fact_reasoning_markers = (
             "reason from facts",
             "infer from facts",
@@ -229,8 +220,16 @@ class TaskAnalyzer:
             "run native reasoning",
             "perform native inference",
         )
-        if any(marker in text for marker in native_fact_reasoning_markers):
+        explicit_fact_reasoning = any(
+            marker in text for marker in native_fact_reasoning_markers
+        )
+
+        if explicit_fact_reasoning:
+            # Do not also request generic reasoning: the native agent must win
+            # only this narrow route, not every open-ended reasoning task.
             capabilities.append("native_fact_reasoning")
+        elif any(marker in text for marker in reasoning_markers):
+            capabilities.append("reasoning")
 
         # ---------------------------------------------------------
         # REMOVE DUPLICATES
