@@ -21,7 +21,7 @@ MAX_DERIVED_FACTS = 1_000
 MAX_RULE_APPLICATIONS = 50_000
 MAX_ROUNDS = 16
 MAX_TEXT_LENGTH = 512
-_PREDICATE_RE = re.compile(r"[a-z][a-z0-9_.-]{0,63}\\Z")
+_PREDICATE_RE = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
 
 
 def _canonical(value: Any) -> bytes:
