@@ -99,7 +99,8 @@ jobs:
             tests/test_phase37_native_capability_short_circuit.py \
             tests/test_phase37_traceback_source_context.py \
             tests/test_pc_body.py \
-            tests/test_pc_docker_sandbox.py
+            tests/test_pc_docker_sandbox.py \
+            tests/test_native_reasoning.py
 
       - name: Run broad first-party test suite (excluding live-provider scripts)
         run: |
