@@ -740,6 +740,23 @@ class PIKABrain:
             # persistence so derived claims cannot enter PIKA memory as lessons.
             if "native_fact_reasoning" in task_analysis.get("capabilities", []):
                 raw_reasoning = result.get("raw", {})
+                safety_contract_valid = (
+                    isinstance(raw_reasoning, dict)
+                    and all(
+                        raw_reasoning.get(field) is False
+                        for field in (
+                            "source_executed",
+                            "source_modified",
+                            "source_persisted",
+                            "memory_updated",
+                            "promotion_allowed",
+                        )
+                    )
+                    and raw_reasoning.get("memory_admission")
+                    == "BLOCKED_UNVERIFIED_HYPOTHESES"
+                    and raw_reasoning.get("trust")
+                    == "UNVERIFIED_INPUT_AND_DERIVATION"
+                )
                 completed = (
                     result.get("success") is True
                     and isinstance(raw_reasoning, dict)
@@ -748,6 +765,7 @@ class PIKABrain:
                         "COMPLETED_WITH_DERIVATIONS",
                         "COMPLETED_NO_DERIVATIONS",
                     }
+                    and safety_contract_valid
                 )
                 evaluation = {
                     "passed": completed,
@@ -760,6 +778,7 @@ class PIKABrain:
                     ),
                     "checks": {
                         "native_reasoning_operation_completed": completed,
+                        "safety_contract_valid": safety_contract_valid,
                         "input_facts_verified": False,
                         "derived_hypotheses_verified": False,
                         "memory_admission": False,
