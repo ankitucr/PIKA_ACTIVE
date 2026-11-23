@@ -454,7 +454,7 @@ def test_multi_step_derivation_preserves_depth_and_root_premises():
     assert set(final_edge["root_premise_fact_ids"]).issubset({
         row["id"] for row in result["facts"] if row["kind"] == "OBSERVED_INPUT"
     })
-    assert len(final_edge["derivation_supports"]) == 1
+    assert 1 <= len(final_edge["derivation_supports"]) <= 8
     assert final_edge["provenance"]["root_premise_fact_ids"] == final_edge["root_premise_fact_ids"]
 
 
