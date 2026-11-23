@@ -328,3 +328,147 @@ def test_brain_rejects_native_result_with_broken_safety_contract():
     assert result["promotion_allowed"] is False
     assert memory.lessons == []
     assert memory.failures == []
+
+
+
+def test_knowledge_graph_has_deterministic_nodes_edges_and_degrees():
+    facts = [
+        {"subject": "frontend", "predicate": "depends_on", "object": "api"},
+        {"subject": "api", "predicate": "depends_on", "object": "database"},
+    ]
+    result = NativeReasoningEngine().reason(facts)
+    graph = result["knowledge_graph"]
+
+    assert graph["schema"] == "pika.native_knowledge_graph.v1"
+    assert graph["node_count"] == len(graph["nodes"]) == 3
+    assert graph["edge_count"] == len(graph["edges"]) == result["total_fact_count"]
+    assert graph["persisted"] is False
+    assert graph["trust"] == "UNVERIFIED_GRAPH_SNAPSHOT"
+    nodes = {node["label"]: node for node in graph["nodes"]}
+    assert nodes["frontend"]["out_degree"] == 1
+    assert nodes["frontend"]["in_degree"] == 0
+    assert nodes["api"]["in_degree"] >= 1
+    assert nodes["database"]["in_degree"] == 1
+    assert [node["label"] for node in graph["nodes"]] == sorted(nodes)
+
+
+def test_explicit_opposite_polarities_are_reported_as_unresolved_conflicts():
+    result = NativeReasoningEngine().reason([
+        {"subject": "service", "predicate": "depends_on", "object": "database", "source": "repo-a", "polarity": "positive"},
+        {"subject": "service", "predicate": "depends_on", "object": "database", "source": "repo-b", "polarity": "negative"},
+    ])
+
+    assert result["success"] is True
+    assert result["contradiction_count"] == 1
+    conflict = result["contradictions"][0]
+    assert conflict["conflict_class"] == "EXPLICIT_POLARITY_CONFLICT"
+    assert conflict["status"] == "UNRESOLVED_INPUT_CONFLICT"
+    assert conflict["trust"] == "UNVERIFIED_CONTRADICTION_REPORT"
+    assert conflict["positive_kind"] == "OBSERVED_INPUT"
+    assert conflict["negative_kind"] == "OBSERVED_INPUT"
+    assert result["promotion_allowed"] is False
+
+
+def test_derived_positive_hypothesis_conflicts_with_explicit_negative_fact():
+    result = NativeReasoningEngine().reason([
+        {"subject": "frontend", "predicate": "depends_on", "object": "api"},
+        {"subject": "api", "predicate": "depends_on", "object": "database"},
+        {"subject": "frontend", "predicate": "depends_on", "object": "database", "polarity": "negative"},
+    ])
+
+    assert result["success"] is True
+    assert any(
+        row["subject"] == "frontend"
+        and row["predicate"] == "depends_on"
+        and row["object"] == "database"
+        for row in result["derived_facts"]
+    )
+    conflict = next(
+        row for row in result["contradictions"]
+        if row["subject"] == "frontend" and row["object"] == "database"
+    )
+    assert conflict["conflict_class"] == "DERIVED_VS_EXPLICIT_NEGATION"
+    assert conflict["positive_kind"] == "DERIVED_HYPOTHESIS"
+    assert conflict["negative_kind"] == "OBSERVED_INPUT"
+
+
+def test_different_objects_are_not_assumed_to_be_contradictory():
+    result = NativeReasoningEngine().reason([
+        {"subject": "service", "predicate": "depends_on", "object": "database"},
+        {"subject": "service", "predicate": "depends_on", "object": "cache"},
+    ])
+
+    assert result["success"] is True
+    assert result["contradictions"] == []
+    assert result["contradiction_count"] == 0
+
+
+def test_negative_facts_are_not_used_as_transitivity_premises():
+    result = NativeReasoningEngine().reason([
+        {"subject": "service", "predicate": "depends_on", "object": "auth", "polarity": "negative"},
+        {"subject": "auth", "predicate": "depends_on", "object": "database", "polarity": "positive"},
+    ])
+
+    assert result["success"] is True
+    assert not any(
+        row["subject"] == "service"
+        and row["predicate"] == "depends_on"
+        and row["object"] == "database"
+        for row in result["derived_facts"]
+    )
+
+
+def test_invalid_fact_polarity_fails_closed():
+    result = NativeReasoningEngine().reason([
+        {"subject": "service", "predicate": "depends_on", "object": "database", "polarity": "maybe"},
+    ])
+
+    assert result["success"] is False
+    assert result["error"] == "INVALID_FACT"
+    assert result["invalid_index"] == 0
+    assert result["promotion_allowed"] is False
+
+
+def test_multi_step_derivation_preserves_depth_and_root_premises():
+    result = NativeReasoningEngine().reason([
+        {"subject": "a", "predicate": "part_of", "object": "b", "source": "edge-ab"},
+        {"subject": "b", "predicate": "part_of", "object": "c", "source": "edge-bc"},
+        {"subject": "c", "predicate": "part_of", "object": "d", "source": "edge-cd"},
+        {"subject": "d", "predicate": "part_of", "object": "e", "source": "edge-de"},
+    ])
+    final_edge = next(
+        row for row in result["derived_facts"]
+        if row["subject"] == "a" and row["object"] == "e"
+    )
+
+    assert final_edge["derivation_depth"] == 3
+    assert len(final_edge["root_premise_fact_ids"]) == 4
+    assert set(final_edge["root_premise_fact_ids"]).issubset({
+        row["id"] for row in result["facts"] if row["kind"] == "OBSERVED_INPUT"
+    })
+    assert len(final_edge["derivation_supports"]) == 1
+    assert final_edge["provenance"]["root_premise_fact_ids"] == final_edge["root_premise_fact_ids"]
+
+
+def test_multiple_valid_proof_paths_are_retained_with_bounded_supports():
+    result = NativeReasoningEngine().reason([
+        {"subject": "a", "predicate": "depends_on", "object": "b"},
+        {"subject": "b", "predicate": "depends_on", "object": "d"},
+        {"subject": "a", "predicate": "depends_on", "object": "c"},
+        {"subject": "c", "predicate": "depends_on", "object": "d"},
+    ])
+    conclusion = next(
+        row for row in result["derived_facts"]
+        if row["subject"] == "a" and row["object"] == "d"
+    )
+
+    assert len(conclusion["derivation_supports"]) == 2
+    assert len(conclusion["root_premise_fact_ids"]) == 4
+    assert all(len(support["premise_fact_ids"]) == 2 for support in conclusion["derivation_supports"])
+    assert all(support["derivation_depth"] == 1 for support in conclusion["derivation_supports"])
+    assert result["reasoning_id"] == NativeReasoningEngine().reason([
+        {"subject": "c", "predicate": "depends_on", "object": "d"},
+        {"subject": "a", "predicate": "depends_on", "object": "c"},
+        {"subject": "b", "predicate": "depends_on", "object": "d"},
+        {"subject": "a", "predicate": "depends_on", "object": "b"},
+    ])["reasoning_id"]
