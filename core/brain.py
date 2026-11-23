@@ -710,8 +710,68 @@ class PIKABrain:
                 task,
                 context=context,
             )
-            # Retrieval outcome is recorded only after independent evaluation.
 
+            # Phase 39 symbolic facts are unverified input and hypotheses.
+            # Return this narrow route before ordinary experience/failure
+            # persistence so derived claims cannot enter PIKA memory as lessons.
+            if "native_fact_reasoning" in task_analysis.get("capabilities", []):
+                raw_reasoning = result.get("raw", {})
+                completed = (
+                    result.get("success") is True
+                    and isinstance(raw_reasoning, dict)
+                    and raw_reasoning.get("schema") == "pika.native_reasoning.result.v1"
+                    and raw_reasoning.get("completion_status") in {
+                        "COMPLETED_WITH_DERIVATIONS",
+                        "COMPLETED_NO_DERIVATIONS",
+                    }
+                )
+                evaluation = {
+                    "passed": completed,
+                    "score": 1.0 if completed else 0.0,
+                    "reason": (
+                        "Bounded symbolic closure completed; truth of the input facts "
+                        "and derived hypotheses was not verified."
+                        if completed else
+                        "Native fact reasoning did not complete with a valid bounded result."
+                    ),
+                    "checks": {
+                        "native_reasoning_operation_completed": completed,
+                        "input_facts_verified": False,
+                        "derived_hypotheses_verified": False,
+                        "memory_admission": False,
+                        "promotion_allowed": False,
+                    },
+                    "feedback": "Unverified hypotheses were not admitted to memory or promotion.",
+                }
+                attempts.append({
+                    "attempt": attempt_number,
+                    "decision": decision,
+                    "result": result,
+                    "evaluation": evaluation,
+                })
+                return {
+                    "success": completed,
+                    "task": task,
+                    "task_analysis": task_analysis,
+                    "decision_trace": decision_trace,
+                    "attempts": attempts,
+                    "agent": "native",
+                    "provider": result.get("provider", "pika-native"),
+                    "model": None,
+                    "output": result.get("output", ""),
+                    "raw": raw_reasoning if isinstance(raw_reasoning, dict) else {},
+                    "evaluation": evaluation,
+                    "memory_updated": False,
+                    "knowledge_admitted": False,
+                    "promotion_allowed": False,
+                    "retry_control": {
+                        "stop": True,
+                        "reason": "unverified_symbolic_reasoning_not_admitted",
+                        "attempts_used": 1,
+                    },
+                }
+
+            # Retrieval outcome is recorded only after independent evaluation.
             result["task_signature"] = decision.get(
                 "task_signature"
             )
