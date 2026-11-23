@@ -51,5 +51,7 @@ future work and must remain evidence-bound.
 
 The native cognition task handler accepts explicit instructions such as
 `reason from facts` when a caller supplies `context["facts"]` as a list of
-fact objects. It returns a structured result and a concise report. Missing or
-invalid input is rejected without fallback to any model or API.
+fact objects or includes a fenced `json` list in the task text. The latter
+allows the existing Brain task interface to carry structured facts without a
+new public context parameter. It returns a structured result and a concise
+report. Missing or invalid input is rejected without fallback to any model or API.
