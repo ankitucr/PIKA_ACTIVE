@@ -225,6 +225,8 @@ class NativeReasoningEngine:
 
         return {
             "success": True,
+            "mode": "native_symbolic_forward_chaining",
+            "memory_admission": "BLOCKED_UNVERIFIED_HYPOTHESES",
             "schema": SCHEMA,
             "reasoning_id": reasoning_id,
             "rule_set": RULE_SET,
