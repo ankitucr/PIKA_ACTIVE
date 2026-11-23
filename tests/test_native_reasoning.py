@@ -235,3 +235,44 @@ def test_brain_returns_native_hypotheses_without_memory_admission(tmp_path):
     assert result["promotion_allowed"] is False
     assert memory.lessons == []
     assert memory.failures == []
+
+
+
+class _ApiOnlyAgent:
+    name = "api"
+    capabilities = ["reasoning", "analysis", "coding"]
+
+
+def test_native_only_capability_never_falls_back_to_api_agent():
+    router = AgentRouter()
+    router.register(_ApiOnlyAgent())
+
+    assert router.select(required_capabilities=["native_fact_reasoning"]) is None
+
+
+def test_brain_fails_closed_when_native_reasoning_agent_is_missing(tmp_path):
+    import asyncio
+    from core.task_analyzer import TaskAnalyzer
+    from tests.test_phase34_brain_fallback import make_brain
+
+    brain, _agent, memory, _learning, _phase33, _generator = make_brain(
+        candidates=[],
+        repair_outcomes=[],
+    )
+    router = AgentRouter()
+    router.register(_ApiOnlyAgent())
+    brain.router = router
+    brain.task_analyzer = TaskAnalyzer()
+    brain.tool_runtime = None
+    brain.workspace_executor = None
+
+    result = asyncio.run(brain._think_with_feedback_core("reason from facts"))
+
+    assert result["success"] is False
+    assert result["error"] == "NATIVE_REASONING_AGENT_UNAVAILABLE"
+    assert result["provider"] is None
+    assert result["retry_control"]["attempts_used"] == 0
+    assert result["memory_updated"] is False
+    assert result["promotion_allowed"] is False
+    assert memory.lessons == []
+    assert memory.failures == []
