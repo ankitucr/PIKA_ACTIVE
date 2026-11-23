@@ -240,6 +240,8 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "static_improvement_queue",
         "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
+        "native_fact_reasoning",
+        "bounded_forward_chaining",
     }
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
@@ -257,6 +259,8 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "static_improvement_queue" in capabilities
     assert "lexical_code_evidence_retrieval" in capabilities
     assert "github_repository_learning" in capabilities
+    assert "native_fact_reasoning" in capabilities
+    assert "bounded_forward_chaining" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
 
@@ -411,3 +415,36 @@ def keyword_only(value, *, enabled=False):
     assert set(symbols["transform"]["argument_annotations"]) == {"b", "values", "enabled", "options"}
     assert set(symbols["transform"]["argument_annotation_types"]) == {"int", "str", "bool", "object"}
     assert analyzed["executed"] is False
+
+
+
+def test_native_reasoning_is_available_through_existing_brain_agent(tmp_path: Path):
+    facts = [
+        {"subject": "web", "predicate": "depends_on", "object": "auth"},
+        {"subject": "auth", "predicate": "depends_on", "object": "database"},
+    ]
+    result = asyncio.run(
+        NativeCognitionEngine(tmp_path).execute(
+            "reason from facts",
+            context={"facts": facts},
+        )
+    )
+
+    assert result["success"] is True
+    assert result["agent"] == "native"
+    assert result["provider"] == "pika-native"
+    assert result["raw"]["completion_status"] == "COMPLETED_WITH_DERIVATIONS"
+    assert result["raw"]["derived_fact_count"] == 1
+    assert "Derived hypotheses: 1" in result["output"]
+    assert result["raw"]["promotion_allowed"] is False
+
+
+def test_native_reasoning_rejects_missing_facts_without_fallback(tmp_path: Path):
+    result = asyncio.run(
+        NativeCognitionEngine(tmp_path).execute("reason from facts")
+    )
+
+    assert result["success"] is False
+    assert result["error"] == "FACT_LIST_REQUIRED"
+    assert "No LLM/API fallback" not in result["output"]
+    assert result["raw"]["promotion_allowed"] is False
