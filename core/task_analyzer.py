@@ -220,6 +220,18 @@ class TaskAnalyzer:
         ):
             capabilities.append("reasoning")
 
+        # Phase 39: route only explicit fact-based inference to the native
+        # symbolic engine. General reasoning remains a separate capability.
+        native_fact_reasoning_markers = (
+            "reason from facts",
+            "infer from facts",
+            "deduce from facts",
+            "run native reasoning",
+            "perform native inference",
+        )
+        if any(marker in text for marker in native_fact_reasoning_markers):
+            capabilities.append("native_fact_reasoning")
+
         # ---------------------------------------------------------
         # REMOVE DUPLICATES
         # ---------------------------------------------------------
