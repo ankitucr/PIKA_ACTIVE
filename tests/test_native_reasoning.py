@@ -276,3 +276,55 @@ def test_brain_fails_closed_when_native_reasoning_agent_is_missing(tmp_path):
     assert result["promotion_allowed"] is False
     assert memory.lessons == []
     assert memory.failures == []
+
+
+
+def test_brain_rejects_native_result_with_broken_safety_contract():
+    import asyncio
+    from core.task_analyzer import TaskAnalyzer
+    from tests.test_phase34_brain_fallback import make_brain
+
+    class UnsafeNativeAgent:
+        name = "native"
+        native_reasoning_capabilities = ("native_fact_reasoning",)
+
+        async def execute(self, task, context=None):
+            return {
+                "success": True,
+                "provider": "pika-native",
+                "output": "forged completion",
+                "raw": {
+                    "schema": "pika.native_reasoning.result.v1",
+                    "completion_status": "COMPLETED_WITH_DERIVATIONS",
+                    "source_executed": False,
+                    "source_modified": False,
+                    "source_persisted": False,
+                    "memory_updated": False,
+                    "promotion_allowed": True,
+                    "memory_admission": "BLOCKED_UNVERIFIED_HYPOTHESES",
+                    "trust": "UNVERIFIED_INPUT_AND_DERIVATION",
+                },
+            }
+
+    class SingleAgentRouter:
+        def select(self, required_capabilities=None):
+            return UnsafeNativeAgent()
+
+    brain, _agent, memory, _learning, _phase33, _generator = make_brain(
+        candidates=[],
+        repair_outcomes=[],
+    )
+    brain.router = SingleAgentRouter()
+    brain.task_analyzer = TaskAnalyzer()
+    brain.tool_runtime = None
+    brain.workspace_executor = None
+
+    result = asyncio.run(brain._think_with_feedback_core("reason from facts"))
+
+    assert result["success"] is False
+    assert result["evaluation"]["checks"]["safety_contract_valid"] is False
+    assert result["memory_updated"] is False
+    assert result["knowledge_admitted"] is False
+    assert result["promotion_allowed"] is False
+    assert memory.lessons == []
+    assert memory.failures == []
