@@ -740,6 +740,11 @@ class NativeCognitionEngine:
             ),
             "capability_gap": capability_gap,
             "retryable": False if capability_gap else None,
+            "source_executed": False,
+            "source_modified": False,
+            "source_persisted": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
             "raw": {
                 "error": code,
                 "failure_class": (
@@ -748,6 +753,11 @@ class NativeCognitionEngine:
                 ),
                 "capability_gap": capability_gap,
                 "retryable": False if capability_gap else None,
+                "source_executed": False,
+                "source_modified": False,
+                "source_persisted": False,
+                "memory_updated": False,
+                "promotion_allowed": False,
             },
         }
 
