@@ -150,6 +150,11 @@ def test_only_explicit_fact_reasoning_routes_to_native_agent(tmp_path):
     assert "native_fact_reasoning" not in open_task["capabilities"]
     assert router.select(required_capabilities=open_task["capabilities"]) is generic
 
+    mixed_task = analyzer.analyze("analyze and reason from facts, then create a code patch")
+    assert mixed_task["capabilities"] == ["native_fact_reasoning"]
+    assert mixed_task["tool_capabilities"] == []
+    assert router.select(required_capabilities=mixed_task["capabilities"]) is native
+
 
 def test_native_cognition_reads_fenced_json_facts_without_context(tmp_path):
     import asyncio
