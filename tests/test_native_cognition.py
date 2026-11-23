@@ -240,8 +240,6 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "static_improvement_queue",
         "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
-        "native_fact_reasoning",
-        "bounded_forward_chaining",
     }
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
