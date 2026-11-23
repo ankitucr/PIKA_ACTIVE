@@ -72,6 +72,16 @@ class AgentRouter:
                         required_capabilities
                     )
                 )
+                # Some narrow native handlers expose intent-specific routing
+                # markers separately from their public general capabilities.
+                native_reasoning_capabilities = set(
+                    getattr(agent, "native_reasoning_capabilities", ())
+                )
+                score += len(
+                    native_reasoning_capabilities.intersection(
+                        required_capabilities
+                    )
+                )
 
                 if score > best_score:
                     best_score = score
