@@ -198,6 +198,9 @@ class NativeCognitionEngine:
                 "engineering_knowledge_retrieval",
                 "native_fact_reasoning",
                 "bounded_forward_chaining",
+                "native_knowledge_graph",
+                "explicit_contradiction_detection",
+                "multi_step_provenance",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -589,8 +592,12 @@ class NativeCognitionEngine:
                 "Trust: supplied facts and all derivations remain unverified.",
                 "Policy: no code execution, persistence, memory update, or promotion.",
             ])
+            completed = result.get("completion_status") in {
+                "COMPLETED_WITH_DERIVATIONS",
+                "COMPLETED_NO_DERIVATIONS",
+            }
             return self._response(
-                True, output, knowledge_consumed=False, raw=result
+                completed, output, knowledge_consumed=False, raw=result
             )
 
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
