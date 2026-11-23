@@ -90,6 +90,11 @@ class AgentRouter:
             if best_agent is not None and best_score > 0:
                 return best_agent
 
+            # A native-only capability must never fall through to the
+            # generic API worker when its implementation is unavailable.
+            if "native_fact_reasoning" in required_capabilities:
+                return None
+
         # ---------------------------------------------------------
         # Current default worker
         # ---------------------------------------------------------
