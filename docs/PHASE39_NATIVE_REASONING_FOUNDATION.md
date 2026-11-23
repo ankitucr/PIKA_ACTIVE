@@ -46,12 +46,14 @@ resolution.
 
 ### Multi-step proof provenance
 
-Derived hypotheses include derivation depth, immediate premise IDs, root input
-fact IDs, and up to eight deterministic alternative proof supports per
-conclusion. Alternate support updates are propagated through additional rounds
-before the closure is reported complete. Support count, fact count, rule
-applications, and rounds are bounded. Truncated evidence returns an incomplete
-status rather than a completed reasoning claim.
+Derived hypotheses include inference-layer depth, immediate premise
+IDs, root input fact IDs, and up to eight deterministic alternative proof
+supports per conclusion. Inference-layer depth counts nested rule applications,
+not the number of original graph edges: a balanced multi-edge path can be
+combined in fewer inference layers. Alternate support updates are propagated
+through additional rounds before the closure is reported complete. Support
+count, fact count, rule applications, and rounds are bounded. Truncated
+evidence returns an incomplete status rather than a completed reasoning claim.
 
 ## Trust and safety contract
 
