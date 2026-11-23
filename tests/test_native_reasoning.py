@@ -348,7 +348,7 @@ def test_knowledge_graph_has_deterministic_nodes_edges_and_degrees():
     assert nodes["frontend"]["out_degree"] == 2
     assert nodes["frontend"]["in_degree"] == 0
     assert nodes["api"]["in_degree"] >= 1
-    assert nodes["database"]["in_degree"] == 1
+    assert nodes["database"]["in_degree"] == 2
     assert [node["label"] for node in graph["nodes"]] == sorted(nodes)
 
 
@@ -472,3 +472,42 @@ def test_multiple_valid_proof_paths_are_retained_with_bounded_supports():
         {"subject": "b", "predicate": "depends_on", "object": "d"},
         {"subject": "a", "predicate": "depends_on", "object": "b"},
     ])["reasoning_id"]
+
+
+
+def test_alternate_proof_paths_propagate_to_deeper_conclusions():
+    result = NativeReasoningEngine().reason([
+        {"subject": "a", "predicate": "depends_on", "object": "b"},
+        {"subject": "b", "predicate": "depends_on", "object": "e"},
+        {"subject": "a", "predicate": "depends_on", "object": "c"},
+        {"subject": "c", "predicate": "depends_on", "object": "d"},
+        {"subject": "d", "predicate": "depends_on", "object": "e"},
+        {"subject": "e", "predicate": "depends_on", "object": "f"},
+    ])
+    conclusion = next(
+        row for row in result["derived_facts"]
+        if row["subject"] == "a" and row["object"] == "f"
+    )
+
+    assert len(conclusion["derivation_supports"]) >= 2
+    assert any(
+        len(support["root_premise_fact_ids"]) >= 3
+        for support in conclusion["derivation_supports"]
+    )
+
+
+def test_proof_support_count_is_bounded_per_conclusion():
+    facts = []
+    for index in range(12):
+        middle = f"middle-{index}"
+        facts.append({"subject": "root", "predicate": "requires", "object": middle})
+        facts.append({"subject": middle, "predicate": "requires", "object": "target"})
+
+    result = NativeReasoningEngine().reason(facts)
+    conclusion = next(
+        row for row in result["derived_facts"]
+        if row["subject"] == "root" and row["object"] == "target"
+    )
+
+    assert len(conclusion["derivation_supports"]) == 8
+    assert len(conclusion["root_premise_fact_ids"]) == 24
