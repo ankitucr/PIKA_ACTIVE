@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
+from core.native_reasoning import NativeReasoningEngine
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -33,6 +34,7 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
+        self.reasoning = NativeReasoningEngine()
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -194,6 +196,8 @@ class NativeCognitionEngine:
                 "static_improvement_queue",
                 "lexical_code_evidence_retrieval",
                 "engineering_knowledge_retrieval",
+                "native_fact_reasoning",
+                "bounded_forward_chaining",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -528,6 +532,34 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        reasoning_markers = (
+            "reason from facts",
+            "infer from facts",
+            "deduce from facts",
+            "run native reasoning",
+            "perform native inference",
+        )
+        if any(marker in lower for marker in reasoning_markers):
+            facts = context.get("facts")
+            result = await asyncio.to_thread(self.reasoning.reason, facts)
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_REASONING_FAILED"),
+                    result.get("message", "Native reasoning rejected the supplied facts."),
+                )
+            output = "\\n".join([
+                "PIKA NATIVE FACT REASONING",
+                f"Status: {result.get('completion_status')}",
+                f"Input facts: {result.get('base_fact_count')} (records supplied: {result.get('input_record_count')})",
+                f"Derived hypotheses: {result.get('derived_fact_count')}",
+                f"Reasoning ID: {result.get('reasoning_id')}",
+                "Trust: supplied facts and all derivations remain unverified.",
+                "Policy: no code execution, persistence, memory update, or promotion.",
+            ])
+            return self._response(
+                True, output, knowledge_consumed=False, raw=result
+            )
 
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
         if github_action:
