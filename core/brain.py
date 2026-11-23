@@ -758,6 +758,7 @@ class PIKABrain:
                     "agent": "native",
                     "provider": result.get("provider", "pika-native"),
                     "model": None,
+                    "error": result.get("error"),
                     "output": result.get("output", ""),
                     "raw": raw_reasoning if isinstance(raw_reasoning, dict) else {},
                     "evaluation": evaluation,
