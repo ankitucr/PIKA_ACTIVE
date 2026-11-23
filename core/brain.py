@@ -550,6 +550,7 @@ class PIKABrain:
 
             workspace_task = (
                 self.workspace_executor is not None
+                and "native_fact_reasoning" not in task_analysis.get("capabilities", [])
                 and self._is_workspace_task(
                     task_analysis,
                     plan,
