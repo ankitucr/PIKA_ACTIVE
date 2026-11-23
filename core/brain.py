@@ -740,6 +740,68 @@ class PIKABrain:
             # persistence so derived claims cannot enter PIKA memory as lessons.
             if "native_fact_reasoning" in task_analysis.get("capabilities", []):
                 raw_reasoning = result.get("raw", {})
+                graph_snapshot = (
+                    raw_reasoning.get("knowledge_graph", {})
+                    if isinstance(raw_reasoning, dict) else {}
+                )
+                graph_contract_valid = (
+                    isinstance(graph_snapshot, dict)
+                    and graph_snapshot.get("schema") == "pika.native_knowledge_graph.v1"
+                    and graph_snapshot.get("trust") == "UNVERIFIED_GRAPH_SNAPSHOT"
+                    and graph_snapshot.get("persisted") is False
+                    and isinstance(graph_snapshot.get("nodes"), list)
+                    and isinstance(graph_snapshot.get("edges"), list)
+                    and graph_snapshot.get("node_count") == len(graph_snapshot.get("nodes", []))
+                    and graph_snapshot.get("edge_count") == len(graph_snapshot.get("edges", []))
+                )
+                contradiction_records = (
+                    raw_reasoning.get("contradictions", [])
+                    if isinstance(raw_reasoning, dict) else None
+                )
+                contradiction_contract_valid = (
+                    isinstance(contradiction_records, list)
+                    and all(
+                        isinstance(item, dict)
+                        and item.get("status") == "UNRESOLVED_INPUT_CONFLICT"
+                        and item.get("trust") == "UNVERIFIED_CONTRADICTION_REPORT"
+                        and item.get("positive_fact_id")
+                        and item.get("negative_fact_id")
+                        for item in contradiction_records
+                    )
+                    and raw_reasoning.get("contradiction_count") == len(contradiction_records)
+                )
+                all_facts = raw_reasoning.get("facts", []) if isinstance(raw_reasoning, dict) else []
+                all_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                }
+                input_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict) and item.get("kind") == "OBSERVED_INPUT"
+                }
+                proof_contract_valid = (
+                    isinstance(raw_reasoning.get("derived_facts"), list)
+                    and all(
+                        isinstance(item, dict)
+                        and item.get("kind") == "DERIVED_HYPOTHESIS"
+                        and item.get("trust") == "UNVERIFIED_DERIVATION"
+                        and isinstance(item.get("derivation_depth"), int)
+                        and item.get("derivation_depth", 0) >= 1
+                        and isinstance(item.get("root_premise_fact_ids"), list)
+                        and bool(item.get("root_premise_fact_ids"))
+                        and set(item.get("root_premise_fact_ids", [])).issubset(input_fact_ids)
+                        and isinstance(item.get("derivation_supports"), list)
+                        and 1 <= len(item.get("derivation_supports", [])) <= 8
+                        and all(
+                            isinstance(support, dict)
+                            and len(support.get("premise_fact_ids", [])) == 2
+                            and set(support.get("premise_fact_ids", [])).issubset(all_fact_ids)
+                            and set(support.get("root_premise_fact_ids", [])).issubset(input_fact_ids)
+                            for support in item.get("derivation_supports", [])
+                        )
+                        for item in raw_reasoning.get("derived_facts", [])
+                    )
+                )
                 safety_contract_valid = (
                     isinstance(raw_reasoning, dict)
                     and all(
@@ -756,6 +818,9 @@ class PIKABrain:
                     == "BLOCKED_UNVERIFIED_HYPOTHESES"
                     and raw_reasoning.get("trust")
                     == "UNVERIFIED_INPUT_AND_DERIVATION"
+                    and graph_contract_valid
+                    and contradiction_contract_valid
+                    and proof_contract_valid
                 )
                 completed = (
                     result.get("success") is True
@@ -779,6 +844,9 @@ class PIKABrain:
                     "checks": {
                         "native_reasoning_operation_completed": completed,
                         "safety_contract_valid": safety_contract_valid,
+                        "graph_contract_valid": graph_contract_valid,
+                        "contradiction_contract_valid": contradiction_contract_valid,
+                        "proof_contract_valid": proof_contract_valid,
                         "input_facts_verified": False,
                         "derived_hypotheses_verified": False,
                         "memory_admission": False,
