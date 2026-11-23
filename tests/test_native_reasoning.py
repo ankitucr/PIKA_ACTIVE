@@ -172,3 +172,61 @@ def test_native_cognition_reads_fenced_json_facts_without_context(tmp_path):
         and fact["object"] == "database"
         for fact in result["raw"]["derived_facts"]
     )
+
+
+
+def test_brain_returns_native_hypotheses_without_memory_admission(tmp_path):
+    import asyncio
+    from agents.native_cognition import NativeCognitionAgent
+    from core.router import AgentRouter
+    from core.task_analyzer import TaskAnalyzer
+    from tests.test_phase34_brain_fallback import make_brain
+
+    class ReasoningPlanner:
+        def plan(self, task, memories=None):
+            return {
+                "goal": task,
+                "task_type": "reasoning",
+                "complexity": "low",
+                "subtask_count": 1,
+                "subtasks": [],
+                "dependencies": [],
+                "execution_order": [],
+                "validation": {},
+                "strategy": {},
+                "memory_hints": [],
+            }
+
+    brain, _old_agent, memory, _learning, _phase33, _generator = make_brain(
+        candidates=[],
+        repair_outcomes=[],
+    )
+    router = AgentRouter()
+    router.register(NativeCognitionAgent(root=str(tmp_path)))
+    brain.router = router
+    brain.task_analyzer = TaskAnalyzer()
+    brain.planner = ReasoningPlanner()
+    brain.tool_runtime = None
+    brain.workspace_executor = None
+    brain.phase32_controller = None
+    brain.phase33_controller = None
+    brain.phase34_learning = None
+    brain.repair_candidate_generator = None
+
+    task = """reason from facts
+\x60\x60\x60json
+[
+  {"subject": "frontend", "predicate": "depends_on", "object": "api"},
+  {"subject": "api", "predicate": "depends_on", "object": "database"}
+]
+\x60\x60\x60"""
+    result = asyncio.run(brain._think_with_feedback_core(task))
+
+    assert result["success"] is True
+    assert result["agent"] == "native"
+    assert result["raw"]["derived_fact_count"] == 1
+    assert result["memory_updated"] is False
+    assert result["knowledge_admitted"] is False
+    assert result["promotion_allowed"] is False
+    assert memory.lessons == []
+    assert memory.failures == []
