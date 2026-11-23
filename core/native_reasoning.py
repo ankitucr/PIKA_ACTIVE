@@ -18,6 +18,7 @@ TRANSITIVE_PREDICATES = ("depends_on", "is_a", "part_of", "requires")
 
 MAX_INPUT_FACTS = 500
 MAX_DERIVED_FACTS = 1_000
+MAX_DERIVATIONS_PER_FACT = 8
 MAX_RULE_APPLICATIONS = 50_000
 MAX_ROUNDS = 16
 MAX_TEXT_LENGTH = 512
@@ -125,7 +126,7 @@ class NativeReasoningEngine:
                 "polarity": polarity,
                 "sources": records[(subject, predicate, obj, polarity)]["provenance"],
             }
-            for subject, predicate, obj in sorted(records)
+            for subject, predicate, obj, polarity in sorted(records)
         ]
         input_digest = _digest(input_payload)
 
@@ -163,14 +164,44 @@ class NativeReasoningEngine:
                                 limit_reason = "rule_application_budget_exhausted"
                                 break
                             conclusion = (subject, predicate, right["object"], "positive")
+                            rule_id = f"transitive:{predicate}:v2"
+                            premise_ids = [left["id"], right["id"]]
+                            derivation_depth = max(
+                                int(left.get("derivation_depth", 0)),
+                                int(right.get("derivation_depth", 0)),
+                            ) + 1
+                            root_premise_ids = sorted(set(
+                                left.get("root_premise_fact_ids", [left["id"]])
+                                + right.get("root_premise_fact_ids", [right["id"]])
+                            ))
+                            support = {
+                                "rule_id": rule_id,
+                                "premise_fact_ids": premise_ids,
+                                "root_premise_fact_ids": root_premise_ids,
+                                "derivation_depth": derivation_depth,
+                            }
                             if conclusion in records:
+                                existing = records[conclusion]
+                                if existing["kind"] == "DERIVED_HYPOTHESIS":
+                                    supports = existing.setdefault("derivation_supports", [])
+                                    support_signature = _canonical(support)
+                                    if (
+                                        len(supports) < MAX_DERIVATIONS_PER_FACT
+                                        and all(_canonical(item) != support_signature for item in supports)
+                                    ):
+                                        supports.append(support)
+                                        supports.sort(key=lambda item: (
+                                            item["derivation_depth"],
+                                            item["premise_fact_ids"],
+                                        ))
+                                        existing["root_premise_fact_ids"] = sorted(set(
+                                            existing.get("root_premise_fact_ids", [])
+                                            + root_premise_ids
+                                        ))
                                 continue
                             if derived_count >= MAX_DERIVED_FACTS:
                                 limit_reason = "derived_fact_limit_exhausted"
                                 break
-
-                            rule_id = f"transitive:{predicate}:v1"
-                            premise_ids = [left["id"], right["id"]]
                             record = {
                                 "id": _digest(
                                     {
@@ -188,19 +219,15 @@ class NativeReasoningEngine:
                                 "polarity": "positive",
                                 "kind": "DERIVED_HYPOTHESIS",
                                 "trust": "UNVERIFIED_DERIVATION",
-                                "derivation_depth": max(
-                                    int(left.get("derivation_depth", 0)),
-                                    int(right.get("derivation_depth", 0)),
-                                ) + 1,
-                                "root_premise_fact_ids": sorted(set(
-                                    left.get("root_premise_fact_ids", [left["id"]])
-                                    + right.get("root_premise_fact_ids", [right["id"]])
-                                )),
+                                "derivation_depth": derivation_depth,
+                                "root_premise_fact_ids": root_premise_ids,
                                 "rule_id": rule_id,
                                 "premise_fact_ids": premise_ids,
+                                "derivation_supports": [support],
                                 "provenance": {
                                     "rule_id": rule_id,
                                     "premise_fact_ids": premise_ids,
+                                    "root_premise_fact_ids": root_premise_ids,
                                 },
                             }
                             records[conclusion] = record
@@ -275,6 +302,10 @@ class NativeReasoningEngine:
                 "rule_set": RULE_SET,
                 "input_digest": input_digest,
                 "derived_ids": [row["id"] for row in derived],
+                "derivation_supports": {
+                    row["id"]: row.get("derivation_supports", [])
+                    for row in derived
+                },
                 "contradiction_ids": [row["id"] for row in contradictions],
                 "complete": complete,
                 "limit_reason": limit_reason,
