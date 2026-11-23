@@ -21,9 +21,9 @@ class NativeCognitionAgent(Agent):
         "static_improvement_queue",
         "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
-        "native_fact_reasoning",
-        "bounded_forward_chaining",
     ]
+    # Narrow task-routing marker; not a claim of general-purpose reasoning.
+    native_reasoning_capabilities = ("native_fact_reasoning",)
 
     def __init__(self, root: str | None = None) -> None:
         self.engine = NativeCognitionEngine(root)
