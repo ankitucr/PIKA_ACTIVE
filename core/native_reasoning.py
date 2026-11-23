@@ -126,6 +126,7 @@ class NativeReasoningEngine:
 
         for round_number in range(1, MAX_ROUNDS + 1):
             rounds = round_number
+            added_this_round = 0
             by_predicate_subject: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(
                 lambda: defaultdict(list)
             )
@@ -183,6 +184,7 @@ class NativeReasoningEngine:
                             }
                             records[conclusion] = record
                             derived_count += 1
+                            added_this_round += 1
                         if limit_reason:
                             break
                     if limit_reason:
@@ -192,7 +194,7 @@ class NativeReasoningEngine:
 
             if limit_reason:
                 break
-            if derived_count == 0:
+            if added_this_round == 0:
                 complete = True
                 break
 
