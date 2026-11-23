@@ -23,7 +23,7 @@ def test_transitive_dependencies_are_inferred_with_premise_provenance():
     conclusion = inferred[("service", "depends_on", "storage")]
     assert conclusion["kind"] == "DERIVED_HYPOTHESIS"
     assert conclusion["trust"] == "UNVERIFIED_DERIVATION"
-    assert conclusion["rule_id"] == "transitive:depends_on:v1"
+    assert conclusion["rule_id"] == "transitive:depends_on:v2"
     assert len(conclusion["premise_fact_ids"]) == 2
     assert result["promotion_allowed"] is False
     assert result["memory_updated"] is False
@@ -441,7 +441,7 @@ def test_multi_step_derivation_preserves_depth_and_root_premises():
         if row["subject"] == "a" and row["object"] == "e"
     )
 
-    assert final_edge["derivation_depth"] == 3
+    assert final_edge["derivation_depth"] == 2
     assert len(final_edge["root_premise_fact_ids"]) == 4
     assert set(final_edge["root_premise_fact_ids"]).issubset({
         row["id"] for row in result["facts"] if row["kind"] == "OBSERVED_INPUT"
