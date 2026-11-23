@@ -350,6 +350,14 @@ def test_knowledge_graph_has_deterministic_nodes_edges_and_degrees():
     assert nodes["api"]["in_degree"] >= 1
     assert nodes["database"]["in_degree"] == 2
     assert [node["label"] for node in graph["nodes"]] == sorted(nodes)
+    derived_edge = next(
+        edge for edge in graph["edges"]
+        if edge["kind"] == "DERIVED_HYPOTHESIS"
+        and edge["source_node_id"] == nodes["frontend"]["id"]
+        and edge["target_node_id"] == nodes["database"]["id"]
+    )
+    assert derived_edge["source_labels"] == ["operator_supplied_context"]
+    assert derived_edge["root_premise_fact_ids"]
 
 
 def test_explicit_opposite_polarities_are_reported_as_unresolved_conflicts():
