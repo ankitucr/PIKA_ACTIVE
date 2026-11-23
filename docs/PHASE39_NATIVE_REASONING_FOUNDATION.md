@@ -22,7 +22,36 @@ The first rule set applies transitivity only to four declared relationships:
 
 Inference is iterative and deterministic. Input order does not change the
 reasoning identifier or derived results. Facts are deduplicated by their
-subject/predicate/object tuple, while source labels are retained.
+subject/predicate/object/polarity tuple, while source labels are retained.
+
+### Knowledge graph
+
+The engine emits an in-memory property-graph snapshot with stable node IDs,
+directed relation edges, node degrees, polarity, trust labels, derivation depth,
+root premise IDs, and source labels resolved from those root premises. The
+snapshot is deterministic and marked `UNVERIFIED_GRAPH_SNAPSHOT`; it is not
+persisted to PIKA memory or the repository.
+
+### Contradiction reporting
+
+A fact may optionally include `polarity: "positive"` or
+`polarity: "negative"` (positive is the default). The engine reports an
+unresolved conflict only when the exact same subject/predicate/object triple
+appears with both polarities. It distinguishes direct input polarity conflicts
+from a derived positive hypothesis opposed by an explicit negative input.
+Negative facts are not transitivity premises. Different objects are not
+assumed mutually exclusive because no functional-predicate ontology exists yet.
+Contradiction reports are observations for review, not automated truth
+resolution.
+
+### Multi-step proof provenance
+
+Derived hypotheses include derivation depth, immediate premise IDs, root input
+fact IDs, and up to eight deterministic alternative proof supports per
+conclusion. Alternate support updates are propagated through additional rounds
+before the closure is reported complete. Support count, fact count, rule
+applications, and rounds are bounded. Truncated evidence returns an incomplete
+status rather than a completed reasoning claim.
 
 ## Trust and safety contract
 
