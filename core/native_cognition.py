@@ -583,6 +583,8 @@ class NativeCognitionEngine:
                 f"Status: {result.get('completion_status')}",
                 f"Input facts: {result.get('base_fact_count')} (records supplied: {result.get('input_record_count')})",
                 f"Derived hypotheses: {result.get('derived_fact_count')}",
+                f"Contradictions: {result.get('contradiction_count')}",
+                f"Knowledge graph: {result.get('knowledge_graph', {}).get('node_count', 0)} nodes / {result.get('knowledge_graph', {}).get('edge_count', 0)} edges",
                 f"Reasoning ID: {result.get('reasoning_id')}",
                 "Trust: supplied facts and all derivations remain unverified.",
                 "Policy: no code execution, persistence, memory update, or promotion.",
