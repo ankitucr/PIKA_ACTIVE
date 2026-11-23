@@ -149,3 +149,26 @@ def test_only_explicit_fact_reasoning_routes_to_native_agent(tmp_path):
     open_task = analyzer.analyze("reason about software architecture")
     assert "native_fact_reasoning" not in open_task["capabilities"]
     assert router.select(required_capabilities=open_task["capabilities"]) is generic
+
+
+def test_native_cognition_reads_fenced_json_facts_without_context(tmp_path):
+    import asyncio
+    from core.native_cognition import NativeCognitionEngine
+
+    task = """reason from facts
+\x60\x60\x60json
+[
+  {"subject": "frontend", "predicate": "depends_on", "object": "api"},
+  {"subject": "api", "predicate": "depends_on", "object": "database"}
+]
+\x60\x60\x60"""
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(task))
+
+    assert result["success"] is True
+    assert result["raw"]["derived_fact_count"] == 1
+    assert any(
+        fact["subject"] == "frontend"
+        and fact["predicate"] == "depends_on"
+        and fact["object"] == "database"
+        for fact in result["raw"]["derived_facts"]
+    )
