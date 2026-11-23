@@ -72,10 +72,13 @@ Start the body status view with `python pika_pc.py status`; inside `python pika_
 PIKA now has a bounded deterministic forward-chaining engine for explicit
 structured facts. The first rule set derives transitive `depends_on`, `is_a`,
 `part_of`, and `requires` relationships with stable identifiers and
-premise-level provenance. Inputs remain `UNVERIFIED_INPUT`; conclusions remain
-`UNVERIFIED_DERIVATION`. Reasoning results are not saved to experience memory,
-not trusted as facts, and cannot authorize execution or promotion. This is a
-symbolic reasoning foundation, not open-domain or natural-language reasoning.
+premise-level provenance. It now emits an in-memory knowledge graph,
+reports exact positive/negative triple conflicts, and retains bounded alternate
+proof paths for multi-step conclusions. Inputs remain `UNVERIFIED_INPUT`;
+conclusions remain `UNVERIFIED_DERIVATION`. Reasoning results are not saved to
+experience memory, not trusted as facts, and cannot authorize execution or
+promotion. This is a symbolic reasoning foundation, not open-domain or
+natural-language reasoning.
 It uses no LLM, local model, or external inference API. See
 [`docs/PHASE39_NATIVE_REASONING_FOUNDATION.md`](docs/PHASE39_NATIVE_REASONING_FOUNDATION.md).
 
