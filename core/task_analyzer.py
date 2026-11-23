@@ -235,6 +235,13 @@ class TaskAnalyzer:
         # REMOVE DUPLICATES
         # ---------------------------------------------------------
 
+        if explicit_fact_reasoning:
+            # The fact engine accepts a constrained structured input only.
+            # Keep mixed prompts from being routed to unrelated coding,
+            # tool, or general-analysis handlers.
+            capabilities = ["native_fact_reasoning"]
+            tool_capabilities = []
+
         capabilities = list(
             dict.fromkeys(capabilities)
         )
