@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from core.native_reasoning import NativeReasoningEngine
+from core.router import AgentRouter
+from core.task_analyzer import TaskAnalyzer
+from agents.native_cognition import NativeCognitionAgent
 
 
 def test_transitive_dependencies_are_inferred_with_premise_provenance():
@@ -124,3 +127,25 @@ def test_reasoning_never_executes_modifies_or_persists_source():
     assert result["source_persisted"] is False
     assert result["memory_updated"] is False
     assert result["promotion_allowed"] is False
+
+
+class _GenericReasoningAgent:
+    name = "generic"
+    capabilities = ["reasoning"]
+
+
+def test_only_explicit_fact_reasoning_routes_to_native_agent(tmp_path):
+    analyzer = TaskAnalyzer()
+    router = AgentRouter()
+    generic = _GenericReasoningAgent()
+    native = NativeCognitionAgent(root=str(tmp_path))
+    router.register(generic)
+    router.register(native)
+
+    fact_task = analyzer.analyze("reason from facts")
+    assert fact_task["capabilities"] == ["native_fact_reasoning"]
+    assert router.select(required_capabilities=fact_task["capabilities"]) is native
+
+    open_task = analyzer.analyze("reason about software architecture")
+    assert "native_fact_reasoning" not in open_task["capabilities"]
+    assert router.select(required_capabilities=open_task["capabilities"]) is generic
