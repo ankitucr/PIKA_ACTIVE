@@ -754,6 +754,26 @@ class PIKABrain:
                     and graph_snapshot.get("node_count") == len(graph_snapshot.get("nodes", []))
                     and graph_snapshot.get("edge_count") == len(graph_snapshot.get("edges", []))
                 )
+                all_facts = raw_reasoning.get("facts", []) if isinstance(raw_reasoning, dict) else []
+                all_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                }
+                input_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict)
+                    and item.get("kind") == "OBSERVED_INPUT"
+                    and isinstance(item.get("id"), str)
+                }
+
+                def valid_fact_id_list(values, allowed_ids, *, exact_count=None):
+                    return (
+                        isinstance(values, list)
+                        and (exact_count is None or len(values) == exact_count)
+                        and all(isinstance(value, str) for value in values)
+                        and set(values).issubset(allowed_ids)
+                    )
+
                 contradiction_records = (
                     raw_reasoning.get("contradictions", [])
                     if isinstance(raw_reasoning, dict) else None
@@ -764,42 +784,37 @@ class PIKABrain:
                         isinstance(item, dict)
                         and item.get("status") == "UNRESOLVED_INPUT_CONFLICT"
                         and item.get("trust") == "UNVERIFIED_CONTRADICTION_REPORT"
-                        and item.get("positive_fact_id")
-                        and item.get("negative_fact_id")
+                        and isinstance(item.get("positive_fact_id"), str)
+                        and item.get("positive_fact_id") in all_fact_ids
+                        and isinstance(item.get("negative_fact_id"), str)
+                        and item.get("negative_fact_id") in all_fact_ids
                         for item in contradiction_records
                     )
                     and raw_reasoning.get("contradiction_count") == len(contradiction_records)
                 )
-                all_facts = raw_reasoning.get("facts", []) if isinstance(raw_reasoning, dict) else []
-                all_fact_ids = {
-                    item.get("id") for item in all_facts
-                    if isinstance(item, dict) and isinstance(item.get("id"), str)
-                }
-                input_fact_ids = {
-                    item.get("id") for item in all_facts
-                    if isinstance(item, dict) and item.get("kind") == "OBSERVED_INPUT"
-                }
+                derived_records = raw_reasoning.get("derived_facts", []) if isinstance(raw_reasoning, dict) else None
                 proof_contract_valid = (
-                    isinstance(raw_reasoning.get("derived_facts"), list)
+                    isinstance(derived_records, list)
                     and all(
                         isinstance(item, dict)
                         and item.get("kind") == "DERIVED_HYPOTHESIS"
                         and item.get("trust") == "UNVERIFIED_DERIVATION"
                         and isinstance(item.get("derivation_depth"), int)
+                        and not isinstance(item.get("derivation_depth"), bool)
                         and item.get("derivation_depth", 0) >= 1
-                        and isinstance(item.get("root_premise_fact_ids"), list)
-                        and bool(item.get("root_premise_fact_ids"))
-                        and set(item.get("root_premise_fact_ids", [])).issubset(input_fact_ids)
+                        and valid_fact_id_list(item.get("root_premise_fact_ids"), input_fact_ids)
                         and isinstance(item.get("derivation_supports"), list)
                         and 1 <= len(item.get("derivation_supports", [])) <= 8
                         and all(
                             isinstance(support, dict)
-                            and len(support.get("premise_fact_ids", [])) == 2
-                            and set(support.get("premise_fact_ids", [])).issubset(all_fact_ids)
-                            and set(support.get("root_premise_fact_ids", [])).issubset(input_fact_ids)
+                            and valid_fact_id_list(support.get("premise_fact_ids"), all_fact_ids, exact_count=2)
+                            and valid_fact_id_list(support.get("root_premise_fact_ids"), input_fact_ids)
+                            and isinstance(support.get("derivation_depth"), int)
+                            and not isinstance(support.get("derivation_depth"), bool)
+                            and support.get("derivation_depth", 0) >= 1
                             for support in item.get("derivation_supports", [])
                         )
-                        for item in raw_reasoning.get("derived_facts", [])
+                        for item in derived_records
                     )
                 )
                 safety_contract_valid = (
