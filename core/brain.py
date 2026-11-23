@@ -638,6 +638,29 @@ class PIKABrain:
             )
 
             if agent is None:
+                if "native_fact_reasoning" in task_analysis.get("capabilities", []):
+                    # No generic provider fallback for a native-only request.
+                    return {
+                        "success": False,
+                        "task": task,
+                        "task_analysis": task_analysis,
+                        "decision_trace": decision_trace,
+                        "attempts": attempts,
+                        "agent": None,
+                        "provider": None,
+                        "model": None,
+                        "error": "NATIVE_REASONING_AGENT_UNAVAILABLE",
+                        "output": "The native symbolic reasoning handler is not registered; external inference fallback is disabled.",
+                        "memory_updated": False,
+                        "knowledge_admitted": False,
+                        "promotion_allowed": False,
+                        "retry_control": {
+                            "stop": True,
+                            "reason": "native_reasoning_handler_unavailable",
+                            "attempts_used": 0,
+                        },
+                    }
+
                 result = {
                     "success": False,
                     "agent": None,
