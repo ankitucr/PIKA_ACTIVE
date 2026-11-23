@@ -525,6 +525,31 @@ class NativeCognitionEngine:
             )
         return "\n".join(lines)
 
+    @staticmethod
+    def _facts_from_request(task: str, context: dict[str, Any]) -> list[dict[str, Any]] | None:
+        """Read fact data from explicit context or a fenced JSON list."""
+        facts = context.get("facts")
+        if isinstance(facts, list):
+            return facts
+        fence = chr(96) * 3
+        marker = fence + "json"
+        start = task.find(marker)
+        if start < 0:
+            return None
+        start += len(marker)
+        if task[start:start + 2] == "\r\n":
+            start += 2
+        elif task[start:start + 1] == "\n":
+            start += 1
+        end = task.find(fence, start)
+        if end < 0:
+            return None
+        try:
+            value = json.loads(task[start:end])
+        except (TypeError, ValueError):
+            return None
+        return value if isinstance(value, list) else None
+
     async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
         text = str(task or "").strip()
@@ -541,7 +566,12 @@ class NativeCognitionEngine:
             "perform native inference",
         )
         if any(marker in lower for marker in reasoning_markers):
-            facts = context.get("facts")
+            facts = self._facts_from_request(text, context)
+            if facts is None:
+                return self._failure(
+                    "REASONING_FACTS_REQUIRED",
+                    "Supply facts in context['facts'] or a fenced JSON list. Facts remain unverified input.",
+                )
             result = await asyncio.to_thread(self.reasoning.reason, facts)
             if not result.get("success"):
                 return self._failure(
