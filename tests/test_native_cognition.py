@@ -443,6 +443,6 @@ def test_native_reasoning_rejects_missing_facts_without_fallback(tmp_path: Path)
     )
 
     assert result["success"] is False
-    assert result["error"] == "FACT_LIST_REQUIRED"
+    assert result["error"] == "REASONING_FACTS_REQUIRED"
     assert "No LLM/API fallback" not in result["output"]
     assert result["raw"]["promotion_allowed"] is False
