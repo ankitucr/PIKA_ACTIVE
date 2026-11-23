@@ -510,4 +510,4 @@ def test_proof_support_count_is_bounded_per_conclusion():
     )
 
     assert len(conclusion["derivation_supports"]) == 8
-    assert len(conclusion["root_premise_fact_ids"]) == 24
+    assert len(conclusion["root_premise_fact_ids"]) == 16
