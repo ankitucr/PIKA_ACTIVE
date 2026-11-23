@@ -390,6 +390,13 @@ class NativeReasoningEngine:
                 "polarity": record["polarity"],
                 "kind": record["kind"],
                 "trust": record["trust"],
+                "derivation_depth": record.get("derivation_depth", 0),
+                "root_premise_fact_ids": record.get("root_premise_fact_ids", []),
+                "source_labels": (
+                    record["provenance"]
+                    if isinstance(record.get("provenance"), list)
+                    else []
+                ),
             })
 
         nodes = []
