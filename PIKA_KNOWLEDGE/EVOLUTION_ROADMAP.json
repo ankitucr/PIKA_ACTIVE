@@ -233,7 +233,7 @@
     {
       "id": "39",
       "name": "Native Symbolic Reasoning",
-      "status": "implemented_standalone_ci_verified_pending_consolidated_ci",
+      "status": "implemented_ci_verified",
       "outcomes": [
         "Bounded declarative facts and rules",
         "Deterministic forward chaining and variable unification",
@@ -250,7 +250,7 @@
     {
       "id": "40",
       "name": "Deep Cross-Language GitHub Learning",
-      "status": "implemented_pending_consolidated_ci",
+      "status": "implemented_ci_verified",
       "outcomes": [
         "Python AST extraction retained",
         "Bounded structural analysis for JavaScript, TypeScript, Dart, Go, Rust, Java, Kotlin, Swift, C/C++, C#, Ruby, PHP, SQL, HTML and CSS",
@@ -267,7 +267,7 @@
     {
       "id": "41",
       "name": "Native Reversible Self-Evolution",
-      "status": "implemented_pending_consolidated_ci",
+      "status": "implemented_ci_verified",
       "outcomes": [
         "Allowlisted deterministic transformation catalog",
         "Hash-bound candidate diff and baseline snapshot",
@@ -284,7 +284,7 @@
     {
       "id": "42",
       "name": "Consolidated Native Cognition and Independent Trust",
-      "status": "in_progress",
+      "status": "repository_integration_ci_verified_pending_external_host_and_pc_activation",
       "outcomes": [
         "Integrate Phase 37.4 host attestor and learning/promotion gates with Phase 38 PC body",
         "Integrate Phase 39 native reasoning, Phase 40 cross-language learning and Phase 41 staged self-evolution",
@@ -301,5 +301,19 @@
   ],
   "updated_at": "2026-11-24",
   "current_milestone": "42",
-  "next_milestone": "external_host_and_operator_validation"
+  "next_milestone": "external_host_and_operator_validation",
+  "validation": {
+    "workflow_run_id": 45367335525,
+    "python_3_12": {
+      "passed": 443,
+      "skipped": 1
+    },
+    "python_3_14": {
+      "passed": 443,
+      "skipped": 1
+    },
+    "pc_docker_isolation_smoke_test": "PASSED",
+    "trust_state": "FAIL_CLOSED_UNTIL_INDEPENDENT_HOST_AND_OPERATOR_KEYS_ARE_DEPLOYED",
+    "pc_installation": "UNCHANGED_PENDING_EXPLICIT_OPERATOR_AUTHORIZATION"
+  }
 }
