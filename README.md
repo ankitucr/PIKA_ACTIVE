@@ -87,6 +87,11 @@ PIKA can now apply an explicitly allowlisted deterministic transformation, produ
 
 The consolidated branch also carries the Phase 37.4 independent host-attestor, result-bound learning admission, operator approval, and production-promotion gates. These gates remain fail-closed when the independently administered host, pinned trust configuration, and operator keys are absent. GitHub Actions results and local Docker smoke tests are not production attestation. Host provisioning and any PC installation upgrade remain separate operator-controlled steps.
 
+
+## Phase 36.8: Evidence-backed meta-learning
+
+Strategy outcomes are grouped from explicit evaluator-backed attempt records, with minimum sample thresholds, observed latency and review-only recommendations. Proposed goals include expected-value hypotheses, bounded cost, risk controls and verification plans. No automatic routing or learning admission is enabled. See [Phase 36.8 meta-learning](docs/PHASE36_8_META_LEARNING.md).
+
 ## Phase 43: Native test-impact planning
 
 PIKA statically discovers likely test files and test definitions from hash-bound source-graph impact paths. Test candidates are explicitly marked as not executed and are not a coverage or pass/fail claim. See [Phase 43 test-impact planning](docs/PHASE43_NATIVE_TEST_IMPACT_PLANNING.md).

@@ -24,7 +24,7 @@
     {
       "id": "36.7",
       "name": "Safe Execution & Self-Repair Engine",
-      "status": "in_progress",
+      "status": "implemented_ci_verified_pending_independent_host_validation",
       "outcomes": [
         "Immutable staging workspace and source-bound snapshots",
         "Transactional candidate patch application and complete rollback",
@@ -37,26 +37,45 @@
         "Candidate code cannot mutate live source during tests",
         "Rollback is tested against tampering, partial writes, and interrupted transactions",
         "Promotion requires current source hashes, trusted attestation, regression evidence, approval, and rollback proof"
-      ]
+      ],
+      "implementation_evidence": {
+        "github_docker_isolation_ci": "PASSED",
+        "candidate_staging_and_rollback_regressions": "PASSED",
+        "independent_production_host_audit": "PENDING",
+        "note": "GitHub CI isolation is not represented as a separately administered production OS attestor."
+      }
     },
     {
       "id": "36.8",
       "name": "Autonomous Learning & Cognitive Evolution",
-      "status": "in_progress",
+      "status": "implemented_ci_verified",
       "outcomes": [
         "Self-reflection and root-cause analysis",
         "Episodic, semantic, procedural, failure, and code memory",
         "Continual learning with provenance and correction history",
         "Meta-learning to evaluate and improve learning strategies",
         "Knowledge-gap detection and autonomous goal proposals",
-        "Bounded autonomous planning with resource and permission budgets"
+        "Bounded autonomous planning with resource and permission budgets",
+        "Attempt-level strategy effectiveness with explicit completed/incomplete outcomes, sample thresholds and observed latency",
+        "Goal proposals carry expected-value hypotheses, bounded cost estimates, risk controls and verification plans"
       ],
       "exit_criteria": [
         "Learning records are evidence-backed and replay trust is checked",
         "Memory supports correction, supersession, deduplication, and provenance",
         "Goal proposals include rationale, expected value, cost, risk, and verification plan",
         "The system measures task correctness and resource cost, not just self-reported success"
-      ]
+      ],
+      "validation": {
+        "core_workflow_run_id": 45378653534,
+        "isolated_candidate_workflow_run_id": 45378653501,
+        "pull_request_core_run_id": 45378333182,
+        "pull_request_isolated_run_id": 45378333316,
+        "python_3_12": "PASSED",
+        "python_3_14": "PASSED",
+        "docker_isolation": "PASSED",
+        "strategy_evaluation": "OBSERVATIONAL_ONLY_NO_AUTOMATIC_ROUTING_CHANGE"
+      },
+      "completion_boundary": "Meta-learning evaluates recorded observations and proposes controlled reviews; strategy routing changes still require a separate verified experiment and approval."
     },
     {
       "id": "36.9",
@@ -75,12 +94,19 @@
         "Architecture changes preserve interface and regression compatibility",
         "Optimizations are benchmarked against a stable baseline",
         "Long-term evaluation detects regressions, forgetting, and capability degradation"
+      ],
+      "remaining_gaps": [
+        "Permission-manifest enforcement and reviewed tool activation are not complete",
+        "Adaptive routing still lacks controlled, same-task strategy comparison and benchmark-backed selection",
+        "Hardware-aware model optimization needs trustworthy RAM/GPU/resource measurements and benchmark evidence",
+        "A network-isolated C++ and Rust extension build pipeline with pinned toolchains and reproducible artifacts is not yet integrated",
+        "Long-term forgetting and capability-degradation evaluation needs durable longitudinal benchmark cohorts"
       ]
     },
     {
       "id": "37",
       "name": "Verified Candidate Evolution",
-      "status": "in_progress",
+      "status": "implementation_ci_verified_pending_external_host_deployment",
       "outcomes": [
         "Evidence-led candidate discovery from execution reflection and architecture goals",
         "Hash-pinned candidate staging outside the live source tree",
@@ -132,7 +158,7 @@
         {
           "id": "37.2",
           "name": "Evidence-Backed Experiment Memory",
-          "status": "in_progress",
+          "status": "implemented_ci_verified",
           "outcomes": [
             "Automatically capture local candidate experiment reports into durable memory",
             "Validate per-run outcomes, summaries, source/test hashes and decision consistency",
@@ -148,12 +174,18 @@
             "Status verifies journal integrity and exact consistency with Experience Memory and Evolution Ledger projections",
             "Local evidence remains UNVERIFIED_LOCAL, unattested, non-replayable, and not promotion eligible",
             "Human approval and independent OS attestation remain required for any future production promotion"
-          ]
+          ],
+          "validation": {
+            "core_workflow_run_id": 45377313172,
+            "isolated_candidate_workflow_run_id": 45377313184,
+            "result": "PASSED",
+            "trust": "UNVERIFIED_LOCAL_NON_REPLAYABLE"
+          }
         },
         {
           "id": "37.3",
           "name": "Independent Run Verification & Trusted Learning Admission",
-          "status": "in_progress",
+          "status": "implemented_pending_external_host_deployment",
           "outcomes": [
             "Define a canonical pre-run challenge that binds backend identity, argv, timeout, sandbox policy, nonce and full bounded source/test hashes",
             "Verify detached Ed25519 signatures over independently measured post-run results, including pass, fail, timeout and no-test outcomes",
@@ -177,7 +209,8 @@
             "The learning gate does not write memory, grant replay, modify source or promote production",
             "No runner or trust config means fail-closed execution; no local-venv or GitHub Actions fallback is treated as OS attestation",
             "Human approval, rollback proof and the separate promotion gate remain mandatory for production changes"
-          ]
+          ],
+          "completion_boundary": "Canonical challenge, detached Ed25519 verification, replay protection and fail-closed admission code are implemented; an independently administered HTTPS host remains required to satisfy the real-run attestation exit criteria."
         },
         {
           "id": "37.4",
@@ -213,7 +246,8 @@
             "Traceback frames never self-certify root cause, execute code, admit learning or promote production"
           ]
         }
-      ]
+      ],
+      "completion_boundary": "Candidate discovery, local evidence memory, attestation protocol and production gates are implemented and CI-tested. Trusted learning admission and production promotion remain disabled until the independent host and owner-controlled keys are deployed."
     },
     {
       "id": "38",
