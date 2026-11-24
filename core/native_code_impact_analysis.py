@@ -39,6 +39,7 @@ class NativeCodeImpactAnalyzer:
         max_depth: int = MAX_PATH_DEPTH,
         max_results: int = MAX_IMPACTS,
         max_paths_per_impact: int = MAX_PATHS_PER_IMPACT,
+        _reasoning_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if (
             not isinstance(predicate, str)
@@ -63,7 +64,26 @@ class NativeCodeImpactAnalyzer:
                 f"max_paths_per_impact must be from 1 to {MAX_PATHS_PER_IMPACT}.",
             )
 
-        reasoning = self.adapter.reason_repository(repository)
+        reasoning = (
+            self.adapter.reason_repository(repository)
+            if _reasoning_result is None else _reasoning_result
+        )
+        if not isinstance(reasoning, dict):
+            return self._failure(
+                "INVALID_SHARED_REASONING_RESULT",
+                "Shared reasoning result must be a validated native repository result.",
+            )
+        source_graph = reasoning.get("source_graph")
+        if _reasoning_result is not None and (
+            not isinstance(source_graph, dict)
+            or source_graph.get("repository") != repository
+            or not isinstance(source_graph.get("commit"), str)
+            or reasoning.get("schema") != "pika.native_reasoning.result.v1"
+        ):
+            return self._failure(
+                "SHARED_REASONING_REPOSITORY_MISMATCH",
+                "Shared reasoning result does not match the requested acquired repository.",
+            )
         if not reasoning.get("success"):
             return reasoning
         if reasoning.get("completion_status") not in {
