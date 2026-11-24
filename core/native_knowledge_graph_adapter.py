@@ -494,10 +494,9 @@ class NativeKnowledgeGraphAdapter:
                 "definitions": len(symbol_records),
                 "dependency_edges": sum(row["predicate"] == "depends_on" for row in facts),
                 "inheritance_edges": sum(row["predicate"] == "is_a" for row in facts),
-                "containment_edges": sum(
-                    row["predicate"] == "part_of" for row in facts
-                    if row in fact_groups["module"] or row in selected_containment
-                ),
+                "containment_edges": len(fact_groups["module"]) + len(selected_containment),
+                "module_containment_edges": len(fact_groups["module"]),
+                "definition_containment_edges": len(selected_containment),
                 "candidate_containment_edges": len(containment_facts),
                 "relationships_omitted": omitted_containment,
                 "containment_relationships_omitted": omitted_containment,
