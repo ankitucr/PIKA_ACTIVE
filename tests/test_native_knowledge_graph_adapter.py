@@ -167,6 +167,7 @@ def test_modified_corpus_file_is_rejected_by_manifest_hash(tmp_path):
     assert result["success"] is True
     assert any("SHA-256 does not match" in error for error in result["errors"])
     assert result["coverage_status"] == "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+    assert result["coverage_flags"] == ["REJECTED_OR_UNPARSEABLE_FILES"]
     assert result["metrics"]["python_files_parsed"] == 3
     assert not any(
         item["path"] == "pkg/a.py"
@@ -350,6 +351,7 @@ def test_containment_edges_are_budgeted_after_core_relationships(tmp_path):
 
     assert graph["success"] is True
     assert graph["coverage_status"] == "PARTIAL_GRAPH_FACT_BUDGET"
+    assert graph["coverage_flags"] == ["CONTAINMENT_FACTS_OMITTED_FOR_REASONING_BUDGET"]
     assert len(graph["facts"]) == 500
     assert graph["metrics"]["input_relationship_records"] == 500
     assert graph["metrics"]["candidate_containment_edges"] == 510
