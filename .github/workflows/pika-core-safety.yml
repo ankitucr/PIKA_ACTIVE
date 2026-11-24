@@ -177,8 +177,6 @@ jobs:
         run: python -m compileall -q core tests
 
       - name: Run Windows host security regressions
-        env:
-          PIKA_ACL_DEBUG: "1"
         run: python -m pytest -q tests/test_file_lock.py tests/test_windows_acl.py tests/test_phase36_4_attestation.py tests/test_phase36_5_attestor_policy.py tests/test_phase36_attestor_config.py tests/test_phase36_9_run_bound_attestation.py tests/test_phase37_result_attestation.py tests/test_phase37_production_gates.py::test_trusted_learning_requires_signed_operator_approval_and_is_idempotent tests/test_phase37_production_gates.py::test_learning_admission_rejects_regression_or_forged_approval
 
   pc-body-sandbox:
