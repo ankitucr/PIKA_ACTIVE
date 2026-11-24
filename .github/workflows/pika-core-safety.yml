@@ -177,15 +177,7 @@ jobs:
         run: python -m compileall -q core tests
 
       - name: Run Windows host security regressions
-        run: |
-          python -m pytest -q \
-            tests/test_file_lock.py \
-            tests/test_windows_acl.py \
-            tests/test_phase36_4_attestation.py \
-            tests/test_phase36_5_attestor_policy.py \
-            tests/test_phase36_attestor_config.py \
-            tests/test_phase36_9_run_bound_attestation.py \
-            tests/test_phase37_result_attestation.py
+        run: python -m pytest -q tests/test_file_lock.py tests/test_windows_acl.py tests/test_phase36_4_attestation.py tests/test_phase36_5_attestor_policy.py tests/test_phase36_attestor_config.py tests/test_phase36_9_run_bound_attestation.py tests/test_phase37_result_attestation.py
 
   pc-body-sandbox:
     name: PC body Docker isolation smoke test
