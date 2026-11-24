@@ -28,6 +28,7 @@ on:
     branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust]
     paths:
       - "core/**"
+      - "PIKA_KNOWLEDGE/**"
       - "tests/**"
       - "pika_live.py"
       - "pika_pc.py"
