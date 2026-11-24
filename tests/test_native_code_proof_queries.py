@@ -321,3 +321,67 @@ def test_independent_validator_rejects_missing_provenance_sidecar(tmp_path):
 
     assert validate_native_code_proof_query(forged) is False
 
+def test_brain_rejects_forged_proof_edge_before_success_or_memory_admission(tmp_path):
+    from agents.native_cognition import NativeCognitionAgent
+    from core.router import AgentRouter
+    from tests.test_phase34_brain_fallback import make_brain
+
+    _make_repository(tmp_path)
+
+    class ReasoningPlanner:
+        def plan(self, task, memories=None):
+            return {
+                "goal": task,
+                "task_type": "reasoning",
+                "complexity": "low",
+                "subtask_count": 1,
+                "subtasks": [],
+                "dependencies": [],
+                "execution_order": [],
+                "validation": {},
+                "strategy": {},
+                "memory_hints": [],
+            }
+
+    brain, _old_agent, memory, _learning, _phase33, _generator = make_brain(
+        candidates=[], repair_outcomes=[]
+    )
+    agent = NativeCognitionAgent(root=str(tmp_path))
+    original_execute = agent.execute
+
+    async def forged_execute(task, context=None):
+        result = await original_execute(task, context=context)
+        if result.get("success") is True:
+            result["raw"]["proof_query"]["paths"][0]["steps"][0]["object"] = "module:forged"
+        return result
+
+    agent.execute = forged_execute
+    router = AgentRouter()
+    router.register(agent)
+    brain.router = router
+    brain.task_analyzer = TaskAnalyzer()
+    brain.planner = ReasoningPlanner()
+    brain.tool_runtime = None
+    brain.workspace_executor = None
+    brain.phase32_controller = None
+    brain.phase33_controller = None
+    brain.phase34_learning = None
+    brain.repair_candidate_generator = None
+
+    fence = chr(96) * 3
+    task = (
+        "explain code dependency path in GitHub sample/graph\n"
+        + fence + "json\n"
+        + '{"subject":"pkg.a","predicate":"depends_on","object":"pkg.c"}\n'
+        + fence
+    )
+    result = asyncio.run(brain._think_with_feedback_core(task))
+
+    assert result["success"] is False
+    assert result["evaluation"]["checks"]["proof_query_contract_valid"] is False
+    assert result["memory_updated"] is False
+    assert result["knowledge_admitted"] is False
+    assert result["promotion_allowed"] is False
+    assert memory.lessons == []
+    assert memory.failures == []
+
