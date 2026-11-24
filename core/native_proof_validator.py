@@ -1,0 +1,323 @@
+"""Independent validation for native source-code proof-query results.
+
+The validator checks that every returned edge, root premise and source
+sidecar is bound to the underlying Phase 39 input facts and the acquired
+source evidence. It never promotes or verifies the truth of source claims.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+ALLOWED_PREDICATES = {"depends_on", "is_a", "part_of", "requires"}
+ALLOWED_STATUSES = {
+    "DIRECT_SOURCE_RELATION",
+    "DIRECT_AND_ALTERNATE_SOURCE_PATHS",
+    "TRANSITIVE_SOURCE_PATH",
+    "SOURCE_PATH_WITHOUT_ENGINE_CLOSURE",
+    "UNRESOLVED_EXPLICIT_CONTRADICTION",
+    "EXPLICIT_NEGATION_UNVERIFIED",
+    "NOT_ESTABLISHED_BY_REGISTERED_SOURCE_GRAPH",
+    "QUERY_RESOURCE_LIMIT",
+    "QUERY_RESOURCE_LIMIT_WITH_PARTIAL_PATHS",
+}
+
+
+def _digest(value: Any) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_native_code_proof_query(result: Any) -> bool:
+    """Validate a complete proof-query result; malformed shapes fail closed."""
+    try:
+        if not isinstance(result, dict):
+            return False
+        query = result.get("proof_query")
+        source_graph = result.get("source_graph")
+        facts = result.get("facts")
+        derived_facts = result.get("derived_facts")
+        evidence = result.get("source_evidence")
+        if not all(isinstance(value, dict) for value in (query, source_graph)):
+            return False
+        if not all(isinstance(value, list) for value in (facts, derived_facts, evidence)):
+            return False
+        if query.get("schema") != "pika.native_code_proof_query.v1":
+            return False
+        if query.get("trust") != "UNVERIFIED_PROOF_EXPLANATION":
+            return False
+        if not isinstance(query.get("query_id"), str) or query.get("status") not in ALLOWED_STATUSES:
+            return False
+
+        repository = source_graph.get("repository")
+        commit = source_graph.get("commit")
+        subject = query.get("subject")
+        predicate = query.get("predicate")
+        object_name = query.get("object")
+        if not all(isinstance(value, str) and value for value in (repository, commit, subject, object_name)):
+            return False
+        if predicate not in ALLOWED_PREDICATES:
+            return False
+        if query.get("repository") != repository or query.get("commit") != commit:
+            return False
+        if query.get("reasoning_id") != result.get("reasoning_id"):
+            return False
+        if query.get("coverage_status") != source_graph.get("coverage_status"):
+            return False
+        if query.get("coverage_flags") != source_graph.get("coverage_flags"):
+            return False
+
+        input_by_id: dict[str, dict[str, Any]] = {}
+        all_fact_ids: set[str] = set()
+        for fact in facts:
+            if not isinstance(fact, dict) or not isinstance(fact.get("id"), str):
+                return False
+            fact_id = fact["id"]
+            if fact_id in all_fact_ids:
+                return False
+            all_fact_ids.add(fact_id)
+            if fact.get("kind") == "OBSERVED_INPUT":
+                if fact.get("trust") != "UNVERIFIED_INPUT":
+                    return False
+                if fact.get("polarity") not in {"positive", "negative"}:
+                    return False
+                if not isinstance(fact.get("provenance"), list):
+                    return False
+                input_by_id[fact_id] = fact
+
+        derived_by_id: dict[str, dict[str, Any]] = {}
+        for fact in derived_facts:
+            if not isinstance(fact, dict) or not isinstance(fact.get("id"), str):
+                return False
+            if fact["id"] in derived_by_id:
+                return False
+            derived_by_id[fact["id"]] = fact
+        evidence_by_id: dict[str, dict[str, Any]] = {}
+        for item in evidence:
+            if not isinstance(item, dict) or not isinstance(item.get("source_id"), str):
+                return False
+            source_id = item["source_id"]
+            if source_id in evidence_by_id:
+                return False
+            if (
+                item.get("repository") != repository
+                or item.get("commit") != commit
+                or item.get("trust") != "OBSERVED_NOT_YET_VERIFIED_FOR_REUSE"
+                or item.get("source_executed") is not False
+                or not isinstance(item.get("sha256"), str)
+                or len(item.get("sha256", "")) != 64
+                or not isinstance(item.get("path"), str)
+                or not isinstance(item.get("line_start"), int)
+                or not isinstance(item.get("line_end"), int)
+            ):
+                return False
+            evidence_by_id[source_id] = item
+
+        paths = query.get("paths")
+        path_count = query.get("path_count")
+        direct_fact_ids = query.get("direct_source_fact_ids")
+        negative_evidence = query.get("negative_source_evidence")
+        search = query.get("path_search")
+        if (
+            not isinstance(paths, list)
+            or len(paths) > 8
+            or path_count != len(paths)
+            or not isinstance(direct_fact_ids, list)
+            or not isinstance(negative_evidence, list)
+            or not isinstance(search, dict)
+        ):
+            return False
+        max_depth = search.get("max_depth")
+        max_paths = search.get("max_paths")
+        expansions = search.get("expansions")
+        if (
+            not isinstance(max_depth, int) or isinstance(max_depth, bool) or not 1 <= max_depth <= 12
+            or not isinstance(max_paths, int) or isinstance(max_paths, bool) or not 1 <= max_paths <= 8
+            or not isinstance(expansions, int) or isinstance(expansions, bool) or not 0 <= expansions <= 10_001
+            or search.get("expansion_limit") != 10_000
+            or not isinstance(search.get("resource_limited"), bool)
+            or search["resource_limited"] != (expansions > 10_000)
+            or len(paths) > max_paths
+        ):
+            return False
+
+        expected_path_ids: list[str] = []
+        root_sets: set[tuple[str, ...]] = set()
+        for path in paths:
+            if not isinstance(path, dict) or path.get("trust") != "UNVERIFIED_SOURCE_PATH":
+                return False
+            length = path.get("length")
+            labels = path.get("node_labels")
+            steps = path.get("steps")
+            root_ids = path.get("root_premise_fact_ids")
+            if (
+                not isinstance(length, int) or isinstance(length, bool) or not 1 <= length <= max_depth
+                or not isinstance(labels, list) or len(labels) != length + 1
+                or not isinstance(steps, list) or len(steps) != length
+                or labels[0] != subject or labels[-1] != object_name
+                or not isinstance(root_ids, list) or len(root_ids) != length
+                or len(set(root_ids)) != length
+            ):
+                return False
+            step_ids: list[str] = []
+            for index, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    return False
+                fact_id = step.get("fact_id")
+                source_fact = input_by_id.get(fact_id)
+                if source_fact is None:
+                    return False
+                if (
+                    step.get("subject") != labels[index]
+                    or step.get("object") != labels[index + 1]
+                    or step.get("predicate") != predicate
+                    or step.get("trust") != "UNVERIFIED_INPUT"
+                    or source_fact.get("subject") != step.get("subject")
+                    or source_fact.get("predicate") != step.get("predicate")
+                    or source_fact.get("object") != step.get("object")
+                    or source_fact.get("polarity") != "positive"
+                ):
+                    return False
+                sources = step.get("source_ids")
+                sidecars = step.get("source_evidence")
+                if not isinstance(sources, list) or not isinstance(sidecars, list):
+                    return False
+                expected_sources = set(source_fact.get("provenance", []))
+                if (
+                    set(sources) != expected_sources
+                    or len(sources) != len(expected_sources)
+                    or {item.get("source_id") for item in sidecars if isinstance(item, dict)} != expected_sources
+                    or len(sidecars) != len(expected_sources)
+                    or any(
+                        not isinstance(item, dict)
+                        or item.get("source_id") not in evidence_by_id
+                        or item != evidence_by_id[item["source_id"]]
+                        for item in sidecars
+                    )
+                ):
+                    return False
+                step_ids.append(fact_id)
+            if root_ids != step_ids:
+                return False
+            roots = tuple(sorted(root_ids))
+            root_sets.add(roots)
+            expected_path_id = _digest({
+                "repository": repository,
+                "predicate": predicate,
+                "fact_ids": step_ids,
+            })
+            if path.get("path_id") != expected_path_id:
+                return False
+            expected_path_ids.append(expected_path_id)
+
+        if len(set(expected_path_ids)) != len(expected_path_ids):
+            return False
+        negative_fact_ids: list[str] = []
+        for item in negative_evidence:
+            if not isinstance(item, dict) or item.get("trust") != "UNVERIFIED_INPUT_NEGATION":
+                return False
+            fact_id = item.get("fact_id")
+            source_fact = input_by_id.get(fact_id)
+            if source_fact is None:
+                return False
+            if (
+                source_fact.get("polarity") != "negative"
+                or source_fact.get("subject") != subject
+                or source_fact.get("predicate") != predicate
+                or source_fact.get("object") != object_name
+                or item.get("subject") != subject
+                or item.get("predicate") != predicate
+                or item.get("object") != object_name
+                or item.get("polarity") != "negative"
+            ):
+                return False
+            sources = item.get("source_ids")
+            sidecars = item.get("source_evidence")
+            expected_sources = set(source_fact.get("provenance", []))
+            if (
+                not isinstance(sources, list)
+                or set(sources) != expected_sources
+                or not isinstance(sidecars, list)
+                or {entry.get("source_id") for entry in sidecars if isinstance(entry, dict)} != expected_sources
+                or any(
+                    not isinstance(entry, dict)
+                    or entry.get("source_id") not in evidence_by_id
+                    or entry != evidence_by_id[entry["source_id"]]
+                    for entry in sidecars
+                )
+            ):
+                return False
+            negative_fact_ids.append(fact_id)
+
+        if not isinstance(direct_fact_ids, list) or len(set(direct_fact_ids)) != len(direct_fact_ids):
+            return False
+        for fact_id in direct_fact_ids:
+            fact = input_by_id.get(fact_id)
+            if not fact or (
+                fact.get("subject") != subject
+                or fact.get("predicate") != predicate
+                or fact.get("object") != object_name
+                or fact.get("polarity") != "positive"
+            ):
+                return False
+
+        derived_report = query.get("derived_hypothesis")
+        if derived_report is not None:
+            if not isinstance(derived_report, dict):
+                return False
+            derived = derived_by_id.get(derived_report.get("fact_id"))
+            if derived is None or (
+                derived.get("kind") != "DERIVED_HYPOTHESIS"
+                or derived.get("trust") != "UNVERIFIED_DERIVATION"
+                or derived.get("subject") != subject
+                or derived.get("predicate") != predicate
+                or derived.get("object") != object_name
+                or derived.get("polarity") != "positive"
+            ):
+                return False
+            supports = derived.get("derivation_supports")
+            if not isinstance(supports, list) or not 1 <= len(supports) <= 8:
+                return False
+            matching = [
+                support for support in supports
+                if isinstance(support, dict)
+                and tuple(sorted(support.get("root_premise_fact_ids", []))) in root_sets
+            ]
+            if (
+                derived_report.get("trust") != "UNVERIFIED_DERIVATION"
+                or derived_report.get("derivation_supports") != supports[:8]
+                or derived_report.get("matching_path_support_count") != len(matching)
+            ):
+                return False
+
+        payload = {
+            "schema": query["schema"],
+            "repository": repository,
+            "commit": commit,
+            "subject": subject,
+            "predicate": predicate,
+            "object": object_name,
+            "status": query.get("status"),
+            "path_ids": expected_path_ids,
+            "negative_fact_ids": negative_fact_ids,
+            "reasoning_id": result.get("reasoning_id"),
+        }
+        if query.get("query_id") != _digest(payload):
+            return False
+
+        return all(
+            result.get(field) is False
+            for field in (
+                "source_executed",
+                "source_modified",
+                "source_persisted",
+                "memory_updated",
+                "knowledge_admitted",
+                "promotion_allowed",
+            )
+        ) and result.get("memory_admission") == "BLOCKED_UNVERIFIED_HYPOTHESES"
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
