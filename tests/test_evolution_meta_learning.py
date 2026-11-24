@@ -148,7 +148,7 @@ def test_same_task_comparison_requires_five_same_event_pairs(tmp_path):
         for index in range(5)
     ]
     memory.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\\n" for row in rows),
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
         encoding="utf-8",
     )
 
@@ -175,7 +175,7 @@ def test_same_task_comparison_does_not_combine_unpaired_events(tmp_path):
         rows.append(_paired_row(f"alpha-{index}", task_hash, {"alpha": True}))
         rows.append(_paired_row(f"beta-{index}", task_hash, {"beta": False}))
     memory.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\\n" for row in rows),
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
         encoding="utf-8",
     )
 
