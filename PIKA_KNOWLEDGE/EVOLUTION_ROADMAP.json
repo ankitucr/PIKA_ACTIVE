@@ -214,9 +214,92 @@
           ]
         }
       ]
+    },
+    {
+      "id": "38",
+      "name": "Unified PC Body and Isolated Workspace",
+      "status": "implemented_pending_operator_pc_activation",
+      "outcomes": [
+        "Native Brain exposes read-only PC body sensors and scoped workspace",
+        "Hash-bound selected-file Docker test runner with no network, read-only root, non-root identity and resource limits",
+        "PC body and isolation regressions run in GitHub CI"
+      ],
+      "exit_criteria": [
+        "PC installation remains unchanged until explicit operator authorization",
+        "Windows and WSL sandbox behavior are validated on the actual target PC",
+        "Local results remain UNVERIFIED_LOCAL and cannot authorize learning or promotion"
+      ]
+    },
+    {
+      "id": "39",
+      "name": "Native Symbolic Reasoning",
+      "status": "implemented_standalone_ci_verified_pending_consolidated_ci",
+      "outcomes": [
+        "Bounded declarative facts and rules",
+        "Deterministic forward chaining and variable unification",
+        "Evidence provenance and confidence propagation",
+        "Contradiction detection and explicit insufficient-evidence results"
+      ],
+      "exit_criteria": [
+        "No LLM, local model, Ollama or external inference API",
+        "Unverified premises or rules never produce verified conclusions",
+        "Contradictions are never silently resolved",
+        "Reasoning is tested in the consolidated trust branch"
+      ]
+    },
+    {
+      "id": "40",
+      "name": "Deep Cross-Language GitHub Learning",
+      "status": "implemented_pending_consolidated_ci",
+      "outcomes": [
+        "Python AST extraction retained",
+        "Bounded structural analysis for JavaScript, TypeScript, Dart, Go, Rust, Java, Kotlin, Swift, C/C++, C#, Ruby, PHP, SQL, HTML and CSS",
+        "Repository commit and file hash provenance checked before extraction",
+        "Cross-language test-like paths and assertion-like patterns stored as unverified observations"
+      ],
+      "exit_criteria": [
+        "No downloaded source import, build, test execution or model API use",
+        "License review remains required before code reuse",
+        "Non-Python recognizers are labelled non-compiler-grade and never presented as runtime proof",
+        "Consolidated CI passes on Python 3.12 and 3.14"
+      ]
+    },
+    {
+      "id": "41",
+      "name": "Native Reversible Self-Evolution",
+      "status": "implemented_pending_consolidated_ci",
+      "outcomes": [
+        "Allowlisted deterministic transformation catalog",
+        "Hash-bound candidate diff and baseline snapshot",
+        "Explicit regression-test hashes and isolated candidate staging",
+        "Native Brain routing to proposal-only evolution"
+      ],
+      "exit_criteria": [
+        "No live source writes or execution during proposal generation",
+        "Stale source races and unapproved rules are rejected",
+        "Candidates remain UNVERIFIED_LOCAL and promotion blocked",
+        "Attested evaluation and operator approval remain separate gates"
+      ]
+    },
+    {
+      "id": "42",
+      "name": "Consolidated Native Cognition and Independent Trust",
+      "status": "in_progress",
+      "outcomes": [
+        "Integrate Phase 37.4 host attestor and learning/promotion gates with Phase 38 PC body",
+        "Integrate Phase 39 native reasoning, Phase 40 cross-language learning and Phase 41 staged self-evolution",
+        "Unify Python 3.12/3.14 CI and isolated candidate CI",
+        "Keep all external trust gates deny-all until independently deployed and pinned"
+      ],
+      "exit_criteria": [
+        "Full consolidated regression and isolation CI passes",
+        "Production trust modules remain fail-closed without real host and owner-managed keys",
+        "PC installation is not upgraded until explicit operator authorization",
+        "No draft branch is merged to main without separate review and approval"
+      ]
     }
   ],
-  "updated_at": "2026-11-21T20:00:00+05:30",
-  "current_milestone": "37.4",
-  "next_milestone": "37.5"
+  "updated_at": "2026-11-24",
+  "current_milestone": "42",
+  "next_milestone": "external_host_and_operator_validation"
 }
