@@ -5,6 +5,7 @@ import hashlib
 import pytest
 
 from core.native_evolution import NativeSelfEvolutionEngine, NativeSelfEvolutionError, _replace_none_comparison
+from core.evolution.experiments import ExperimentError
 
 
 def _project(root):
@@ -83,13 +84,19 @@ def test_rejects_unapproved_rule_and_path_traversal(tmp_path):
         )
 
 
-def test_stale_target_hash_is_rejected_by_experiment_engine(tmp_path):
+def test_stale_target_hash_is_rejected_by_experiment_engine(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
     source, _ = _project(root)
     engine = NativeSelfEvolutionEngine(root)
-    source.write_text("def is_missing(value):\n    return value is None\n", encoding="utf-8")
-    with pytest.raises(NativeSelfEvolutionError):
+    original_stage = engine.experiments.stage_candidate
+
+    def mutate_before_stage(*args, **kwargs):
+        source.write_text("def is_missing(value):\\n    return value is None\\n", encoding="utf-8")
+        return original_stage(*args, **kwargs)
+
+    monkeypatch.setattr(engine.experiments, "stage_candidate", mutate_before_stage)
+    with pytest.raises(ExperimentError, match="Baseline target hash changed"):
         engine.propose_and_stage(
             "core/service.py", test_paths=["tests/test_service.py"],
             rule_id="none_comparison_identity_v1", evidence=[{"id": "f1"}], rationale="test",
