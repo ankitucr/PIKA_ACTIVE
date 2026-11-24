@@ -42,7 +42,8 @@ def _resolve_node(nodes: set[str], reference: Any) -> tuple[str | None, list[str
     # exact source-derived symbol/module label. Never pick the first collision.
     matches = sorted(
         label for label in nodes
-        if re.search(rf":{re.escape(query)}(?:@|:)", label)
+        if not label.startswith("unresolved_class_reference:")
+        and re.search(rf":{re.escape(query)}(?:@|:)", label)
     )
     if len(matches) == 1:
         return matches[0], matches
@@ -104,7 +105,8 @@ class NativeCodeProofQuery:
         ]
         labels = {
             str(label)
-            for row in source_records
+            for row in reasoning.get("facts", [])
+            if isinstance(row, dict)
             for label in (row.get("subject"), row.get("object"))
             if isinstance(label, str)
         }
@@ -247,6 +249,8 @@ class NativeCodeProofQuery:
             status = "UNRESOLVED_EXPLICIT_CONTRADICTION"
         elif negative_direct:
             status = "EXPLICIT_NEGATION_UNVERIFIED"
+        elif resource_limited and paths:
+            status = "QUERY_RESOURCE_LIMIT_WITH_PARTIAL_PATHS"
         elif paths and positive_direct and len(paths) > 1:
             status = "DIRECT_AND_ALTERNATE_SOURCE_PATHS"
         elif positive_direct:
