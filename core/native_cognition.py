@@ -17,6 +17,7 @@ from typing import Any, Iterable
 from core.native_code_analyzer import NativeCodeAnalyzer
 from core.native_reasoning import NativeReasoningEngine
 from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
+from core.native_code_proof_queries import NativeCodeProofQuery
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -37,6 +38,7 @@ class NativeCognitionEngine:
         self.analyzer = NativeCodeAnalyzer()
         self.reasoning = NativeReasoningEngine()
         self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
+        self.code_proof_query = NativeCodeProofQuery(self.code_graph)
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -137,6 +139,65 @@ class NativeCognitionEngine:
             "promotion_allowed": False,
         })
         return result
+
+    def explain_learned_code_relation(
+        self,
+        repository: str,
+        subject: str,
+        predicate: str,
+        object: str,
+        *,
+        max_depth: int = 12,
+        max_paths: int = 8,
+    ) -> dict[str, Any]:
+        """Explain a learned-code relation using bounded source-backed proof paths."""
+        result = self.code_proof_query.explain(
+            repository,
+            subject,
+            predicate,
+            object,
+            max_depth=max_depth,
+            max_paths=max_paths,
+        )
+        self._append_event({
+            "type": "native_code_proof_query",
+            "repository": str(repository)[:200],
+            "predicate": str(predicate)[:64],
+            "status": result.get("proof_query", {}).get("status"),
+            "path_count": result.get("proof_query", {}).get("path_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    @staticmethod
+    def _proof_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("proof_query")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("subject", "predicate", "object", "max_depth", "max_paths"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not all(isinstance(query.get(key), str) and query[key].strip()
+                   for key in ("subject", "predicate", "object")):
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
 
     def search_code(self, query: str, *, limit: int = 5) -> dict[str, Any]:
         """Search lexical source snippets and structured engineering observations."""
@@ -578,6 +639,86 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        proof_query_markers = (
+            "explain code dependency path",
+            "explain learned code relation",
+            "show proof path in learned code",
+            "trace learned code relation",
+            "trace learned github dependency",
+        )
+        if any(marker in lower for marker in proof_query_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._proof_query_from_request(text, context)
+            if not all(isinstance(query.get(key), str) and query[key].strip()
+                       for key in ("subject", "predicate", "object")):
+                return self._failure(
+                    "PROOF_QUERY_FIELDS_REQUIRED",
+                    "Provide subject, predicate and object in context['proof_query'] or a fenced JSON object.",
+                )
+            try:
+                max_depth = query.get("max_depth", 12)
+                max_paths = query.get("max_paths", 8)
+                result = await asyncio.to_thread(
+                    self.explain_learned_code_relation,
+                    repository,
+                    query["subject"],
+                    query["predicate"],
+                    query["object"],
+                    max_depth=max_depth,
+                    max_paths=max_paths,
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_PROOF_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_CODE_PROOF_QUERY_FAILED"),
+                    result.get("message", "The bounded source proof query was rejected safely."),
+                )
+            proof = result.get("proof_query", {})
+            report = [
+                "PIKA NATIVE SOURCE PROOF QUERY",
+                f"Repository: {result.get('source_graph', {}).get('repository')}",
+                f"Commit: {result.get('source_graph', {}).get('commit')}",
+                f"Relation: {proof.get('display', {}).get('subject_reference')} --{proof.get('predicate')}--> {proof.get('display', {}).get('object_reference')}",
+                f"Status: {proof.get('status')}",
+                f"Source paths: {proof.get('path_count', 0)}",
+                f"Coverage: {proof.get('coverage_status')}",
+                f"Reasoning ID: {proof.get('reasoning_id')}",
+            ]
+            for index, path_item in enumerate(proof.get("paths", [])[:8], 1):
+                report.append(
+                    f"Path {index} ({path_item.get('length')} steps): "
+                    + " -> ".join(path_item.get("node_labels", []))
+                )
+                for step in path_item.get("steps", []):
+                    locations = sorted({
+                        f"{item.get('path')}:{item.get('line_start')}-{item.get('line_end')}"
+                        for item in step.get("source_evidence", [])
+                    })
+                    report.append(
+                        f"  {step.get('predicate')}: "
+                        + (", ".join(locations) if locations else "source location unavailable")
+                    )
+            report.extend([
+                "Trust: all source edges and proof explanations remain unverified.",
+                "A missing path is not proof that a runtime dependency does not exist.",
+                "Policy: no source execution/modification, graph persistence, memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         source_graph_markers = (
             "reason over learned code",
