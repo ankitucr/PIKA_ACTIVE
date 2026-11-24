@@ -6,7 +6,6 @@ result, and impacted entities are deduplicated across targets.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any
 
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
@@ -49,7 +48,11 @@ class NativeChangeSetAnalyzer:
                 "DUPLICATE_CHANGE_SET_TARGETS",
                 "Duplicate target references are not accepted.",
             )
-        if predicate not in {"depends_on", "is_a"} or predicate not in TRANSITIVE_PREDICATES:
+        if (
+            not isinstance(predicate, str)
+            or predicate not in {"depends_on", "is_a"}
+            or predicate not in TRANSITIVE_PREDICATES
+        ):
             return self._failure(
                 "UNSUPPORTED_CHANGE_SET_PREDICATE",
                 "Change-set impact supports only depends_on and is_a.",
