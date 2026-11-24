@@ -21,6 +21,9 @@ class NativeCognitionAgent(Agent):
         "static_improvement_queue",
         "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
+        "bounded_symbolic_reasoning",
+        "evidence_provenance_reasoning",
+        "contradiction_detection",
     ]
 
     def __init__(self, root: str | None = None) -> None:
