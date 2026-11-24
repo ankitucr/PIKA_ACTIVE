@@ -277,3 +277,49 @@ def test_brain_keeps_learned_source_hypotheses_out_of_memory(tmp_path):
     assert memory.lessons == []
     assert memory.failures == []
 
+def test_symlinked_python_source_is_rejected_and_coverage_is_partial(tmp_path):
+    root = _make_repository(tmp_path)
+    target = root / "data/github_code_corpus/sample/graph/pkg/c.py"
+    outside = root / "outside.py"
+    outside.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+    target.unlink()
+    target.symlink_to(outside)
+
+    result = NativeKnowledgeGraphAdapter(root).build_repository_facts("sample/graph")
+
+    assert result["success"] is True
+    assert result["coverage_status"] == "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+    assert any("symlinked source paths" in error for error in result["errors"])
+    assert not any(item["path"] == "pkg/c.py" for item in result["source_evidence"])
+
+
+def test_source_graph_fact_budget_fails_closed_without_partial_reasoning(tmp_path):
+    repository = "sample/large"
+    source = "\n".join(f"import external_module_{index}" for index in range(510)) + "\n"
+    entry = _write_source(tmp_path, repository, "large.py", source)
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    result = NativeKnowledgeGraphAdapter(tmp_path).reason_repository(repository)
+
+    assert result["success"] is False
+    assert result["error"] == "SOURCE_GRAPH_FACT_LIMIT_EXCEEDED"
+    assert result["facts"] == []
+    assert result["source_executed"] is False
+    assert result["source_persisted"] is False
+    assert result["memory_updated"] is False
+    assert result["promotion_allowed"] is False
+
