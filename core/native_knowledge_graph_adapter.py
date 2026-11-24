@@ -331,8 +331,6 @@ class NativeKnowledgeGraphAdapter:
                 "source_executed": False,
                 "trust": "OBSERVED_NOT_YET_VERIFIED_FOR_REUSE",
             }
-            if len(facts) > MAX_FACTS:
-                raise _GraphLimitExceeded(f"source graph exceeds the {MAX_FACTS}-fact input budget")
 
         repository_node = _entity_id("repository", repo, commit, "", repo)
         try:
