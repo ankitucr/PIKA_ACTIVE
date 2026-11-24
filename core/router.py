@@ -72,6 +72,16 @@ class AgentRouter:
                         required_capabilities
                     )
                 )
+                # Some narrow native handlers expose intent-specific routing
+                # markers separately from their public general capabilities.
+                native_reasoning_capabilities = set(
+                    getattr(agent, "native_reasoning_capabilities", ())
+                )
+                score += len(
+                    native_reasoning_capabilities.intersection(
+                        required_capabilities
+                    )
+                )
 
                 if score > best_score:
                     best_score = score
@@ -79,6 +89,11 @@ class AgentRouter:
 
             if best_agent is not None and best_score > 0:
                 return best_agent
+
+            # A native-only capability must never fall through to the
+            # generic API worker when its implementation is unavailable.
+            if {"native_fact_reasoning", "native_self_evolution", "native_symbolic_reasoning"}.intersection(required_capabilities):
+                return None
 
         # ---------------------------------------------------------
         # Current default worker
