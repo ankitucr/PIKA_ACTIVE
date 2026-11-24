@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -404,7 +405,15 @@ def test_replay_guard_requires_owner_only_host_directory(tmp_path):
     project.mkdir()
     public_dir = tmp_path / 'public-host'
     public_dir.mkdir(mode=0o755)
-    public_dir.chmod(0o755)
+    if os.name == 'nt':
+        # chmod does not change NTFS DACLs. Add a real Everyone ACE so the
+        # replay-guard rejection test exercises the ACL verification path.
+        subprocess.run(
+            ['icacls.exe', str(public_dir), '/grant', '*S-1-1-0:(OI)(CI)(RX)'],
+            check=True, capture_output=True, text=True,
+        )
+    else:
+        public_dir.chmod(0o755)
     with pytest.raises(ResultAttestationError, match='owner-only'):
         RunAttestationReplayGuard(public_dir / 'consumed.jsonl', project_root=project)
 

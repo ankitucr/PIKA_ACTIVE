@@ -196,6 +196,12 @@ def _attestor_config(tmp_path: Path, backend: SignedBackend, project: Path) -> t
 def _candidate(root: Path):
     knowledge = root / "PIKA_KNOWLEDGE"
     engine = CandidateExperimentEngine(knowledge)
+    if os.name == "nt":
+        # CandidateExperimentEngine creates this test knowledge directory
+        # before TrustedLearningAdmission verifies its protected ACL.
+        from core.windows_acl import set_owner_only_acl
+        if not set_owner_only_acl(knowledge):
+            raise RuntimeError("Could not secure PIKA_KNOWLEDGE test directory ACL.")
     candidate_file = root.parent / "candidate.py"
     candidate_file.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     candidate_id = engine.stage_candidate(

@@ -48,7 +48,7 @@ def _owner_only_path(path: str | Path) -> bool:
                 and (not callable(get_uid) or metadata.st_uid == get_uid())
             )
         if os.name == "nt":
-            from .windows_acl import is_owner_only_acl
+            from core.windows_acl import is_owner_only_acl
             return is_owner_only_acl(candidate)
         return False
     except OSError:
@@ -65,7 +65,7 @@ def _secure_directory(path: Path, *, existed_before: bool) -> bool:
             return False
         return _owner_only_path(path)
     if os.name == "nt":
-        from .windows_acl import set_owner_only_acl
+        from core.windows_acl import set_owner_only_acl
         return _owner_only_path(path) if existed_before else set_owner_only_acl(path)
     return False
 

@@ -43,7 +43,7 @@ def _read_secret(path: str | Path) -> str:
         if hasattr(os, "geteuid") and (metadata.st_uid != os.geteuid() or parent.st_uid != os.geteuid()):
             raise RemoteAttestorClientError("Bearer token and directory must be owned by the current user.")
     elif os.name == "nt":
-        from .windows_acl import is_owner_only_acl
+        from core.windows_acl import is_owner_only_acl
         if not is_owner_only_acl(source) or not is_owner_only_acl(source.parent):
             raise RemoteAttestorClientError(
                 "Bearer token and directory ACLs must be restricted to the current user, SYSTEM, and Administrators."

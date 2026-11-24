@@ -65,7 +65,7 @@ def _protected_file(path: str | Path, *, project_root: str | Path | None = None,
         if stat.S_IMODE(resolved.parent.stat().st_mode) & 0o022:
             raise OperatorApprovalError("Operator key/config parent must not be group/world writable.")
     elif os.name == "nt":
-        from .windows_acl import is_owner_only_acl
+        from core.windows_acl import is_owner_only_acl
         if not is_owner_only_acl(resolved) or not is_owner_only_acl(resolved.parent):
             raise OperatorApprovalError(
                 "Operator key/config and parent ACLs must be restricted to the current user, SYSTEM, and Administrators."
