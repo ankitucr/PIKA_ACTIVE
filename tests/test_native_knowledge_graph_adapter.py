@@ -166,6 +166,7 @@ def test_modified_corpus_file_is_rejected_by_manifest_hash(tmp_path):
 
     assert result["success"] is True
     assert any("SHA-256 does not match" in error for error in result["errors"])
+    assert result["coverage_status"] == "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
     assert result["metrics"]["python_files_parsed"] == 3
     assert not any(
         item["path"] == "pkg/a.py"
