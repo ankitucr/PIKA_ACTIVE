@@ -649,6 +649,11 @@ class PIKABrain:
                     "native_symbolic_reasoning",
                 }
                 if native_only.intersection(task_analysis.get("capabilities", [])):
+                    native_missing_error = (
+                        "NATIVE_REASONING_AGENT_UNAVAILABLE"
+                        if "native_fact_reasoning" in task_analysis.get("capabilities", [])
+                        else "NATIVE_CAPABILITY_HANDLER_UNAVAILABLE"
+                    )
                     return {
                         "success": False,
                         "task": task,
@@ -658,7 +663,7 @@ class PIKABrain:
                         "agent": None,
                         "provider": None,
                         "model": None,
-                        "error": "NATIVE_CAPABILITY_HANDLER_UNAVAILABLE",
+                        "error": native_missing_error,
                         "output": "The requested bounded native capability is not registered; external inference fallback is disabled.",
                         "memory_updated": False,
                         "knowledge_admitted": False,
