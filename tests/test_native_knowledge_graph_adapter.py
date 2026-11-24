@@ -305,7 +305,7 @@ def test_source_graph_fact_budget_fails_closed_without_partial_reasoning(tmp_pat
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": [entry],
                 }
@@ -338,7 +338,7 @@ def test_containment_edges_are_budgeted_after_core_relationships(tmp_path):
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": [entry],
                 }
@@ -381,7 +381,7 @@ def test_core_import_relationships_over_budget_fail_closed(tmp_path):
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": [entry],
                 }
@@ -410,7 +410,7 @@ def test_oversized_ast_complexity_is_rejected_without_execution(tmp_path):
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": [entry],
                 }
@@ -461,7 +461,7 @@ class Child(Duplicate):
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": [entry],
                 }
@@ -512,7 +512,7 @@ def test_aggregate_ast_budget_stops_scanning_remaining_manifest_entries(tmp_path
             "schema": "pika.native_git_registry.v1",
             "repositories": {
                 repository: {
-                    "commit": "abcdef1234567890",
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
                     "license_id": "MIT",
                     "files": files,
                 }
