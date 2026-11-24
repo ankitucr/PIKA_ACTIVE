@@ -478,7 +478,7 @@ def test_native_brain_stages_deterministic_self_evolution_without_live_write(tmp
         },
     ))
 
-    assert result["success"] is True, result
+    assert result["success"] is True, result.get("output")
     assert result["raw"]["stage"] == "ISOLATED_CANDIDATE_STAGED"
     assert result["raw"]["execution"] == "NOT_EXECUTED"
     assert result["raw"]["promotion_allowed"] is False
