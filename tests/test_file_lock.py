@@ -3,6 +3,8 @@ from __future__ import annotations
 import multiprocessing
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+
+import pytest
 from pathlib import Path
 
 from core.file_lock import fcntl
@@ -52,10 +54,26 @@ def test_lock_preserves_descriptor_position(tmp_path):
         os.lseek(fd, 2, os.SEEK_SET)
         fcntl.flock(fd, fcntl.LOCK_EX)
         assert os.lseek(fd, 0, os.SEEK_CUR) == 2
+        os.lseek(fd, 3, os.SEEK_SET)
         fcntl.flock(fd, fcntl.LOCK_UN)
-        assert os.lseek(fd, 0, os.SEEK_CUR) == 2
+        assert os.lseek(fd, 0, os.SEEK_CUR) == 3
     finally:
         os.close(fd)
+
+
+def test_flock_nonblocking_reports_contention(tmp_path):
+    path = tmp_path / "nonblocking.lock"
+    path.write_bytes(b"0")
+    first = os.open(path, os.O_RDWR)
+    second = os.open(path, os.O_RDWR)
+    try:
+        fcntl.flock(first, fcntl.LOCK_EX)
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(first, fcntl.LOCK_UN)
+    finally:
+        os.close(first)
+        os.close(second)
 
 
 def test_threaded_file_lock_serializes_updates(tmp_path):

@@ -42,9 +42,11 @@ def _windows_locked_fd(fd: int, *, blocking: bool = True) -> Iterator[None]:
     key = _file_key(fd)
     with _registry_guard:
         local_lock = _thread_locks.setdefault(key, threading.Lock())
-    local_lock.acquire()
+    if not local_lock.acquire(blocking=blocking):
+        raise BlockingIOError(errno.EAGAIN, "file is already locked in this process")
     acquired = False
     original_position = None
+    release_position = None
     try:
         original_position = os.lseek(fd, 0, os.SEEK_CUR)
         os.lseek(fd, 0, os.SEEK_SET)
@@ -70,14 +72,18 @@ def _windows_locked_fd(fd: int, *, blocking: bool = True) -> Iterator[None]:
     finally:
         try:
             if acquired:
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                try:
+                    release_position = os.lseek(fd, 0, os.SEEK_CUR)
+                except OSError:
+                    release_position = original_position
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                finally:
+                    if release_position is not None:
+                        os.lseek(fd, release_position, os.SEEK_SET)
         finally:
-            try:
-                if original_position is not None:
-                    os.lseek(fd, original_position, os.SEEK_SET)
-            finally:
-                local_lock.release()
+            local_lock.release()
 
 
 class _WindowsFcntlCompat:
