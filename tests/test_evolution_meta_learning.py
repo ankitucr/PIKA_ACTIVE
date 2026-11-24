@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from core.evolution.reflection import reflect
+from core.evolution.planner import plan
+
+
+def _row(event_id: str, strategy: str, passed: bool, latency_ms: float):
+    attempt = {
+        "strategy": strategy,
+        "decision_mode": strategy,
+        "result_success": passed,
+        "evaluation_passed": passed,
+    }
+    return {
+        "category": "brain_execution",
+        "source": "PIKABrain.think",
+        "trust": "UNVERIFIED",
+        "replay_allowed": False,
+        "observation": {
+            "kind": "brain_execution",
+            "event_id": event_id,
+            "origin": "live",
+            "outcome_status": "SUCCEEDED" if passed else "FAILED",
+            "strategy": strategy,
+            "latency_ms": latency_ms,
+            "attempt_count": 1,
+            "attempts": [attempt],
+            "evaluation_passed": passed,
+        },
+    }
+
+
+def test_reflection_computes_attempt_level_strategy_metrics_without_auto_learning(tmp_path):
+    memory = tmp_path / "EXPERIENCE_MEMORY.jsonl"
+    rows = []
+    for index in range(5):
+        rows.append(_row(f"fast-{index}", "fast", index < 4, 100.0 + index))
+        rows.append(_row(f"careful-{index}", "careful", index == 0, 300.0 + index))
+    memory.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    result = reflect(memory, live_only=True)
+    fast = result["strategy_effectiveness"]["fast"]
+    careful = result["strategy_effectiveness"]["careful"]
+
+    assert fast["completed_attempt_count"] == 5
+    assert fast["success_rate"] == 0.8
+    assert fast["mean_latency_ms"] == 102.0
+    assert fast["trust"] == "UNVERIFIED_OBSERVATION_ONLY"
+    assert careful["completed_attempt_count"] == 5
+    assert careful["success_rate"] == 0.2
+    assert careful["review_recommendation"] == "MANUAL_REVIEW_LOW_SUCCESS_RATE"
+    assert result["strategy_meta_learning_policy"] == "OBSERVATIONAL_ONLY_NO_AUTOMATIC_ROUTING_CHANGE"
+    assert fast["automatic_routing_change"] is False
+    assert fast["automatic_learning_admission"] is False
+
+
+def test_small_strategy_samples_are_not_ranked_as_effective_or_ineffective(tmp_path):
+    memory = tmp_path / "EXPERIENCE_MEMORY.jsonl"
+    rows = [_row(f"small-{i}", "experimental", i == 0, 50.0) for i in range(3)]
+    memory.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    result = reflect(memory, live_only=True)
+    item = result["strategy_effectiveness"]["experimental"]
+    assert item["evidence_level"] == "INSUFFICIENT_SAMPLE"
+    assert item["review_recommendation"] == "INSUFFICIENT_EVIDENCE"
+    assert item["automatic_routing_change"] is False
+
+
+def test_goal_planner_adds_expected_value_cost_risk_and_verification(tmp_path):
+    reflection = {
+        "brain_executions_reviewed": 10,
+        "execution_failure_count": 0,
+        "execution_incomplete_count": 0,
+        "execution_success_rate": 0.9,
+        "quality_issue_count": 0,
+        "latency_ms": {"mean": 100.0},
+        "strategy_effectiveness": {
+            "alpha": {"completed_attempt_count": 5, "success_rate": 0.8},
+            "beta": {"completed_attempt_count": 5, "success_rate": 0.2},
+        },
+    }
+    result = plan({"scan_errors": 0}, reflection, tmp_path)
+    goal = next(item for item in result["goals"] if item["id"] == "compare_learning_strategy_effectiveness")
+    assert goal["expected_value"]
+    assert goal["estimated_cost"]["class"] == "BOUNDED_REVIEW"
+    assert goal["estimated_cost"]["test_execution"] == "NOT_AUTOMATIC"
+    assert goal["risk"]["source_mutation"] is False
+    assert goal["risk"]["automatic_routing_change"] is False
+    assert goal["verification_plan"]["regression_required"] is True
+    assert result["execution_policy"] == "PLAN_ONLY_NO_AUTOMATIC_EXECUTION"

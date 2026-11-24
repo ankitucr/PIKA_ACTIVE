@@ -105,6 +105,7 @@ jobs:
             tests/test_phase37_production_gates.py \
             tests/test_pc_body.py \
             tests/test_pc_docker_sandbox.py \
+            tests/test_evolution_meta_learning.py \
             tests/test_native_symbolic_reasoning.py \
             tests/test_native_reasoning.py \
             tests/test_native_knowledge_graph_adapter.py \

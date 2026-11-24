@@ -52,6 +52,36 @@ def plan(inventory: dict, reflection: dict, knowledge: Path) -> dict:
             "id": "profile_high_latency_strategies", "priority": 65, "status": "PROPOSED",
             "reason": f"Mean observed Brain latency is {latency_mean:.0f} ms.",
         })
+    strategy_effectiveness = reflection.get("strategy_effectiveness")
+    if isinstance(strategy_effectiveness, dict):
+        comparable = {
+            name: item for name, item in strategy_effectiveness.items()
+            if isinstance(name, str)
+            and isinstance(item, dict)
+            and isinstance(item.get("completed_attempt_count"), int)
+            and not isinstance(item.get("completed_attempt_count"), bool)
+            and item["completed_attempt_count"] >= 5
+            and isinstance(item.get("success_rate"), (int, float))
+            and not isinstance(item.get("success_rate"), bool)
+        }
+        if len(comparable) >= 2:
+            summary = ", ".join(
+                f"{name}={item['success_rate']:.0%} (n={item['completed_attempt_count']})"
+                for name, item in sorted(comparable.items())[:5]
+            )
+            goals.append({
+                "id": "compare_learning_strategy_effectiveness",
+                "priority": 76,
+                "status": "PROPOSED",
+                "reason": f"Multiple strategies have comparable completed samples: {summary}. Review outcomes before any routing change.",
+                "evidence_required": [
+                    "same_task_cohort",
+                    "paired_strategy_comparison",
+                    "evaluator_backed_outcomes",
+                    "latency_and_attempt_cost",
+                    "regression_test",
+                ],
+            })
     if not (knowledge / "CAPABILITY_REGISTRY.json").exists():
         goals.append({
             "id": "reconcile_capability_registry", "priority": 70, "status": "PROPOSED",
@@ -68,6 +98,42 @@ def plan(inventory: dict, reflection: dict, knowledge: Path) -> dict:
             "id": "review_architecture_and_test_coverage", "priority": 50, "status": "PROPOSED",
             "reason": "No urgent evidence-backed gaps were detected; continue periodic review.",
         })
+    expected_values = {
+        "diagnose_recent_brain_failures": "Find source-backed causes for observed failures and define a reproducible correction.",
+        "improve_answer_quality_validation": "Reduce evaluator-rejected outputs using explicit quality regressions.",
+        "inspect_inventory_errors": "Restore complete source visibility so later analysis is not silently partial.",
+        "complete_execution_evaluation_evidence": "Replace incomplete outcomes with evaluator-backed evidence.",
+        "collect_diverse_brain_baseline": "Build a representative baseline before interpreting success or strategy differences.",
+        "insufficient_live_evidence": "Collect enough real-task evidence without allowing test activity to create goals.",
+        "review_strategy_reliability": "Identify whether observed reliability issues justify a controlled strategy experiment.",
+        "compare_learning_strategy_effectiveness": "Compare strategies on equivalent tasks before proposing any routing change.",
+        "profile_high_latency_strategies": "Locate latency bottlenecks before proposing optimization.",
+        "reconcile_capability_registry": "Make capability claims match implemented and tested handlers.",
+        "review_architecture_and_test_coverage": "Detect regressions and evidence gaps through periodic review.",
+    }
+    for goal in goals:
+        goal_id = goal.get("id")
+        goal["expected_value"] = expected_values.get(
+            goal_id, "Improve evidence quality without assuming a capability gain."
+        )
+        goal["estimated_cost"] = {
+            "class": "BOUNDED_REVIEW",
+            "max_source_files": 5,
+            "test_execution": "NOT_AUTOMATIC",
+            "external_calls": 0,
+        }
+        goal["risk"] = {
+            "level": "LOW_PLAN_ONLY",
+            "source_mutation": False,
+            "execution": False,
+            "automatic_routing_change": False,
+        }
+        goal["verification_plan"] = {
+            "evidence_required": list(goal.get("evidence_required", [])),
+            "regression_required": True,
+            "operator_review_required": True,
+        }
+
     goals.sort(key=lambda item: (-item["priority"], item["id"]))
     return {
         "schema": "pika.goal_queue.v2",

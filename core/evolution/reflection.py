@@ -2,7 +2,10 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 import json
+import math
+import re
 import statistics
+from typing import Any
 
 def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dict:
     """Summarize observed outcomes without inventing causes from correlations."""
@@ -99,6 +102,111 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
 
     completed = outcomes["SUCCEEDED"] + outcomes["FAILED"] + outcomes["ERROR"]
     success_rate = outcomes["SUCCEEDED"] / completed if completed else None
+
+    # Strategy meta-learning is observational only. It groups explicit attempt
+    # evaluator outcomes and latency; it never changes routing or trust.
+    strategy_rows: dict[str, dict[str, Any]] = {}
+    for row in brain_events:
+        obs = row["observation"]
+        event_strategy = obs.get("strategy")
+        event_latency = obs.get("latency_ms")
+        attempts = obs.get("attempts")
+        normalized_attempts = attempts if isinstance(attempts, list) else []
+        observed_any_attempt = False
+        for attempt in normalized_attempts[:12]:
+            if not isinstance(attempt, dict):
+                continue
+            raw_strategy = attempt.get("strategy") or attempt.get("decision_mode")
+            if not isinstance(raw_strategy, str):
+                continue
+            candidate_strategy = raw_strategy.strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", candidate_strategy):
+                candidate_strategy = "REDACTED_OR_INVALID"
+            item = strategy_rows.setdefault(candidate_strategy, {
+                "attempts": 0, "succeeded": 0, "failed": 0, "incomplete": 0,
+                "latencies_ms": [], "event_ids": set(),
+            })
+            item["attempts"] += 1
+            observed_any_attempt = True
+            result_known = isinstance(attempt.get("result_success"), bool)
+            evaluation_known = isinstance(attempt.get("evaluation_passed"), bool)
+            if result_known and evaluation_known:
+                if attempt["result_success"] and attempt["evaluation_passed"]:
+                    item["succeeded"] += 1
+                else:
+                    item["failed"] += 1
+            else:
+                item["incomplete"] += 1
+            event_id = obs.get("event_id")
+            if isinstance(event_id, str) and event_id:
+                item["event_ids"].add(event_id)
+        # Older rows may not have per-attempt strategy data. Retain their
+        # explicit final strategy/outcome as one legacy observation.
+        if not observed_any_attempt and isinstance(event_strategy, str):
+            candidate_strategy = event_strategy.strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", candidate_strategy):
+                candidate_strategy = "REDACTED_OR_INVALID"
+            item = strategy_rows.setdefault(candidate_strategy, {
+                "attempts": 0, "succeeded": 0, "failed": 0, "incomplete": 0,
+                "latencies_ms": [], "event_ids": set(),
+            })
+            item["attempts"] += 1
+            event_state = outcome(row)
+            if event_state == "SUCCEEDED":
+                item["succeeded"] += 1
+            elif event_state in {"FAILED", "ERROR"}:
+                item["failed"] += 1
+            else:
+                item["incomplete"] += 1
+            event_id = obs.get("event_id")
+            if isinstance(event_id, str) and event_id:
+                item["event_ids"].add(event_id)
+        if (
+            isinstance(event_strategy, str)
+            and isinstance(event_latency, (int, float))
+            and not isinstance(event_latency, bool)
+            and math.isfinite(float(event_latency))
+            and float(event_latency) >= 0
+        ):
+            strategy_key = event_strategy.strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", strategy_key):
+                strategy_key = "REDACTED_OR_INVALID"
+            item = strategy_rows.setdefault(strategy_key, {
+                "attempts": 0, "succeeded": 0, "failed": 0, "incomplete": 0,
+                "latencies_ms": [], "event_ids": set(),
+            })
+            item["latencies_ms"].append(float(event_latency))
+
+    strategy_effectiveness = {}
+    for name, item in sorted(strategy_rows.items()):
+        completed_attempts = item["succeeded"] + item["failed"]
+        rate = item["succeeded"] / completed_attempts if completed_attempts else None
+        sample_level = "OBSERVATIONAL_SAMPLE" if completed_attempts >= 5 else "INSUFFICIENT_SAMPLE"
+        review = (
+            "MANUAL_REVIEW_LOW_SUCCESS_RATE"
+            if completed_attempts >= 5 and rate is not None and rate < 0.6
+            else "MONITOR_ONLY"
+            if completed_attempts >= 5
+            else "INSUFFICIENT_EVIDENCE"
+        )
+        latencies_for_strategy = item["latencies_ms"]
+        strategy_effectiveness[name] = {
+            "attempt_count": item["attempts"],
+            "completed_attempt_count": completed_attempts,
+            "succeeded_attempt_count": item["succeeded"],
+            "failed_attempt_count": item["failed"],
+            "incomplete_attempt_count": item["incomplete"],
+            "success_rate": round(rate, 4) if rate is not None else None,
+            "event_count": len(item["event_ids"]),
+            "latency_event_count": len(latencies_for_strategy),
+            "mean_latency_ms": round(statistics.fmean(latencies_for_strategy), 3) if latencies_for_strategy else None,
+            "median_latency_ms": round(statistics.median(latencies_for_strategy), 3) if latencies_for_strategy else None,
+            "evidence_level": sample_level,
+            "review_recommendation": review,
+            "trust": "UNVERIFIED_OBSERVATION_ONLY",
+            "automatic_routing_change": False,
+            "automatic_learning_admission": False,
+        }
     failures = outcomes["FAILED"] + outcomes["ERROR"] + len(non_brain_failures)
     if failures:
         root_status = "REQUIRES_SOURCE_BACKED_DIAGNOSIS"
@@ -151,6 +259,8 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
         "failure_count": failures,
         "error_type_counts": dict(error_types.most_common(10)),
         "strategy_counts": dict(strategies.most_common(10)),
+        "strategy_effectiveness": strategy_effectiveness,
+        "strategy_meta_learning_policy": "OBSERVATIONAL_ONLY_NO_AUTOMATIC_ROUTING_CHANGE",
         "quality_issue_counts": dict(quality_issues.most_common(20)),
         "quality_issue_count": sum(quality_issues.values()),
         "latency_ms": {
