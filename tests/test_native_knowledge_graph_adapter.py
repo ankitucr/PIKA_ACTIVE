@@ -353,7 +353,9 @@ def test_containment_edges_are_budgeted_after_core_relationships(tmp_path):
     assert len(graph["facts"]) == 500
     assert graph["metrics"]["input_relationship_records"] == 500
     assert graph["metrics"]["candidate_containment_edges"] == 510
-    assert graph["metrics"]["containment_edges"] == 499
+    assert graph["metrics"]["containment_edges"] == 500
+    assert graph["metrics"]["module_containment_edges"] == 1
+    assert graph["metrics"]["definition_containment_edges"] == 499
     assert graph["metrics"]["relationships_omitted"] == 11
     assert graph["metrics"]["dependency_edges"] == 0
     assert graph["metrics"]["inheritance_edges"] == 0
