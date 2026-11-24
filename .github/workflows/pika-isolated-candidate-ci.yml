@@ -2,7 +2,7 @@ name: PIKA Isolated Candidate CI
 
 on:
   push:
-    branches: [main, phase37-4/production-trust-gates, phase42/consolidated-native-trust]
+    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust]
     paths:
       - ".github/workflows/pika-isolated-candidate-ci.yml"
       - ".github/workflows/pika-core-safety.yml"
