@@ -224,6 +224,11 @@ class TaskAnalyzer:
             "reason over acquired github source",
             "build a knowledge graph from learned code",
             "analyze the learned dependency graph",
+            "explain code dependency path",
+            "explain learned code relation",
+            "show proof path in learned code",
+            "trace learned code relation",
+            "trace learned github dependency",
         )
         explicit_fact_reasoning = any(
             marker in text for marker in native_fact_reasoning_markers
