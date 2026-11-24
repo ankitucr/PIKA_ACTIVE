@@ -1,16 +1,13 @@
 from __future__ import annotations
-
-import json
+ 
 import math
 import statistics
-import unittest
 from dataclasses import dataclass
 from typing import Any
 
 
 SCHEMA = "pika.phase46.experiment_quality.v1"
 MAX_REPETITIONS = 20
-MAX_RUNS_PER_SIDE = MAX_REPETITIONS
 
 
 class ExperimentQualityError(ValueError):
@@ -190,7 +187,7 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
     # A verifier is expected to check an external Ed25519 attestation. This
     # layer refuses trust elevation unless the result is explicitly true.
     attestation_verified = report.get("attestation_verified") is True
-    if report.get("attestation_verified") not in {True, False}:
+    if not isinstance(report.get("attestation_verified"), bool):
         raise ExperimentQualityError("attestation_verified must be an explicit Boolean.")
     if candidate["outcomes"].get("INCOMPLETE", 0) or baseline["outcomes"].get("INCOMPLETE", 0):
         decision = "INCOMPLETE_EVIDENCE"
