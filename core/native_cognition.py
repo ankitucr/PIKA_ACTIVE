@@ -280,6 +280,8 @@ class NativeCognitionEngine:
                 "multi_step_provenance",
                 "github_source_knowledge_graph",
                 "native_code_structure_reasoning",
+                "native_source_proof_queries",
+                "bounded_dependency_path_explanations",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
