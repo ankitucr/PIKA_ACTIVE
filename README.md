@@ -110,3 +110,16 @@ dependency. The Brain independently validates each returned edge, root fact,
 source sidecar and derivation-support match before accepting the explanation.
 All explanations remain unverified and cannot enter memory or authorize
 promotion. See docs/PHASE41_NATIVE_CODE_PROOF_QUERIES.md.
+
+## Phase 42: native code impact analysis
+
+PIKA can trace reverse consumers for AST-observed module imports and class
+inheritance. Impact results are shortest-path-first and include the complete
+Phase 41 source proof for each consumer, with repository commit, source file,
+line range and Phase 39 derivation support where available. Results are capped
+at 50 consumers, 3 paths per consumer, depth 12 and 10,000 edge expansions;
+partial source coverage or truncation is explicit. The Brain independently
+validates every nested path before accepting a report. This is structural
+impact evidence, not a runtime breakage prediction. No source execution,
+memory admission or promotion is enabled. See
+docs/PHASE42_NATIVE_CODE_IMPACT_ANALYSIS.md.
