@@ -59,3 +59,30 @@ Until these gates are satisfied, PIKA is a development/test build, not an autono
 ## Phase 36.7 remote candidate testing
 
 Android/Termux local diagnostics are not an OS sandbox. Same-repository candidate changes are tested in a disposable GitHub-hosted VM plus a network-isolated Docker container. These results are CI evidence only, not production attestation or permission to promote source. See [`docs/PHASE36_7_REMOTE_SANDBOX.md`](docs/PHASE36_7_REMOTE_SANDBOX.md).
+
+
+## Phase 38: PC body and local Docker sandbox
+
+The first PC body exposes read-only host sensors and a dedicated workspace at `~/.pika_pc/workspace`. Its local Docker test sandbox accepts only selected, hash-bound Python test files. The container runs without network, as a non-root user, with a read-only root filesystem and resource limits. Its results remain `UNVERIFIED_LOCAL` and cannot unlock trusted learning or production promotion. See [`docs/PHASE38_PC_BODY_SANDBOX.md`](docs/PHASE38_PC_BODY_SANDBOX.md).
+
+Start the body status view with `python pika_pc.py status`; inside `python pika_live.py`, use `/pc`.
+
+
+## Phase 39: Native symbolic reasoning
+
+PIKA's native Brain now includes bounded, evidence-traced symbolic forward chaining over structured facts and declarative rules. Conclusions preserve premise/rule provenance, inherit uncertainty, and remain unverified unless every premise and rule is explicitly verified. Contradictions are reported rather than silently resolved. This capability uses no LLM, local model, Ollama, or external inference API. See [Phase 39 Native Reasoning](docs/PHASE39_NATIVE_REASONING.md).
+
+
+## Phase 40: Deep GitHub learning
+
+GitHub acquisition now feeds provenance-backed engineering extraction for Python and bounded structural observations across JavaScript, TypeScript, Dart, Go, Rust, Java, Kotlin, Swift, C#, C/C++, Ruby, PHP, SQL, HTML, and CSS. Every observation is bound to repository commit and source hash and remains unverified for reuse. Non-Python recognizers are intentionally conservative and are not compiler-grade parsers. See [Phase 40 Deep GitHub Learning](docs/PHASE40_DEEP_GITHUB_LEARNING.md).
+
+
+## Phase 41: Native self-evolution
+
+PIKA can now apply an explicitly allowlisted deterministic transformation, produce a hash-bound diff, and stage an isolated candidate with pinned regression-test hashes. The live source remains unchanged, the candidate is not executed by the proposal engine, and promotion remains blocked. See [Phase 41 Native Self-Evolution](docs/PHASE41_NATIVE_SELF_EVOLUTION.md).
+
+
+## Phase 37.4: Independent trust and production gates
+
+The consolidated branch also carries the Phase 37.4 independent host-attestor, result-bound learning admission, operator approval, and production-promotion gates. These gates remain fail-closed when the independently administered host, pinned trust configuration, and operator keys are absent. GitHub Actions results and local Docker smoke tests are not production attestation. Host provisioning and any PC installation upgrade remain separate operator-controlled steps.
