@@ -20,6 +20,7 @@ REASONING_SCHEMA = "pika.native_code_graph_reasoning.v1"
 MAX_FILES = 300
 MAX_FILE_BYTES = 200_000
 MAX_FACTS = 500
+MAX_CANDIDATE_FACTS = 20_000
 MAX_PATH_LENGTH = 500
 _REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _COMMIT_RE = re.compile(r"[A-Fa-f0-9]{6,64}\Z")
@@ -275,8 +276,14 @@ class NativeKnowledgeGraphAdapter:
             simple_class_ids.setdefault(item["name"], []).append(item["node_id"])
             qualified_class_ids[f"{_module_name(item['record']['path'])}.{item['qualified']}"] = item["node_id"]
 
-        facts: list[dict[str, str]] = []
+        fact_groups: dict[str, list[dict[str, str]]] = {
+            "module": [],
+            "dependency": [],
+            "inheritance": [],
+            "containment": [],
+        }
         evidence: dict[str, dict[str, Any]] = {}
+        candidate_fact_count = 0
 
         def add_fact(
             subject: str,
@@ -284,8 +291,17 @@ class NativeKnowledgeGraphAdapter:
             obj: str,
             record: dict[str, Any],
             node: ast.AST,
+            category: str,
             observation: str,
         ) -> None:
+            nonlocal candidate_fact_count
+            if category not in fact_groups:
+                raise ValueError(f"unsupported graph fact category: {category}")
+            candidate_fact_count += 1
+            if candidate_fact_count > MAX_CANDIDATE_FACTS:
+                raise _GraphLimitExceeded(
+                    f"source graph candidate generation exceeds {MAX_CANDIDATE_FACTS} relationships"
+                )
             line_start = int(getattr(node, "lineno", 1) or 1)
             line_end = int(getattr(node, "end_lineno", line_start) or line_start)
             if isinstance(node, ast.Module):
@@ -295,7 +311,7 @@ class NativeKnowledgeGraphAdapter:
                 repo, commit, record["path"], record["sha256"],
                 line_start, line_end, type(node).__name__, observation,
             )
-            facts.append({
+            fact_groups[category].append({
                 "subject": subject,
                 "predicate": predicate,
                 "object": obj,
@@ -325,7 +341,7 @@ class NativeKnowledgeGraphAdapter:
                 module_id = module_nodes[record["path"]]
                 add_fact(
                     module_id, "part_of", repository_node, record, record["tree"],
-                    "python_module_is_part_of_repository",
+                    "module", "python_module_is_part_of_repository",
                 )
 
             # Import statements create dependency edges. No import is loaded or executed.
@@ -353,7 +369,7 @@ class NativeKnowledgeGraphAdapter:
                             )
                         add_fact(
                             module_nodes[record["path"]], "depends_on", target_id,
-                            record, node, "python_import_statement",
+                            record, node, "dependency", "python_import_statement",
                         )
 
             # Definitions are contained by their nearest enclosing definition or module.
@@ -369,7 +385,7 @@ class NativeKnowledgeGraphAdapter:
                     current = item["parents"].get(current)
                 add_fact(
                     item["node_ids"][id(node)], "part_of", parent_id,
-                    record, node, "python_ast_definition_containment",
+                    record, node, "containment", "python_ast_definition_containment",
                 )
 
             # Inheritance is recorded only for simple/dotted syntactic base expressions.
@@ -392,11 +408,11 @@ class NativeKnowledgeGraphAdapter:
                         )
                     add_fact(
                         item["node_id"], "is_a", target_id,
-                        record, node, "python_class_base_declaration",
+                        record, node, "inheritance", "python_class_base_declaration",
                     )
         except _GraphLimitExceeded as exc:
             return self._failure(
-                "SOURCE_GRAPH_FACT_LIMIT_EXCEEDED",
+                "SOURCE_GRAPH_CANDIDATE_LIMIT_EXCEEDED",
                 str(exc),
                 repository=repo,
                 commit=commit,
@@ -404,6 +420,27 @@ class NativeKnowledgeGraphAdapter:
                 errors=errors[:80],
             )
 
+        core_facts = [
+            *fact_groups["module"],
+            *fact_groups["dependency"],
+            *fact_groups["inheritance"],
+        ]
+        if len(core_facts) > MAX_FACTS:
+            return self._failure(
+                "SOURCE_GRAPH_CORE_FACT_LIMIT_EXCEEDED",
+                f"Core module, dependency, and inheritance relationships exceed the {MAX_FACTS}-fact reasoning budget.",
+                repository=repo,
+                commit=commit,
+                core_relationships=len(core_facts),
+                errors=errors[:80],
+            )
+        remaining_containment_budget = MAX_FACTS - len(core_facts)
+        containment_facts = fact_groups["containment"]
+        selected_containment = containment_facts[:remaining_containment_budget]
+        omitted_containment = len(containment_facts) - len(selected_containment)
+        facts = [*core_facts, *selected_containment]
+        used_source_ids = {row["source"] for row in facts}
+        evidence = {key: value for key, value in evidence.items() if key in used_source_ids}
         facts.sort(key=lambda row: (
             row["subject"], row["predicate"], row["object"], row["source"]
         ))
@@ -413,8 +450,11 @@ class NativeKnowledgeGraphAdapter:
             "repository": repo,
             "commit": commit,
             "coverage_status": (
-                "COMPLETE_REGISTERED_SOURCE_SET"
-                if not errors else "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+                "PARTIAL_GRAPH_FACT_BUDGET"
+                if omitted_containment else (
+                    "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+                    if errors else "COMPLETE_REGISTERED_SOURCE_SET"
+                )
             ),
             "facts": facts,
             "source_evidence": [evidence[key] for key in sorted(evidence)],
@@ -430,7 +470,13 @@ class NativeKnowledgeGraphAdapter:
                 "definitions": len(symbol_records),
                 "dependency_edges": sum(row["predicate"] == "depends_on" for row in facts),
                 "inheritance_edges": sum(row["predicate"] == "is_a" for row in facts),
-                "containment_edges": sum(row["predicate"] == "part_of" for row in facts),
+                "containment_edges": sum(
+                    row["predicate"] == "part_of" for row in facts
+                    if row in fact_groups["module"] or row in selected_containment
+                ),
+                "candidate_containment_edges": len(containment_facts),
+                "relationships_omitted": omitted_containment,
+                "containment_relationships_omitted": omitted_containment,
             },
             "errors": errors[:80],
             "trust": "UNVERIFIED_SOURCE_STRUCTURE",
@@ -442,6 +488,7 @@ class NativeKnowledgeGraphAdapter:
             "promotion_allowed": False,
             "limits": [
                 "Only Python import, class-base, and AST definition-containment structure is represented.",
+                "The 500-fact reasoning budget prioritizes module, import, and inheritance edges; excess containment edges are deterministically omitted and reported.",
                 "Imports are not resolved at runtime; ambiguous names remain external symbolic references.",
                 "Calls, dynamic imports, reflection, runtime behavior, and test outcomes are not inferred.",
                 "AST observations and all transitive conclusions remain unverified hypotheses.",
