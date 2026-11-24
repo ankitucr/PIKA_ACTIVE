@@ -10,13 +10,14 @@ import pytest
 
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
 from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
-from core.native_proof_validator import validate_native_change_set_analysis
 from core.task_analyzer import TaskAnalyzer
 
 try:
     from core.native_change_set_analysis import NativeChangeSetAnalyzer
+    from core.native_proof_validator import validate_native_change_set_analysis
 except ImportError:
     NativeChangeSetAnalyzer = None
+    validate_native_change_set_analysis = None
 
 pytestmark = pytest.mark.skipif(
     NativeChangeSetAnalyzer is None,
