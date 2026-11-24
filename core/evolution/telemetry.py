@@ -141,8 +141,8 @@ class ExecutionObserver:
             "agent": _safe_name(result.get("agent")),
             "strategy": _safe_name(result.get("strategy")),
             "tool_used": _safe_name(result.get("tool_used")),
-            "result_success": result.get("success") is True,
-            "evaluation_passed": evaluation.get("passed") is True,
+            "result_success": result.get("success") if isinstance(result.get("success"), bool) else None,
+            "evaluation_passed": evaluation.get("passed") if isinstance(evaluation.get("passed"), bool) else None,
             "issue_count": len(evaluation.get("issues", []))
             if isinstance(evaluation.get("issues"), list) else 0,
             "issue_texts": [
@@ -775,8 +775,8 @@ class ExecutionObserver:
             "agent": _safe_name(result.get("agent")),
             "strategy": _safe_name(result.get("strategy")),
             "tool_used": _safe_name(result.get("tool_used")),
-            "result_success": result.get("success") is True,
-            "evaluation_passed": evaluation.get("passed") is True,
+            "result_success": result.get("success") if isinstance(result.get("success"), bool) else None,
+            "evaluation_passed": evaluation.get("passed") if isinstance(evaluation.get("passed"), bool) else None,
             "issue_count": len(evaluation.get("issues", []))
             if isinstance(evaluation.get("issues"), list) else 0,
             "issue_texts": [

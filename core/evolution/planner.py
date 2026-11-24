@@ -52,36 +52,45 @@ def plan(inventory: dict, reflection: dict, knowledge: Path) -> dict:
             "id": "profile_high_latency_strategies", "priority": 65, "status": "PROPOSED",
             "reason": f"Mean observed Brain latency is {latency_mean:.0f} ms.",
         })
-    strategy_effectiveness = reflection.get("strategy_effectiveness")
-    if isinstance(strategy_effectiveness, dict):
-        comparable = {
-            name: item for name, item in strategy_effectiveness.items()
-            if isinstance(name, str)
-            and isinstance(item, dict)
-            and isinstance(item.get("completed_attempt_count"), int)
-            and not isinstance(item.get("completed_attempt_count"), bool)
-            and item["completed_attempt_count"] >= 5
-            and isinstance(item.get("success_rate"), (int, float))
-            and not isinstance(item.get("success_rate"), bool)
-        }
-        if len(comparable) >= 2:
-            summary = ", ".join(
-                f"{name}={item['success_rate']:.0%} (n={item['completed_attempt_count']})"
-                for name, item in sorted(comparable.items())[:5]
-            )
-            goals.append({
-                "id": "compare_learning_strategy_effectiveness",
-                "priority": 76,
-                "status": "PROPOSED",
-                "reason": f"Multiple strategies have comparable completed samples: {summary}. Review outcomes before any routing change.",
-                "evidence_required": [
-                    "same_task_cohort",
-                    "paired_strategy_comparison",
-                    "evaluator_backed_outcomes",
-                    "latency_and_attempt_cost",
-                    "regression_test",
-                ],
-            })
+    same_task_comparisons = reflection.get("same_task_strategy_comparisons")
+    eligible_comparisons = [
+        item for item in same_task_comparisons
+        if isinstance(item, dict)
+        and isinstance(item.get("paired_event_count"), int)
+        and not isinstance(item.get("paired_event_count"), bool)
+        and item["paired_event_count"] >= 5
+        and item.get("evidence_level") == "SAME_TASK_PAIRED_OBSERVATIONAL_SAMPLE"
+        and item.get("causal_claim") is False
+        and item.get("automatic_routing_change") is False
+    ] if isinstance(same_task_comparisons, list) else []
+    if eligible_comparisons:
+        summaries = [
+            f"{item.get('strategy_a')} vs {item.get('strategy_b')} "
+            f"(paired events={item.get('paired_event_count')}, "
+            f"descriptive delta={item.get('success_rate_difference_a_minus_b')})"
+            for item in eligible_comparisons[:3]
+        ]
+        goals.append({
+            "id": "compare_learning_strategy_effectiveness",
+            "priority": 76,
+            "status": "PROPOSED",
+            "reason": (
+                "Exact-task, same-event observations are available for a controlled "
+                "strategy experiment: " + "; ".join(summaries)
+            ),
+            "evidence_required": [
+                "identical_task_hash_and_context",
+                "randomized_or_counterbalanced_strategy_order",
+                "fixed_environment_and_dependency_versions",
+                "evaluator_policy_version_pinned",
+                "minimum_five_paired_repetitions",
+                "latency_and_resource_measurements",
+                "independent_reproduction",
+                "operator_review",
+            ],
+            "automatic_routing_change": False,
+            "automatic_learning_admission": False,
+        })
     if not (knowledge / "CAPABILITY_REGISTRY.json").exists():
         goals.append({
             "id": "reconcile_capability_registry", "priority": 70, "status": "PROPOSED",
