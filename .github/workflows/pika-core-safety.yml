@@ -24,7 +24,7 @@ on:
       - ".github/workflows/pika-core-safety.yml"
       - ".github/workflows/pika-isolated-candidate-ci.yml"
   pull_request:
-    branches: [main, phase37-3/result-bound-attestation, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning]
+    branches: [main, phase37-3/result-bound-attestation, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop]
     paths:
       - "core/**"
       - "tests/**"
