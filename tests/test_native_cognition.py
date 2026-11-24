@@ -243,6 +243,8 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "bounded_symbolic_reasoning",
         "evidence_provenance_reasoning",
         "contradiction_detection",
+        "cross_language_static_analysis",
+        "provenance_backed_github_knowledge",
     }
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
@@ -263,6 +265,8 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "bounded_symbolic_reasoning" in capabilities
     assert "evidence_provenance_reasoning" in capabilities
     assert "contradiction_detection" in capabilities
+    assert "cross_language_static_analysis" in capabilities
+    assert "provenance_backed_github_knowledge" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
 
