@@ -82,3 +82,16 @@ natural-language reasoning.
 It uses no LLM, local model, or external inference API. See
 [`docs/PHASE39_NATIVE_REASONING_FOUNDATION.md`](docs/PHASE39_NATIVE_REASONING_FOUNDATION.md).
 
+## Phase 40: GitHub source graph reasoning
+
+PIKA can now turn hash-verified Python source acquired through its Git learning
+pipeline into a bounded native knowledge graph. The first relationships are
+limited to AST-observed imports (`depends_on`), class base declarations
+(`is_a`), and definition/module containment (`part_of`). Exact
+repository, commit, file hash, and line-span provenance is attached to each
+source edge. Phase 39's deterministic reasoning rules can derive transitive
+hypotheses from this graph, but every observation and derivation remains
+unverified. Source is never executed, graph output is not persisted, and
+memory admission or promotion remains disabled. No LLM, local model, or
+external inference API is used. See
+[docs/PHASE40_GITHUB_SOURCE_GRAPH_REASONING.md](docs/PHASE40_GITHUB_SOURCE_GRAPH_REASONING.md).
