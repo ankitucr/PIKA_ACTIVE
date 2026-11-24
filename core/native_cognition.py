@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
 from core.native_reasoning import NativeReasoningEngine
+from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -35,6 +36,7 @@ class NativeCognitionEngine:
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
         self.reasoning = NativeReasoningEngine()
+        self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -122,6 +124,20 @@ class NativeCognitionEngine:
             **result,
         }
 
+    def reason_over_learned_code(self, repository: str) -> dict[str, Any]:
+        """Run bounded symbolic reasoning over hash-verified acquired Python source."""
+        result = self.code_graph.reason_repository(repository)
+        self._append_event({
+            "type": "native_source_graph_reasoning",
+            "repository": str(repository)[:200],
+            "success": bool(result.get("success")),
+            "derived_facts": result.get("derived_fact_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
     def search_code(self, query: str, *, limit: int = 5) -> dict[str, Any]:
         """Search lexical source snippets and structured engineering observations."""
         retrieval: dict[str, Any] = {"query": str(query), "items": [], "method": "unavailable"}
@@ -201,6 +217,8 @@ class NativeCognitionEngine:
                 "native_knowledge_graph",
                 "explicit_contradiction_detection",
                 "multi_step_provenance",
+                "github_source_knowledge_graph",
+                "native_code_structure_reasoning",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -560,6 +578,48 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        source_graph_markers = (
+            "reason over learned code",
+            "reason over learned github code",
+            "reason over acquired github source",
+            "build a knowledge graph from learned code",
+            "analyze the learned dependency graph",
+        )
+        if any(marker in lower for marker in source_graph_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo, or pass context['repository'].",
+                )
+            result = await asyncio.to_thread(self.reason_over_learned_code, repository)
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_SOURCE_GRAPH_FAILED"),
+                    result.get("message", "Source graph construction or reasoning failed safely."),
+                )
+            output = "\n".join([
+                "PIKA NATIVE GITHUB SOURCE GRAPH REASONING",
+                f"Repository: {result.get('source_graph', {}).get('repository')}",
+                f"Commit: {result.get('source_graph', {}).get('commit')}",
+                f"Parsed Python files: {result.get('source_graph', {}).get('metrics', {}).get('python_files_parsed', 0)}",
+                f"Input relationships: {result.get('base_fact_count', 0)}",
+                f"Derived hypotheses: {result.get('derived_fact_count', 0)}",
+                f"Graph: {result.get('knowledge_graph', {}).get('node_count', 0)} nodes / {result.get('knowledge_graph', {}).get('edge_count', 0)} edges",
+                f"Contradictions: {result.get('contradiction_count', 0)}",
+                f"Reasoning ID: {result.get('reasoning_id')}",
+                "Trust: source observations and every derived relationship remain unverified.",
+                "Policy: source was not executed, modified or persisted; no memory admission or promotion.",
+            ])
+            completed = result.get("completion_status") in {
+                "COMPLETED_WITH_DERIVATIONS",
+                "COMPLETED_NO_DERIVATIONS",
+            }
+            return self._response(completed, output, knowledge_consumed=False, raw=result)
 
         reasoning_markers = (
             "reason from facts",
