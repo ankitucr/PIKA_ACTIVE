@@ -606,6 +606,7 @@ class NativeCognitionEngine:
                 "PIKA NATIVE GITHUB SOURCE GRAPH REASONING",
                 f"Repository: {result.get('source_graph', {}).get('repository')}",
                 f"Commit: {result.get('source_graph', {}).get('commit')}",
+                f"Coverage: {result.get('source_graph', {}).get('coverage_status')}",
                 f"Parsed Python files: {result.get('source_graph', {}).get('metrics', {}).get('python_files_parsed', 0)}",
                 f"Input relationships: {result.get('base_fact_count', 0)}",
                 f"Derived hypotheses: {result.get('derived_fact_count', 0)}",
