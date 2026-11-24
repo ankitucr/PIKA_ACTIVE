@@ -105,20 +105,30 @@ class NativeCognitionEngine:
             }
         from core.git_learning_loop import run_cycle
         result = run_cycle(repo_list, max_files=max_files)
+        engineering_reports: list[dict[str, Any]] = []
+        if self.engineering_knowledge is not None:
+            for repository in result.get("repositories", []):
+                name = repository.get("repository") if isinstance(repository, dict) else None
+                if isinstance(name, str) and name:
+                    engineering_reports.append(
+                        self.engineering_knowledge.extract_repository(name, max_files=max_files)
+                    )
         self._append_event({
             "type": "github_learning_cycle",
             "repositories": repo_list,
             "scanned": result.get("repositories_scanned", 0),
+            "engineering_reports": len(engineering_reports),
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
         })
         return {
             "success": bool(result.get("repositories_scanned")),
-            "mode": "git_transport_plus_native_static_analysis",
+            "mode": "git_transport_plus_native_static_analysis_and_provenance_extraction",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
+            "engineering_knowledge_reports": engineering_reports,
             **result,
         }
 
