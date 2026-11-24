@@ -41,7 +41,8 @@ class names remain symbolic unresolved references rather than being guessed.
 ## Limits and trust
 
 - Maximum 300 registered files, 200,000 bytes per source file, 20,000 candidate
-  relationships, and 500 facts passed to the reasoning engine.
+  relationships, 20,000 AST nodes per file, 60,000 AST nodes per repository,
+  and 500 facts passed to the reasoning engine.
 - Module, import-dependency, and inheritance relationships have priority. If
   they exceed 500, graph construction fails closed. If only containment edges
   exceed the remaining budget, PIKA includes a deterministic prefix and reports
