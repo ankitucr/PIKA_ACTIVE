@@ -74,7 +74,7 @@ def test_native_repair_never_uses_external_worker():
 
 def test_native_modules_have_no_external_inference_imports():
     root = Path(__file__).resolve().parents[1]
-    for relative in ("core/native_cognition.py", "core/native_reasoning.py", "core/native_knowledge_graph_adapter.py", "core/native_code_proof_queries.py", "core/native_code_impact_analysis.py", "core/native_proof_validator.py", "core/native_repair_generator.py", "agents/native_cognition.py"):
+    for relative in ("core/native_cognition.py", "core/native_reasoning.py", "core/native_knowledge_graph_adapter.py", "core/native_code_proof_queries.py", "core/native_code_impact_analysis.py", "core/native_test_impact_planner.py", "core/native_proof_validator.py", "core/native_repair_generator.py", "agents/native_cognition.py"):
         path = root / relative
         if not path.exists():
             continue
@@ -262,6 +262,8 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "bounded_dependency_path_explanations" in capabilities
     assert "native_code_impact_analysis" in capabilities
     assert "bounded_reverse_dependency_tracing" in capabilities
+    assert "native_static_test_discovery" in capabilities
+    assert "bounded_test_candidate_planning" in capabilities
     assert "bounded_forward_chaining" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
