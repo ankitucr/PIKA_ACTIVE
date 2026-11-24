@@ -209,6 +209,8 @@ class NativeCognitionEngine:
                 "bounded_symbolic_reasoning",
                 "evidence_provenance_reasoning",
                 "contradiction_detection",
+                "cross_language_static_analysis",
+                "provenance_backed_github_knowledge",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
