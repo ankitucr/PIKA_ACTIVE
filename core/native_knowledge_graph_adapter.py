@@ -467,18 +467,28 @@ class NativeKnowledgeGraphAdapter:
         facts.sort(key=lambda row: (
             row["subject"], row["predicate"], row["object"], row["source"]
         ))
+        coverage_flags: list[str] = []
+        if errors:
+            coverage_flags.append("REJECTED_OR_UNPARSEABLE_FILES")
+        if omitted_containment:
+            coverage_flags.append("CONTAINMENT_FACTS_OMITTED_FOR_REASONING_BUDGET")
+        coverage_status = (
+            "COMPLETE_REGISTERED_SOURCE_SET"
+            if not coverage_flags else (
+                "PARTIAL_MULTIPLE_LIMITS"
+                if len(coverage_flags) > 1 else (
+                    "PARTIAL_GRAPH_FACT_BUDGET"
+                    if omitted_containment else "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+                )
+            )
+        )
         return {
             "success": True,
             "schema": SCHEMA,
             "repository": repo,
             "commit": commit,
-            "coverage_status": (
-                "PARTIAL_GRAPH_FACT_BUDGET"
-                if omitted_containment else (
-                    "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
-                    if errors else "COMPLETE_REGISTERED_SOURCE_SET"
-                )
-            ),
+            "coverage_status": coverage_status,
+            "coverage_flags": coverage_flags,
             "facts": facts,
             "source_evidence": [evidence[key] for key in sorted(evidence)],
             "metrics": {
@@ -498,6 +508,7 @@ class NativeKnowledgeGraphAdapter:
                 "module_containment_edges": len(fact_groups["module"]),
                 "definition_containment_edges": len(selected_containment),
                 "candidate_containment_edges": len(containment_facts),
+                "candidate_module_containment_edges": len(fact_groups["module"]),
                 "relationships_omitted": omitted_containment,
                 "containment_relationships_omitted": omitted_containment,
             },
