@@ -66,3 +66,8 @@ Android/Termux local diagnostics are not an OS sandbox. Same-repository candidat
 The first PC body exposes read-only host sensors and a dedicated workspace at `~/.pika_pc/workspace`. Its local Docker test sandbox accepts only selected, hash-bound Python test files. The container runs without network, as a non-root user, with a read-only root filesystem and resource limits. Its results remain `UNVERIFIED_LOCAL` and cannot unlock trusted learning or production promotion. See [`docs/PHASE38_PC_BODY_SANDBOX.md`](docs/PHASE38_PC_BODY_SANDBOX.md).
 
 Start the body status view with `python pika_pc.py status`; inside `python pika_live.py`, use `/pc`.
+
+
+## Phase 39: Native symbolic reasoning
+
+PIKA's native Brain now includes bounded, evidence-traced symbolic forward chaining over structured facts and declarative rules. Conclusions preserve premise/rule provenance, inherit uncertainty, and remain unverified unless every premise and rule is explicitly verified. Contradictions are reported rather than silently resolved. This capability uses no LLM, local model, Ollama, or external inference API. See [Phase 39 Native Reasoning](docs/PHASE39_NATIVE_REASONING.md).
