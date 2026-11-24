@@ -231,6 +231,11 @@ class CandidateDiscoveryQueue:
         context = reflected.get("source_context") if isinstance(reflected.get("source_context"), dict) else diagnostic.get("source_context")
         hint = reflected.get("source_context_hint") if isinstance(reflected.get("source_context_hint"), dict) else diagnostic.get("source_context_hint")
         validated = validate_source_context(context, self.baseline)
+        if validated is not None and not all(
+            isinstance(frame, dict) and frame.get("current_source_matches") is True
+            for frame in validated.get("frames", [])
+        ):
+            validated = None
         validated_hint = validate_source_context(hint, self.baseline)
         item["traceback_frames"] = reflected.get("traceback_frames", [])[:8] if isinstance(reflected.get("traceback_frames"), list) else diagnostic.get("traceback_frames", [])[:8] if isinstance(diagnostic.get("traceback_frames"), list) else []
         item["traceback_text_hints"] = reflected.get("traceback_text_hints", [])[:8] if isinstance(reflected.get("traceback_text_hints"), list) else diagnostic.get("traceback_text_hints", [])[:8] if isinstance(diagnostic.get("traceback_text_hints"), list) else []
