@@ -18,6 +18,7 @@ from core.pika_code_learning import PikaCodeLearning
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.evolution.retry_guard import assess_retry_progress
 from core.native_proof_validator import (
+    validate_native_change_set_analysis,
     validate_native_code_impact_analysis,
     validate_native_code_proof_query,
     validate_native_test_selection,
@@ -837,6 +838,11 @@ class PIKABrain:
                     if isinstance(raw_reasoning, dict) and raw_reasoning.get("test_selection") is None
                     else validate_native_test_selection(raw_reasoning)
                 )
+                change_set_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("change_set_analysis") is None
+                    else validate_native_change_set_analysis(raw_reasoning)
+                )
                 safety_contract_valid = (
                     isinstance(raw_reasoning, dict)
                     and all(
@@ -859,6 +865,7 @@ class PIKABrain:
                     and proof_query_contract_valid
                     and impact_analysis_contract_valid
                     and test_selection_contract_valid
+                    and change_set_contract_valid
                 )
                 completed = (
                     result.get("success") is True
@@ -888,6 +895,7 @@ class PIKABrain:
                         "proof_query_contract_valid": proof_query_contract_valid,
                         "impact_analysis_contract_valid": impact_analysis_contract_valid,
                         "test_selection_contract_valid": test_selection_contract_valid,
+                        "change_set_contract_valid": change_set_contract_valid,
                         "input_facts_verified": False,
                         "derived_hypotheses_verified": False,
                         "memory_admission": False,
