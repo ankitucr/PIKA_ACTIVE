@@ -40,8 +40,12 @@ class names remain symbolic unresolved references rather than being guessed.
 
 ## Limits and trust
 
-- Maximum 300 registered files, 200,000 bytes per source file, and 500
-  relationship records per graph build.
+- Maximum 300 registered files, 200,000 bytes per source file, 20,000 candidate
+  relationships, and 500 facts passed to the reasoning engine.
+- Module, import-dependency, and inheritance relationships have priority. If
+  they exceed 500, graph construction fails closed. If only containment edges
+  exceed the remaining budget, PIKA includes a deterministic prefix and reports
+  `PARTIAL_GRAPH_FACT_BUDGET` plus the exact omitted count.
 - Non-Python files are skipped. Syntax errors and source hash mismatches are
   reported; rejected files do not contribute edges.
 - Source facts remain `OBSERVED_NOT_YET_VERIFIED_FOR_REUSE`.
