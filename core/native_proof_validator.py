@@ -763,9 +763,15 @@ def validate_native_change_set_analysis(result: Any) -> bool:
             or analysis.get("target_count") != len(target_results)
             or limits.get("max_targets") != 10
             or limits.get("max_total_impacts") != 500
-            or limits.get("max_depth") not in range(1, 13)
-            or limits.get("max_results_per_target") not in range(1, 51)
-            or limits.get("max_paths_per_impact") not in range(1, 4)
+            or not isinstance(limits.get("max_depth"), int)
+            or isinstance(limits.get("max_depth"), bool)
+            or not 1 <= limits.get("max_depth") <= 12
+            or not isinstance(limits.get("max_results_per_target"), int)
+            or isinstance(limits.get("max_results_per_target"), bool)
+            or not 1 <= limits.get("max_results_per_target") <= 50
+            or not isinstance(limits.get("max_paths_per_impact"), int)
+            or isinstance(limits.get("max_paths_per_impact"), bool)
+            or not 1 <= limits.get("max_paths_per_impact") <= 3
         ):
             return False
 
