@@ -74,7 +74,7 @@ def test_native_repair_never_uses_external_worker():
 
 def test_native_modules_have_no_external_inference_imports():
     root = Path(__file__).resolve().parents[1]
-    for relative in ("core/native_cognition.py", "core/native_reasoning.py", "core/native_knowledge_graph_adapter.py", "core/native_code_proof_queries.py", "core/native_repair_generator.py", "agents/native_cognition.py"):
+    for relative in ("core/native_cognition.py", "core/native_reasoning.py", "core/native_knowledge_graph_adapter.py", "core/native_code_proof_queries.py", "core/native_proof_validator.py", "core/native_repair_generator.py", "agents/native_cognition.py"):
         path = root / relative
         if not path.exists():
             continue
