@@ -2,7 +2,7 @@ name: PIKA Isolated Candidate CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase37-4/production-trust-gates, phase42/consolidated-native-trust]
     paths:
       - ".github/workflows/pika-isolated-candidate-ci.yml"
       - ".github/workflows/pika-core-safety.yml"
