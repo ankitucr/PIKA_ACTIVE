@@ -668,7 +668,6 @@ class ExecutionObserver:
                 "native_proposals": native_proposals,
             }
 
-)
 
 
 def _safe_name(value: Any, limit: int = 80) -> str | None:
