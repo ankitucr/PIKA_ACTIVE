@@ -23,7 +23,7 @@ on:
       - ".github/workflows/pika-core-safety.yml"
       - ".github/workflows/pika-isolated-candidate-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, phase37-4/production-trust-gates]
     paths:
       - "core/**"
       - "tests/**"
