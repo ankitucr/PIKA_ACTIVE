@@ -63,32 +63,23 @@ try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     if ($null -eq $identity.User) { exit 12 }
     $currentSid = $identity.User.Value
-    $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
-    $acl.SetAccessRuleProtection($true, $false)
-    foreach ($oldRule in @($acl.GetAccessRules(
-        $true, $true, [Security.Principal.SecurityIdentifier]
-    ))) {
-        [void]$acl.RemoveAccessRuleSpecific($oldRule)
-    }
-    $acl.SetOwner($identity.User)
-
-    $inheritance = [Security.AccessControl.InheritanceFlags]::None
-    if ($item.PSIsContainer) {
-        $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
-            [Security.AccessControl.InheritanceFlags]::ObjectInherit
-    }
     $allowedSids = @($currentSid, 'S-1-5-18', 'S-1-5-32-544')
-    foreach ($sidText in $allowedSids) {
-        $sid = [Security.Principal.SecurityIdentifier]::new($sidText)
-        $ace = [Security.AccessControl.FileSystemAccessRule]::new(
-            $sid,
-            [Security.AccessControl.FileSystemRights]::FullControl,
-            $inheritance,
-            [Security.AccessControl.PropagationFlags]::None,
-            [Security.AccessControl.AccessControlType]::Allow
-        )
-        [void]$acl.AddAccessRule($ace)
+    $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
+    $ownerSid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+    if ($allowedSids -notcontains $ownerSid) { exit 14 }
+
+    # Replace the DACL in one operation. This avoids relying on SetOwner or
+    # per-ACE removal privileges on hosted Windows runners.
+    $inheritance = ''
+    if ($item.PSIsContainer) { $inheritance = 'OICI' }
+    $sddl = 'D:P'
+    foreach ($sid in $allowedSids) {
+        $sddl += "(A;$inheritance;FA;;;$sid)"
     }
+    $acl.SetSecurityDescriptorSddlForm(
+        $sddl,
+        [System.Security.AccessControl.AccessControlSections]::Access
+    )
     Set-Acl -LiteralPath $target -AclObject $acl -ErrorAction Stop
     [Console]::Out.Write('PIKA_ACL_SET_OK')
     exit 0
