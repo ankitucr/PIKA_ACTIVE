@@ -288,6 +288,9 @@ class NativeKnowledgeGraphAdapter:
         ) -> None:
             line_start = int(getattr(node, "lineno", 1) or 1)
             line_end = int(getattr(node, "end_lineno", line_start) or line_start)
+            if isinstance(node, ast.Module):
+                line_start = 1
+                line_end = max(1, int(record.get("line_count", 1)))
             source = _source_id(
                 repo, commit, record["path"], record["sha256"],
                 line_start, line_end, type(node).__name__, observation,
@@ -409,6 +412,10 @@ class NativeKnowledgeGraphAdapter:
             "schema": SCHEMA,
             "repository": repo,
             "commit": commit,
+            "coverage_status": (
+                "COMPLETE_REGISTERED_SOURCE_SET"
+                if not errors else "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+            ),
             "facts": facts,
             "source_evidence": [evidence[key] for key in sorted(evidence)],
             "metrics": {
@@ -473,6 +480,7 @@ class NativeKnowledgeGraphAdapter:
                 "schema": graph["schema"],
                 "repository": graph["repository"],
                 "commit": graph["commit"],
+                "coverage_status": graph["coverage_status"],
                 "metrics": graph["metrics"],
                 "trust": graph["trust"],
                 "errors": graph["errors"],
