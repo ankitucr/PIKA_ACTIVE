@@ -92,9 +92,19 @@ class NativeTestImpactPlanner:
         if not isinstance(manifest, list):
             return self._failure("INVALID_SOURCE_MANIFEST", "Registered source file manifest is malformed.")
         entries: dict[str, dict[str, Any]] = {}
+        duplicate_paths: set[str] = set()
         for item in manifest:
             if isinstance(item, dict) and isinstance(item.get("path"), str):
-                entries[item["path"]] = item
+                manifest_path = item["path"]
+                if manifest_path in entries:
+                    duplicate_paths.add(manifest_path)
+                else:
+                    entries[manifest_path] = item
+        if duplicate_paths:
+            return self._failure(
+                "DUPLICATE_SOURCE_MANIFEST_PATHS",
+                "Duplicate paths were found in the registered manifest; test selection is withheld.",
+            )
 
         corpus_root = self.adapter.corpus
         if corpus_root.is_symlink():
@@ -127,8 +137,17 @@ class NativeTestImpactPlanner:
             paths = proof.get("paths", [])
             if not isinstance(entity, str) or not isinstance(paths, list) or not paths:
                 continue
-            first_step = paths[0].get("steps", [{}])[0] if paths[0].get("steps") else {}
-            file_evidence = first_step.get("source_evidence", [])
+            first_steps = [
+                path_item.get("steps", [{}])[0]
+                for path_item in paths
+                if isinstance(path_item, dict) and path_item.get("steps")
+            ]
+            file_evidence = [
+                evidence_item
+                for step in first_steps
+                for evidence_item in step.get("source_evidence", [])
+                if isinstance(step, dict)
+            ]
             candidate_files = sorted({
                 str(item.get("path"))
                 for item in file_evidence
