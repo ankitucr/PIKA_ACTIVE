@@ -334,12 +334,13 @@
     {
       "id": "45",
       "name": "Native Reasoning and Evolution Convergence",
-      "status": "in_progress",
+      "status": "implemented_ci_verified",
       "outcomes": [
         "Unify source-graph reasoning, proof queries, code impact, test planning and multi-target analysis",
         "Preserve bounded declarative symbolic reasoning under a separate module and explicit route",
         "Restore deterministic self-evolution candidate staging without overwriting the source-graph reasoner",
-        "Apply Brain-level contracts that prevent unverified reasoning or staged candidates entering memory or production promotion"
+        "Apply Brain-level contracts that prevent unverified reasoning or staged candidates entering memory or production promotion",
+        "Integrated focused, broad, legacy, architecture-audit and isolated-candidate validation on Python 3.12 and Python 3.14"
       ],
       "exit_criteria": [
         "Both reasoning engines have separate stable APIs and dedicated regression suites",
@@ -356,17 +357,29 @@
   "validation": {
     "workflow_run_id": 45367335525,
     "python_3_12": {
-      "passed": 443,
-      "skipped": 1
+      "focused_tests": 220,
+      "broad_first_party_passed": 529,
+      "broad_first_party_skipped": 1,
+      "legacy_root_passed": 532,
+      "legacy_root_skipped": 1
     },
     "python_3_14": {
-      "passed": 443,
-      "skipped": 1
+      "focused_tests": 220,
+      "broad_first_party_passed": 529,
+      "broad_first_party_skipped": 1,
+      "legacy_root_passed": 532,
+      "legacy_root_skipped": 1
     },
     "pc_docker_isolation_smoke_test": "PASSED",
     "trust_state": "FAIL_CLOSED_UNTIL_INDEPENDENT_HOST_AND_OPERATOR_KEYS_ARE_DEPLOYED",
     "pc_installation": "UNCHANGED_PENDING_EXPLICIT_OPERATOR_AUTHORIZATION",
     "integrated_branch": "phase45/source-graph-evolution-convergence",
-    "status": "PENDING_INTEGRATED_CI"
+    "status": "INTEGRATED_CI_PASSED",
+    "core_workflow_run_id": 45376716475,
+    "isolated_candidate_workflow_run_id": 45376714033,
+    "architecture_audit_findings": 0,
+    "architecture_audit_source_skipped_files": 0,
+    "isolated_candidate_python_3_12": "PASSED",
+    "isolated_candidate_python_3_14": "PASSED"
   }
 }
