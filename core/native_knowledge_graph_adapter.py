@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import io
 import json
 import re
+import tokenize
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -25,7 +27,7 @@ MAX_AST_NODES_TOTAL = 60_000
 MAX_PATH_LENGTH = 500
 MAX_REPOSITORY_LENGTH = 200
 _REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
-_COMMIT_RE = re.compile(r"[A-Fa-f0-9]{6,64}\Z")
+_COMMIT_RE = re.compile(r"(?:[A-Fa-f0-9]{40}|[A-Fa-f0-9]{64})\Z")
 _SKIP_PARTS = {
     ".git", ".venv", ".sandbox_venv", "venv", "node_modules", "vendor",
     "site-packages", "__pycache__", "build", "dist", "target", ".tox",
@@ -42,8 +44,13 @@ def _sha256(raw: bytes) -> str:
 
 
 def _safe_path(value: Any) -> str:
-    if not isinstance(value, str) or not value or len(value) > MAX_PATH_LENGTH:
-        raise ValueError("invalid or oversized repository path")
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > MAX_PATH_LENGTH
+        or "\\" in value
+    ):
+        raise ValueError("invalid, non-POSIX, or oversized repository path")
     path = PurePosixPath(value)
     if path.is_absolute() or not path.parts:
         raise ValueError("absolute or empty repository path is not allowed")
@@ -215,7 +222,14 @@ class NativeKnowledgeGraphAdapter:
                 actual_sha = _sha256(raw)
                 if not re.fullmatch(r"[A-Fa-f0-9]{64}", expected_sha) or actual_sha != expected_sha:
                     raise ValueError("source SHA-256 does not match the Git learning manifest")
-                source = raw.decode("utf-8", errors="replace")
+                try:
+                    source_encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
+                    source = raw.decode(source_encoding)
+                except (SyntaxError, UnicodeError, LookupError) as exc:
+                    errors.append(
+                        f"{relative_path}: invalid Python source encoding: {str(exc)[:180]}"
+                    )
+                    continue
                 try:
                     tree = ast.parse(source, filename=relative_path)
                 except (SyntaxError, ValueError, RecursionError) as exc:
@@ -244,6 +258,7 @@ class NativeKnowledgeGraphAdapter:
                     "path": relative_path,
                     "sha256": actual_sha,
                     "source": source,
+                    "encoding": source_encoding,
                     "tree": tree,
                     "module_name": _module_name(relative_path),
                     "line_count": len(source.splitlines()),
@@ -375,6 +390,7 @@ class NativeKnowledgeGraphAdapter:
                 "line_start": line_start,
                 "line_end": line_end,
                 "ast_node_type": type(node).__name__,
+                "source_encoding": record.get("encoding", "unknown"),
                 "observation": observation,
                 "license_id": str(metadata.get("license_id", "NOASSERTION")),
                 "source_executed": False,
