@@ -34,8 +34,7 @@ _MAX_PROPOSAL_BYTES = 500_000
 _MAX_TRACEBACK_FRAMES = 8
 _MAX_TRACEBACK_SOURCE_BYTES = 2_000_000
 _MAX_TRACEBACK_TEXT_CHARS = 32_768
-_TRACEBACK_TEXT_FRAME = re.compile(
-    r'^\\s*File "([^"\\n]{1,1024})", line ([1-9][0-9]{0,8}), in ([^\\r\\n]{1,120})\\s*
+_TRACEBACK_TEXT_FRAME = re.compile(r'^\s*File "([^"]{1,1024})", line ([1-9][0-9]{0,8}), in (.{1,120})\s*$')
 
 def _safe_name(value: Any, limit: int = 80) -> str | None:
     if not isinstance(value, str):
