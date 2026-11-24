@@ -260,6 +260,8 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "native_fact_reasoning" in capabilities
     assert "native_source_proof_queries" in capabilities
     assert "bounded_dependency_path_explanations" in capabilities
+    assert "native_code_impact_analysis" in capabilities
+    assert "bounded_reverse_dependency_tracing" in capabilities
     assert "bounded_forward_chaining" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
