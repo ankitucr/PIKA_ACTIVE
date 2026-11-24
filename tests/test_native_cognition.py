@@ -462,10 +462,10 @@ def test_native_brain_stages_deterministic_self_evolution_without_live_write(tmp
     (root / "core").mkdir(parents=True)
     (root / "tests").mkdir()
     source = root / "core" / "service.py"
-    original = "def missing(value):\\n    return value == None\\n"
+    original = "def missing(value):\n    return value == None\n"
     source.write_text(original, encoding="utf-8")
     test = root / "tests" / "test_service.py"
-    test.write_text("def test_missing():\\n    assert True\\n", encoding="utf-8")
+    test.write_text("def test_missing():\n    assert True\n", encoding="utf-8")
 
     result = asyncio.run(NativeCognitionEngine(root).execute(
         "self-evolve and stage native improvement",
