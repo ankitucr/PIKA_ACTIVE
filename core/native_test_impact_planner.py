@@ -96,7 +96,28 @@ class NativeTestImpactPlanner:
             if isinstance(item, dict) and isinstance(item.get("path"), str):
                 entries[item["path"]] = item
 
-        repo_dir = self.adapter.corpus.joinpath(*repository.split("/"))
+        corpus_root = self.adapter.corpus
+        if corpus_root.is_symlink():
+            return self._failure(
+                "INVALID_SOURCE_CORPUS_ROOT",
+                "The acquired source corpus root must not be a symlink.",
+            )
+        current_root = corpus_root
+        for part in repository.split("/"):
+            current_root = current_root / part
+            if current_root.is_symlink():
+                return self._failure(
+                    "INVALID_REGISTERED_REPOSITORY_PATH",
+                    "Symlinked repository or owner directories are not accepted.",
+                )
+        repo_dir = corpus_root.joinpath(*repository.split("/"))
+        try:
+            repo_dir.resolve().relative_to(corpus_root.resolve())
+        except (OSError, ValueError):
+            return self._failure(
+                "INVALID_REGISTERED_REPOSITORY_PATH",
+                "Registered repository resolves outside the acquired source corpus.",
+            )
         impacts = impact_result.get("impact_analysis", {}).get("impacts", [])
         module_candidates: dict[str, dict[str, Any]] = {}
         errors: list[str] = []
@@ -168,7 +189,11 @@ class NativeTestImpactPlanner:
                 encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
                 source = raw.decode(encoding)
                 tree = ast.parse(source, filename=relative_path)
-                node_count = sum(1 for _ in ast.walk(tree))
+                node_count = 0
+                for _node in ast.walk(tree):
+                    node_count += 1
+                    if node_count > MAX_AST_NODES_PER_FILE:
+                        break
                 if node_count > MAX_AST_NODES_PER_FILE:
                     raise ValueError("test AST node budget exceeded")
                 cases: list[dict[str, Any]] = []
