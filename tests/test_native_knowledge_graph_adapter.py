@@ -501,7 +501,7 @@ def test_aggregate_ast_budget_stops_scanning_remaining_manifest_entries(tmp_path
             tmp_path,
             repository,
             f"module_{index}.py",
-            "x = 0\n" * 6500,
+            "x = 0\n" * 4500,
         )
         for index in range(5)
     ]
