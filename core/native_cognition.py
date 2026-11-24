@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
+from core.native_reasoning import NativeReasoningEngine, NativeReasoningError
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -33,6 +34,7 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
+        self.reasoner = NativeReasoningEngine()
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -194,6 +196,9 @@ class NativeCognitionEngine:
                 "static_improvement_queue",
                 "lexical_code_evidence_retrieval",
                 "engineering_knowledge_retrieval",
+                "bounded_symbolic_reasoning",
+                "evidence_provenance_reasoning",
+                "contradiction_detection",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -528,6 +533,28 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        reasoning_markers = ("reason", "infer", "deduce", "what follows", "logical conclusion", "check contradiction")
+        if any(marker in lower for marker in reasoning_markers):
+            facts = context.get("facts", [])
+            rules = context.get("rules", [])
+            question = context.get("question", text)
+            try:
+                result = self.reasoner.reason(question=question, facts=facts, rules=rules)
+            except NativeReasoningError as exc:
+                return self._failure("INVALID_REASONING_INPUT", str(exc))
+            self._append_event({
+                "type": "native_symbolic_reasoning",
+                "input_facts": result["input_fact_count"],
+                "rules": result["rule_count"],
+                "derived_facts": result["derived_fact_count"],
+                "contradictions": result["contradiction_count"],
+                "external_inference_used": False,
+            })
+            output = json.dumps(result, indent=2, ensure_ascii=False)
+            return self._response(
+                True, output, knowledge_consumed=bool(result["facts"]), raw=result,
+            )
 
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
         if github_action:
