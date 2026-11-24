@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from core.evolution.reflection import reflect
+from core.evolution.telemetry import ExecutionObserver
 from core.evolution.planner import plan
 
 
@@ -242,3 +243,53 @@ def test_planner_does_not_propose_strategy_comparison_from_unpaired_aggregate_co
         raise unittest.SkipTest("same-task planner gate is introduced by the paired-evidence implementation")
     result = plan({"scan_errors": 0}, reflection, tmp_path)
     assert all(item["id"] != "compare_learning_strategy_effectiveness" for item in result["goals"])
+
+
+
+def test_execution_observer_preserves_incomplete_attempts_as_unknown(tmp_path):
+    import hashlib
+
+    knowledge = tmp_path / "knowledge"
+    observer = ExecutionObserver(knowledge, project_root=tmp_path)
+    task = "compare two strategies without retaining raw task text"
+    token = observer.begin(task)
+
+    result = {
+        "success": True,
+        "evaluation": {"passed": True},
+        "attempts": [{
+            "attempt": 1,
+            "decision": {"mode": "reasoning"},
+            "result": {},
+            "evaluation": {},
+        }],
+    }
+    recorded = observer.finish(token, result, elapsed_seconds=0.1)
+    assert recorded["recorded"] is True
+
+    row = json.loads((knowledge / "EXPERIENCE_MEMORY.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    attempt = row["observation"]["attempts"][0]
+    assert row["observation"]["task_sha256"] == hashlib.sha256(task.encode("utf-8")).hexdigest()
+    assert row["observation"]["raw_task_stored"] is False
+    assert attempt["result_success"] is None
+    assert attempt["evaluation_passed"] is None
+
+
+def test_execution_observer_preserves_explicit_false_attempt_outcomes(tmp_path):
+    observer = ExecutionObserver(tmp_path / "knowledge", project_root=tmp_path)
+    token = observer.begin("explicit failure")
+    result = {
+        "success": False,
+        "evaluation": {"passed": False},
+        "attempts": [{
+            "attempt": 1,
+            "decision": {"mode": "reasoning"},
+            "result": {"success": False},
+            "evaluation": {"passed": False},
+        }],
+    }
+    observer.finish(token, result, elapsed_seconds=0.1)
+    row = json.loads((tmp_path / "knowledge" / "EXPERIENCE_MEMORY.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    attempt = row["observation"]["attempts"][0]
+    assert attempt["result_success"] is False
+    assert attempt["evaluation_passed"] is False
