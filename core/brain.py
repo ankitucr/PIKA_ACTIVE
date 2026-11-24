@@ -17,6 +17,12 @@ from core.learning_engine import LearningEngine
 from core.pika_code_learning import PikaCodeLearning
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.evolution.retry_guard import assess_retry_progress
+from core.native_proof_validator import (
+    validate_native_change_set_analysis,
+    validate_native_code_impact_analysis,
+    validate_native_code_proof_query,
+    validate_native_test_selection,
+)
 
 
 
@@ -637,6 +643,37 @@ class PIKABrain:
             )
 
             if agent is None:
+                native_only = {
+                    "native_fact_reasoning",
+                    "native_self_evolution",
+                    "native_symbolic_reasoning",
+                }
+                if native_only.intersection(task_analysis.get("capabilities", [])):
+                    native_missing_error = (
+                        "NATIVE_REASONING_AGENT_UNAVAILABLE"
+                        if "native_fact_reasoning" in task_analysis.get("capabilities", [])
+                        else "NATIVE_CAPABILITY_HANDLER_UNAVAILABLE"
+                    )
+                    return {
+                        "success": False,
+                        "task": task,
+                        "task_analysis": task_analysis,
+                        "decision_trace": decision_trace,
+                        "attempts": attempts,
+                        "agent": None,
+                        "provider": None,
+                        "model": None,
+                        "error": native_missing_error,
+                        "output": "The requested bounded native capability is not registered; external inference fallback is disabled.",
+                        "memory_updated": False,
+                        "knowledge_admitted": False,
+                        "promotion_allowed": False,
+                        "retry_control": {
+                            "stop": True,
+                            "reason": "native_capability_handler_unavailable",
+                            "attempts_used": 0,
+                        },
+                    }
                 result = {
                     "success": False,
                     "agent": None,
@@ -710,6 +747,324 @@ class PIKABrain:
                 task,
                 context=context,
             )
+            if "native_fact_reasoning" in task_analysis.get("capabilities", []):
+                raw_reasoning = result.get("raw", {})
+                graph_snapshot = (
+                    raw_reasoning.get("knowledge_graph", {})
+                    if isinstance(raw_reasoning, dict) else {}
+                )
+                graph_contract_valid = (
+                    isinstance(graph_snapshot, dict)
+                    and graph_snapshot.get("schema") == "pika.native_knowledge_graph.v1"
+                    and graph_snapshot.get("trust") == "UNVERIFIED_GRAPH_SNAPSHOT"
+                    and graph_snapshot.get("persisted") is False
+                    and isinstance(graph_snapshot.get("nodes"), list)
+                    and isinstance(graph_snapshot.get("edges"), list)
+                    and graph_snapshot.get("node_count") == len(graph_snapshot.get("nodes", []))
+                    and graph_snapshot.get("edge_count") == len(graph_snapshot.get("edges", []))
+                )
+                all_facts = raw_reasoning.get("facts", []) if isinstance(raw_reasoning, dict) else []
+                all_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                }
+                input_fact_ids = {
+                    item.get("id") for item in all_facts
+                    if isinstance(item, dict)
+                    and item.get("kind") == "OBSERVED_INPUT"
+                    and isinstance(item.get("id"), str)
+                }
+
+                def valid_fact_id_list(values, allowed_ids, *, exact_count=None):
+                    return (
+                        isinstance(values, list)
+                        and (exact_count is None or len(values) == exact_count)
+                        and all(isinstance(value, str) for value in values)
+                        and set(values).issubset(allowed_ids)
+                    )
+
+                contradiction_records = (
+                    raw_reasoning.get("contradictions", [])
+                    if isinstance(raw_reasoning, dict) else None
+                )
+                contradiction_contract_valid = (
+                    isinstance(contradiction_records, list)
+                    and all(
+                        isinstance(item, dict)
+                        and item.get("status") == "UNRESOLVED_INPUT_CONFLICT"
+                        and item.get("trust") == "UNVERIFIED_CONTRADICTION_REPORT"
+                        and isinstance(item.get("positive_fact_id"), str)
+                        and item.get("positive_fact_id") in all_fact_ids
+                        and isinstance(item.get("negative_fact_id"), str)
+                        and item.get("negative_fact_id") in all_fact_ids
+                        for item in contradiction_records
+                    )
+                    and raw_reasoning.get("contradiction_count") == len(contradiction_records)
+                )
+                derived_records = raw_reasoning.get("derived_facts", []) if isinstance(raw_reasoning, dict) else None
+                proof_contract_valid = (
+                    isinstance(derived_records, list)
+                    and all(
+                        isinstance(item, dict)
+                        and item.get("kind") == "DERIVED_HYPOTHESIS"
+                        and item.get("trust") == "UNVERIFIED_DERIVATION"
+                        and isinstance(item.get("derivation_depth"), int)
+                        and not isinstance(item.get("derivation_depth"), bool)
+                        and item.get("derivation_depth", 0) >= 1
+                        and valid_fact_id_list(item.get("root_premise_fact_ids"), input_fact_ids)
+                        and isinstance(item.get("derivation_supports"), list)
+                        and 1 <= len(item.get("derivation_supports", [])) <= 8
+                        and all(
+                            isinstance(support, dict)
+                            and valid_fact_id_list(support.get("premise_fact_ids"), all_fact_ids, exact_count=2)
+                            and valid_fact_id_list(support.get("root_premise_fact_ids"), input_fact_ids)
+                            and isinstance(support.get("derivation_depth"), int)
+                            and not isinstance(support.get("derivation_depth"), bool)
+                            and support.get("derivation_depth", 0) >= 1
+                            for support in item.get("derivation_supports", [])
+                        )
+                        for item in derived_records
+                    )
+                )
+                proof_query_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("proof_query") is None
+                    else validate_native_code_proof_query(raw_reasoning)
+                )
+                impact_analysis_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("impact_analysis") is None
+                    else validate_native_code_impact_analysis(raw_reasoning)
+                )
+                test_selection_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("test_selection") is None
+                    else validate_native_test_selection(raw_reasoning)
+                )
+                change_set_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("change_set_analysis") is None
+                    else validate_native_change_set_analysis(raw_reasoning)
+                )
+                safety_contract_valid = (
+                    isinstance(raw_reasoning, dict)
+                    and all(
+                        raw_reasoning.get(field) is False
+                        for field in (
+                            "source_executed",
+                            "source_modified",
+                            "source_persisted",
+                            "memory_updated",
+                            "promotion_allowed",
+                        )
+                    )
+                    and raw_reasoning.get("memory_admission")
+                    == "BLOCKED_UNVERIFIED_HYPOTHESES"
+                    and raw_reasoning.get("trust")
+                    == "UNVERIFIED_INPUT_AND_DERIVATION"
+                    and graph_contract_valid
+                    and contradiction_contract_valid
+                    and proof_contract_valid
+                    and proof_query_contract_valid
+                    and impact_analysis_contract_valid
+                    and test_selection_contract_valid
+                    and change_set_contract_valid
+                )
+                completed = (
+                    result.get("success") is True
+                    and isinstance(raw_reasoning, dict)
+                    and raw_reasoning.get("schema") == "pika.native_reasoning.result.v1"
+                    and raw_reasoning.get("completion_status") in {
+                        "COMPLETED_WITH_DERIVATIONS",
+                        "COMPLETED_NO_DERIVATIONS",
+                    }
+                    and safety_contract_valid
+                )
+                evaluation = {
+                    "passed": completed,
+                    "score": 1.0 if completed else 0.0,
+                    "reason": (
+                        "Bounded symbolic closure completed; truth of the input facts "
+                        "and derived hypotheses was not verified."
+                        if completed else
+                        "Native fact reasoning did not complete with a valid bounded result."
+                    ),
+                    "checks": {
+                        "native_reasoning_operation_completed": completed,
+                        "safety_contract_valid": safety_contract_valid,
+                        "graph_contract_valid": graph_contract_valid,
+                        "contradiction_contract_valid": contradiction_contract_valid,
+                        "proof_contract_valid": proof_contract_valid,
+                        "proof_query_contract_valid": proof_query_contract_valid,
+                        "impact_analysis_contract_valid": impact_analysis_contract_valid,
+                        "test_selection_contract_valid": test_selection_contract_valid,
+                        "change_set_contract_valid": change_set_contract_valid,
+                        "input_facts_verified": False,
+                        "derived_hypotheses_verified": False,
+                        "memory_admission": False,
+                        "promotion_allowed": False,
+                    },
+                    "feedback": "Unverified hypotheses were not admitted to memory or promotion.",
+                }
+                attempts.append({
+                    "attempt": attempt_number,
+                    "decision": decision,
+                    "result": result,
+                    "evaluation": evaluation,
+                })
+                return {
+                    "success": completed,
+                    "task": task,
+                    "task_analysis": task_analysis,
+                    "decision_trace": decision_trace,
+                    "attempts": attempts,
+                    "agent": "native",
+                    "provider": result.get("provider", "pika-native"),
+                    "model": None,
+                    "error": result.get("error"),
+                    "output": result.get("output", ""),
+                    "raw": raw_reasoning if isinstance(raw_reasoning, dict) else {},
+                    "evaluation": evaluation,
+                    "memory_updated": False,
+                    "knowledge_admitted": False,
+                    "promotion_allowed": False,
+                    "retry_control": {
+                        "stop": True,
+                        "reason": "unverified_symbolic_reasoning_not_admitted",
+                        "attempts_used": 1,
+                    },
+                }
+
+            if "native_self_evolution" in task_analysis.get("capabilities", []):
+                raw_evolution = result.get("raw", {})
+                def valid_sha256(value):
+                    return (
+                        isinstance(value, str)
+                        and len(value) == 64
+                        and all(character in "0123456789abcdef" for character in value)
+                    )
+                evolution_contract_valid = (
+                    isinstance(raw_evolution, dict)
+                    and raw_evolution.get("stage") == "ISOLATED_CANDIDATE_STAGED"
+                    and raw_evolution.get("candidate_trust") == "UNVERIFIED_LOCAL"
+                    and raw_evolution.get("execution") == "NOT_EXECUTED"
+                    and raw_evolution.get("live_source_modified") is False
+                    and raw_evolution.get("promotion_allowed") is False
+                    and isinstance(raw_evolution.get("candidate_id"), str)
+                    and isinstance(raw_evolution.get("target"), str)
+                    and valid_sha256(raw_evolution.get("baseline_sha256"))
+                    and valid_sha256(raw_evolution.get("candidate_sha256"))
+                )
+                completed = result.get("success") is True and evolution_contract_valid
+                evaluation = {
+                    "passed": completed,
+                    "score": 1.0 if completed else 0.0,
+                    "reason": (
+                        "A hash-bound candidate was staged without executing or modifying live source."
+                        if completed else
+                        "The native self-evolution result failed its independent staging contract."
+                    ),
+                    "checks": {
+                        "candidate_stage_contract_valid": evolution_contract_valid,
+                        "candidate_executed": False,
+                        "live_source_modified": False,
+                        "memory_admission": False,
+                        "promotion_allowed": False,
+                    },
+                    "feedback": "UNVERIFIED_LOCAL candidate; independent attestation and operator approval remain required.",
+                }
+                attempts.append({
+                    "attempt": attempt_number,
+                    "decision": decision,
+                    "result": result,
+                    "evaluation": evaluation,
+                })
+                return {
+                    "success": completed,
+                    "task": task,
+                    "task_analysis": task_analysis,
+                    "decision_trace": decision_trace,
+                    "attempts": attempts,
+                    "agent": "native",
+                    "provider": "pika-native",
+                    "model": None,
+                    "error": None if completed else "NATIVE_SELF_EVOLUTION_CONTRACT_REJECTED",
+                    "output": result.get("output", ""),
+                    "raw": raw_evolution if isinstance(raw_evolution, dict) else {},
+                    "evaluation": evaluation,
+                    "memory_updated": False,
+                    "knowledge_admitted": False,
+                    "promotion_allowed": False,
+                    "retry_control": {
+                        "stop": True,
+                        "reason": "unverified_candidate_not_admitted",
+                        "attempts_used": 1,
+                    },
+                }
+
+            if "native_symbolic_reasoning" in task_analysis.get("capabilities", []):
+                raw_symbolic = result.get("raw", {})
+                policy = raw_symbolic.get("trust_policy", {}) if isinstance(raw_symbolic, dict) else {}
+                symbolic_contract_valid = (
+                    isinstance(raw_symbolic, dict)
+                    and raw_symbolic.get("schema") == "pika.native_reasoning.v1"
+                    and raw_symbolic.get("success") is True
+                    and isinstance(raw_symbolic.get("facts"), list)
+                    and isinstance(raw_symbolic.get("contradictions"), list)
+                    and raw_symbolic.get("contradiction_count") == len(raw_symbolic.get("contradictions", []))
+                    and isinstance(policy, dict)
+                    and policy.get("source_executed") is False
+                    and policy.get("external_inference_used") is False
+                    and policy.get("automatic_learning_admission") is False
+                    and policy.get("source_modification") is False
+                )
+                completed = result.get("success") is True and symbolic_contract_valid
+                evaluation = {
+                    "passed": completed,
+                    "score": 1.0 if completed else 0.0,
+                    "reason": (
+                        "Bounded declarative reasoning completed; facts and conclusions remain unverified."
+                        if completed else
+                        "The symbolic reasoning result failed its trust contract."
+                    ),
+                    "checks": {
+                        "symbolic_reasoning_contract_valid": symbolic_contract_valid,
+                        "external_inference_used": False,
+                        "source_executed": False,
+                        "memory_admission": False,
+                        "promotion_allowed": False,
+                    },
+                    "feedback": "Symbolic conclusions remain unverified and are not admitted to memory or promotion.",
+                }
+                attempts.append({
+                    "attempt": attempt_number,
+                    "decision": decision,
+                    "result": result,
+                    "evaluation": evaluation,
+                })
+                return {
+                    "success": completed,
+                    "task": task,
+                    "task_analysis": task_analysis,
+                    "decision_trace": decision_trace,
+                    "attempts": attempts,
+                    "agent": "native",
+                    "provider": "pika-native",
+                    "model": None,
+                    "error": None if completed else "NATIVE_SYMBOLIC_REASONING_CONTRACT_REJECTED",
+                    "output": result.get("output", ""),
+                    "raw": raw_symbolic if isinstance(raw_symbolic, dict) else {},
+                    "evaluation": evaluation,
+                    "memory_updated": False,
+                    "knowledge_admitted": False,
+                    "promotion_allowed": False,
+                    "retry_control": {
+                        "stop": True,
+                        "reason": "unverified_symbolic_reasoning_not_admitted",
+                        "attempts_used": 1,
+                    },
+                }
+
             # Retrieval outcome is recorded only after independent evaluation.
 
             result["task_signature"] = decision.get(

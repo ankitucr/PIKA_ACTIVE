@@ -15,8 +15,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
-from core.native_reasoning import NativeReasoningEngine, NativeReasoningError
+from core.native_reasoning import NativeReasoningEngine
+from core.native_symbolic_reasoning import NativeReasoningEngine as NativeSymbolicReasoningEngine, NativeReasoningError as NativeSymbolicReasoningError
 from core.native_evolution import NativeSelfEvolutionEngine, NativeSelfEvolutionError
+from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
+from core.native_code_proof_queries import NativeCodeProofQuery
+from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
+from core.native_test_impact_planner import NativeTestImpactPlanner
+from core.native_change_set_analysis import NativeChangeSetAnalyzer
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -35,7 +41,13 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
-        self.reasoner = NativeReasoningEngine()
+        self.reasoning = NativeReasoningEngine()
+        self.reasoner = NativeSymbolicReasoningEngine()
+        self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
+        self.code_proof_query = NativeCodeProofQuery(self.code_graph)
+        self.code_impact = NativeCodeImpactAnalyzer(self.code_graph)
+        self.test_impact_planner = NativeTestImpactPlanner(self.code_impact)
+        self.change_set_analyzer = NativeChangeSetAnalyzer(self.code_impact)
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -106,32 +118,275 @@ class NativeCognitionEngine:
             }
         from core.git_learning_loop import run_cycle
         result = run_cycle(repo_list, max_files=max_files)
-        engineering_reports: list[dict[str, Any]] = []
-        if self.engineering_knowledge is not None:
-            for repository in result.get("repositories", []):
-                name = repository.get("repository") if isinstance(repository, dict) else None
-                if isinstance(name, str) and name:
-                    engineering_reports.append(
-                        self.engineering_knowledge.extract_repository(name, max_files=max_files)
-                    )
         self._append_event({
             "type": "github_learning_cycle",
             "repositories": repo_list,
             "scanned": result.get("repositories_scanned", 0),
-            "engineering_reports": len(engineering_reports),
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
         })
         return {
             "success": bool(result.get("repositories_scanned")),
-            "mode": "git_transport_plus_native_static_analysis_and_provenance_extraction",
+            "mode": "git_transport_plus_native_static_analysis",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
-            "engineering_knowledge_reports": engineering_reports,
             **result,
         }
+
+    def reason_over_learned_code(self, repository: str) -> dict[str, Any]:
+        """Run bounded symbolic reasoning over hash-verified acquired Python source."""
+        result = self.code_graph.reason_repository(repository)
+        self._append_event({
+            "type": "native_source_graph_reasoning",
+            "repository": str(repository)[:200],
+            "success": bool(result.get("success")),
+            "derived_facts": result.get("derived_fact_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    def explain_learned_code_relation(
+        self,
+        repository: str,
+        subject: str,
+        predicate: str,
+        object: str,
+        *,
+        max_depth: int = 12,
+        max_paths: int = 8,
+    ) -> dict[str, Any]:
+        """Explain a learned-code relation using bounded source-backed proof paths."""
+        result = self.code_proof_query.explain(
+            repository,
+            subject,
+            predicate,
+            object,
+            max_depth=max_depth,
+            max_paths=max_paths,
+        )
+        self._append_event({
+            "type": "native_code_proof_query",
+            "repository": str(repository)[:200],
+            "predicate": str(predicate)[:64],
+            "status": result.get("proof_query", {}).get("status"),
+            "path_count": result.get("proof_query", {}).get("path_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    def analyze_learned_code_impact(
+        self,
+        repository: str,
+        target: str,
+        predicate: str = "depends_on",
+        *,
+        max_depth: int = 12,
+        max_results: int = 50,
+        max_paths_per_impact: int = 3,
+    ) -> dict[str, Any]:
+        """Find bounded, provenance-backed consumers of one acquired code node."""
+        result = self.code_impact.analyze(
+            repository,
+            target,
+            predicate,
+            max_depth=max_depth,
+            max_results=max_results,
+            max_paths_per_impact=max_paths_per_impact,
+        )
+        analysis = result.get("impact_analysis", {})
+        self._append_event({
+            "type": "native_code_impact_analysis",
+            "repository": str(repository)[:200],
+            "predicate": str(predicate)[:64],
+            "impact_count": analysis.get("impact_count", 0),
+            "status": analysis.get("status"),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    def analyze_learned_code_change_set(
+        self,
+        repository: str,
+        targets: list[str],
+        predicate: str = "depends_on",
+        *,
+        max_depth: int = 12,
+        max_results_per_target: int = 50,
+        max_paths_per_impact: int = 3,
+    ) -> dict[str, Any]:
+        """Analyze multiple changed targets against one acquired graph snapshot."""
+        result = self.change_set_analyzer.analyze(
+            repository,
+            targets,
+            predicate,
+            max_depth=max_depth,
+            max_results_per_target=max_results_per_target,
+            max_paths_per_impact=max_paths_per_impact,
+        )
+        analysis = result.get("change_set_analysis", {})
+        self._append_event({
+            "type": "native_change_set_analysis",
+            "repository": str(repository)[:200],
+            "target_count": analysis.get("target_count", 0),
+            "unique_impact_count": analysis.get("unique_impact_count", 0),
+            "status": analysis.get("status"),
+            "graph_build_count": analysis.get("graph_build_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    @staticmethod
+    def _change_set_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("change_set")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("targets", "predicate", "max_depth", "max_results_per_target", "max_paths_per_impact"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not isinstance(query.get("targets"), list):
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
+
+    def plan_learned_code_tests(
+        self,
+        repository: str,
+        target: str,
+        predicate: str = "depends_on",
+        *,
+        max_depth: int = 12,
+        max_results: int = 50,
+        max_paths_per_impact: int = 3,
+    ) -> dict[str, Any]:
+        """Discover source-backed test candidates without executing test code."""
+        result = self.test_impact_planner.plan(
+            repository,
+            target,
+            predicate,
+            max_depth=max_depth,
+            max_results=max_results,
+            max_paths_per_impact=max_paths_per_impact,
+        )
+        selection = result.get("test_selection", {})
+        self._append_event({
+            "type": "native_static_test_selection",
+            "repository": str(repository)[:200],
+            "predicate": str(predicate)[:64],
+            "test_module_count": selection.get("test_module_count", 0),
+            "test_case_count": selection.get("test_case_count", 0),
+            "status": selection.get("status"),
+            "source_executed": False,
+            "test_execution_performed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    @staticmethod
+    def _test_plan_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("test_plan")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("target", "predicate", "max_depth", "max_results", "max_paths_per_impact"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not isinstance(query.get("target"), str) or not query["target"].strip():
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
+
+    @staticmethod
+    def _impact_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("impact_query")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("target", "predicate", "max_depth", "max_results", "max_paths_per_impact"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not isinstance(query.get("target"), str) or not query["target"].strip():
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
+
+    @staticmethod
+    def _proof_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("proof_query")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("subject", "predicate", "object", "max_depth", "max_paths"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not all(isinstance(query.get(key), str) and query[key].strip()
+                   for key in ("subject", "predicate", "object")):
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
 
     def search_code(self, query: str, *, limit: int = 5) -> dict[str, Any]:
         """Search lexical source snippets and structured engineering observations."""
@@ -207,6 +462,21 @@ class NativeCognitionEngine:
                 "static_improvement_queue",
                 "lexical_code_evidence_retrieval",
                 "engineering_knowledge_retrieval",
+                "native_fact_reasoning",
+                "bounded_forward_chaining",
+                "native_knowledge_graph",
+                "explicit_contradiction_detection",
+                "multi_step_provenance",
+                "github_source_knowledge_graph",
+                "native_code_structure_reasoning",
+                "native_source_proof_queries",
+                "bounded_dependency_path_explanations",
+                "native_code_impact_analysis",
+                "bounded_reverse_dependency_tracing",
+                "native_static_test_discovery",
+                "bounded_test_candidate_planning",
+                "native_multi_target_change_set_analysis",
+                "shared_graph_change_impact",
                 "bounded_symbolic_reasoning",
                 "evidence_provenance_reasoning",
                 "contradiction_detection",
@@ -540,6 +810,31 @@ class NativeCognitionEngine:
             )
         return "\n".join(lines)
 
+    @staticmethod
+    def _facts_from_request(task: str, context: dict[str, Any]) -> list[dict[str, Any]] | None:
+        """Read fact data from explicit context or a fenced JSON list."""
+        facts = context.get("facts")
+        if isinstance(facts, list):
+            return facts
+        fence = chr(96) * 3
+        marker = fence + "json"
+        start = task.find(marker)
+        if start < 0:
+            return None
+        start += len(marker)
+        if task[start:start + 2] == "\r\n":
+            start += 2
+        elif task[start:start + 1] == "\n":
+            start += 1
+        end = task.find(fence, start)
+        if end < 0:
+            return None
+        try:
+            value = json.loads(task[start:end])
+        except (TypeError, ValueError):
+            return None
+        return value if isinstance(value, list) else None
+
     async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
         text = str(task or "").strip()
@@ -548,7 +843,11 @@ class NativeCognitionEngine:
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
 
-        evolution_markers = ("self-evolve", "stage native improvement", "propose deterministic improvement")
+        evolution_markers = (
+            "self-evolve",
+            "stage native improvement",
+            "propose deterministic improvement",
+        )
         if any(marker in lower for marker in evolution_markers):
             try:
                 engine = NativeSelfEvolutionEngine(self.root)
@@ -563,9 +862,9 @@ class NativeCognitionEngine:
                 return self._failure("NATIVE_SELF_EVOLUTION_REJECTED", str(exc))
             self._append_event({
                 "type": "native_self_evolution_candidate_staged",
-                "candidate_id": result["candidate_id"],
-                "target": result["target"],
-                "rule_id": result["rule_id"],
+                "candidate_id": result.get("candidate_id"),
+                "target": result.get("target"),
+                "rule_id": result.get("rule_id"),
                 "source_modified": False,
                 "execution": "NOT_EXECUTED",
                 "promotion_allowed": False,
@@ -575,26 +874,442 @@ class NativeCognitionEngine:
                 knowledge_consumed=False, raw=result,
             )
 
-        reasoning_markers = ("reason", "infer", "deduce", "what follows", "logical conclusion", "check contradiction")
+        change_set_markers = (
+            "analyze change set impact",
+            "analyze multi-file change impact",
+            "trace impacts for changed modules",
+            "analyze impact for changed files",
+            "multi target code impact",
+            "analyze combined code changes",
+        )
+        if any(marker in lower for marker in change_set_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._change_set_query_from_request(text, context)
+            targets = query.get("targets")
+            predicate = query.get("predicate", "depends_on")
+            if not isinstance(targets, list):
+                return self._failure(
+                    "CHANGE_SET_TARGETS_REQUIRED",
+                    "Provide a targets array in context['change_set'] or a fenced JSON object.",
+                )
+            try:
+                result = await asyncio.to_thread(
+                    self.analyze_learned_code_change_set,
+                    repository,
+                    targets,
+                    predicate,
+                    max_depth=query.get("max_depth", 12),
+                    max_results_per_target=query.get("max_results_per_target", 50),
+                    max_paths_per_impact=query.get("max_paths_per_impact", 3),
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_CHANGE_SET_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_CHANGE_SET_ANALYSIS_FAILED"),
+                    result.get("message", "The bounded multi-target analysis was rejected safely."),
+                )
+            analysis = result.get("change_set_analysis", {})
+            report = [
+                "PIKA NATIVE CHANGE-SET IMPACT ANALYSIS",
+                f"Repository: {analysis.get('repository')}",
+                f"Commit: {analysis.get('commit')}",
+                f"Targets analyzed: {analysis.get('successful_target_count', 0)} / {analysis.get('target_count', 0)}",
+                f"Unique impacted entities: {analysis.get('unique_impact_count', 0)}",
+                f"Status: {analysis.get('status')}",
+                f"Graph builds: {analysis.get('graph_build_count')}",
+                f"Coverage: {analysis.get('coverage_status')}",
+            ]
+            for item in analysis.get("impacts", [])[:100]:
+                report.append(
+                    f"- {item.get('entity')} | targets: {', '.join(item.get('affected_targets', []))} | "
+                    f"shortest path: {item.get('shortest_path_length')}"
+                )
+                for proof_ref in item.get("proof_references", []):
+                    report.append(
+                        f"  {proof_ref.get('target_reference')}: {len(proof_ref.get('path_ids', []))} proof path(s)"
+                    )
+            report.extend([
+                "Trust: all impact paths are unverified AST-observed source relationships.",
+                "A missing consumer is not proof that no runtime or dynamic dependency exists.",
+                "Policy: one in-memory graph snapshot, no source execution/modification, no memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        test_plan_markers = (
+            "discover tests for code change",
+            "find tests for this code change",
+            "find tests affected by this module",
+            "build a test plan for code change",
+            "plan tests for code impact",
+            "select tests for changed module",
+        )
+        if any(marker in lower for marker in test_plan_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._test_plan_query_from_request(text, context)
+            target = query.get("target")
+            predicate = query.get("predicate", "depends_on")
+            if not isinstance(target, str) or not target.strip():
+                return self._failure(
+                    "TEST_PLAN_TARGET_REQUIRED",
+                    "Provide target in context['test_plan'] or a fenced JSON object.",
+                )
+            try:
+                result = await asyncio.to_thread(
+                    self.plan_learned_code_tests,
+                    repository,
+                    target,
+                    predicate,
+                    max_depth=query.get("max_depth", 12),
+                    max_results=query.get("max_results", 50),
+                    max_paths_per_impact=query.get("max_paths_per_impact", 3),
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_TEST_PLAN_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_TEST_PLAN_FAILED"),
+                    result.get("message", "Static test candidate discovery was rejected safely."),
+                )
+            selection = result.get("test_selection", {})
+            report = [
+                "PIKA NATIVE STATIC TEST CANDIDATES",
+                f"Repository: {selection.get('repository')}",
+                f"Commit: {selection.get('commit')}",
+                f"Changed target: {selection.get('target')}",
+                f"Relation: {selection.get('predicate')}",
+                f"Status: {selection.get('status')}",
+                f"Candidate modules: {selection.get('test_module_count', 0)}",
+                f"Candidate test cases: {selection.get('test_case_count', 0)}",
+                f"Impact coverage: {selection.get('impact_analysis_status')}",
+            ]
+            for module in selection.get("modules", []):
+                report.append(f"- {module.get('path')} ({module.get('test_case_count', 0)} cases)")
+                for case in module.get("test_cases", []):
+                    report.append(
+                        f"  {case.get('name')} | {module.get('path')}:"
+                        f"{case.get('line_start')}-{case.get('line_end')} | "
+                        f"{case.get('status')}"
+                    )
+            report.extend([
+                "Trust: test cases are statically discovered candidates, not verified semantic coverage.",
+                "No tests were executed. Run and verify them separately before treating any as passed.",
+                "Policy: no source execution/modification, test execution, graph persistence, memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        impact_query_markers = (
+            "analyze code change impact",
+            "find downstream dependents",
+            "what depends on this module",
+            "trace class consumers",
+            "find consumers of this class",
+            "analyze impact of changing",
+        )
+        if any(marker in lower for marker in impact_query_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._impact_query_from_request(text, context)
+            target = query.get("target")
+            predicate = query.get("predicate", "depends_on")
+            if not isinstance(target, str) or not target.strip():
+                return self._failure(
+                    "IMPACT_TARGET_REQUIRED",
+                    "Provide target in context['impact_query'] or a fenced JSON object.",
+                )
+            try:
+                result = await asyncio.to_thread(
+                    self.analyze_learned_code_impact,
+                    repository,
+                    target,
+                    predicate,
+                    max_depth=query.get("max_depth", 12),
+                    max_results=query.get("max_results", 50),
+                    max_paths_per_impact=query.get("max_paths_per_impact", 3),
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_IMPACT_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_CODE_IMPACT_FAILED"),
+                    result.get("message", "The bounded impact query was rejected safely."),
+                )
+            analysis = result.get("impact_analysis", {})
+            report = [
+                "PIKA NATIVE SOURCE IMPACT ANALYSIS",
+                f"Repository: {analysis.get('repository')}",
+                f"Commit: {analysis.get('commit')}",
+                f"Target: {analysis.get('target_reference')} ({analysis.get('target')})",
+                f"Relation: {analysis.get('predicate')}",
+                f"Status: {analysis.get('status')}",
+                f"Recorded consumers: {analysis.get('impact_count', 0)} / {analysis.get('total_impact_count', 0)}",
+                f"Coverage: {analysis.get('coverage_status')}",
+            ]
+            for impact in analysis.get("impacts", []):
+                report.append(
+                    f"- {impact.get('impact_type')}: {impact.get('entity')} "
+                    f"({impact.get('path_count')} path(s), shortest {impact.get('shortest_path_length')} edge(s))"
+                )
+                proof = impact.get("proof_query", {})
+                for index, path_item in enumerate(proof.get("paths", [])[:3], 1):
+                    report.append(
+                        f"  Path {index}: " + " -> ".join(path_item.get("node_labels", []))
+                    )
+                    for step in path_item.get("steps", []):
+                        locations = sorted({
+                            f"{item.get('path')}:{item.get('line_start')}-{item.get('line_end')}"
+                            for item in step.get("source_evidence", [])
+                        })
+                        report.append(
+                            f"    {step.get('predicate')}: "
+                            + (", ".join(locations) if locations else "source location unavailable")
+                        )
+            report.extend([
+                "Trust: these are unverified AST-observed source relationships, not runtime impact predictions.",
+                "A missing consumer is not proof that no runtime or dynamic dependency exists.",
+                "Policy: no source execution/modification, graph persistence, memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        proof_query_markers = (
+            "explain code dependency path",
+            "explain learned code relation",
+            "show proof path in learned code",
+            "trace learned code relation",
+            "trace learned github dependency",
+        )
+        if any(marker in lower for marker in proof_query_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._proof_query_from_request(text, context)
+            if not all(isinstance(query.get(key), str) and query[key].strip()
+                       for key in ("subject", "predicate", "object")):
+                return self._failure(
+                    "PROOF_QUERY_FIELDS_REQUIRED",
+                    "Provide subject, predicate and object in context['proof_query'] or a fenced JSON object.",
+                )
+            try:
+                max_depth = query.get("max_depth", 12)
+                max_paths = query.get("max_paths", 8)
+                result = await asyncio.to_thread(
+                    self.explain_learned_code_relation,
+                    repository,
+                    query["subject"],
+                    query["predicate"],
+                    query["object"],
+                    max_depth=max_depth,
+                    max_paths=max_paths,
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_PROOF_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_CODE_PROOF_QUERY_FAILED"),
+                    result.get("message", "The bounded source proof query was rejected safely."),
+                )
+            proof = result.get("proof_query", {})
+            report = [
+                "PIKA NATIVE SOURCE PROOF QUERY",
+                f"Repository: {result.get('source_graph', {}).get('repository')}",
+                f"Commit: {result.get('source_graph', {}).get('commit')}",
+                f"Relation: {proof.get('display', {}).get('subject_reference')} --{proof.get('predicate')}--> {proof.get('display', {}).get('object_reference')}",
+                f"Status: {proof.get('status')}",
+                f"Source paths: {proof.get('path_count', 0)}",
+                f"Coverage: {proof.get('coverage_status')}",
+                f"Reasoning ID: {proof.get('reasoning_id')}",
+            ]
+            for index, path_item in enumerate(proof.get("paths", [])[:8], 1):
+                report.append(
+                    f"Path {index} ({path_item.get('length')} steps): "
+                    + " -> ".join(path_item.get("node_labels", []))
+                )
+                for step in path_item.get("steps", []):
+                    locations = sorted({
+                        f"{item.get('path')}:{item.get('line_start')}-{item.get('line_end')}"
+                        for item in step.get("source_evidence", [])
+                    })
+                    report.append(
+                        f"  {step.get('predicate')}: "
+                        + (", ".join(locations) if locations else "source location unavailable")
+                    )
+            report.extend([
+                "Trust: all source edges and proof explanations remain unverified.",
+                "A missing path is not proof that a runtime dependency does not exist.",
+                "Policy: no source execution/modification, graph persistence, memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        source_graph_markers = (
+            "reason over learned code",
+            "reason over learned github code",
+            "reason over acquired github source",
+            "build a knowledge graph from learned code",
+            "analyze the learned dependency graph",
+        )
+        if any(marker in lower for marker in source_graph_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo, or pass context['repository'].",
+                )
+            result = await asyncio.to_thread(self.reason_over_learned_code, repository)
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_SOURCE_GRAPH_FAILED"),
+                    result.get("message", "Source graph construction or reasoning failed safely."),
+                )
+            output = "\n".join([
+                "PIKA NATIVE GITHUB SOURCE GRAPH REASONING",
+                f"Repository: {result.get('source_graph', {}).get('repository')}",
+                f"Commit: {result.get('source_graph', {}).get('commit')}",
+                f"Coverage: {result.get('source_graph', {}).get('coverage_status')}",
+                f"Parsed Python files: {result.get('source_graph', {}).get('metrics', {}).get('python_files_parsed', 0)}",
+                f"Input relationships: {result.get('base_fact_count', 0)}",
+                f"Derived hypotheses: {result.get('derived_fact_count', 0)}",
+                f"Graph: {result.get('knowledge_graph', {}).get('node_count', 0)} nodes / {result.get('knowledge_graph', {}).get('edge_count', 0)} edges",
+                f"Contradictions: {result.get('contradiction_count', 0)}",
+                f"Reasoning ID: {result.get('reasoning_id')}",
+                "Trust: source observations and every derived relationship remain unverified.",
+                "Policy: source was not executed, modified or persisted; no memory admission or promotion.",
+            ])
+            completed = result.get("completion_status") in {
+                "COMPLETED_WITH_DERIVATIONS",
+                "COMPLETED_NO_DERIVATIONS",
+            }
+            return self._response(completed, output, knowledge_consumed=False, raw=result)
+
+        reasoning_markers = (
+            "reason from facts",
+            "infer from facts",
+            "deduce from facts",
+            "run native reasoning",
+            "perform native inference",
+        )
         if any(marker in lower for marker in reasoning_markers):
+            facts = self._facts_from_request(text, context)
+            if facts is None:
+                return self._failure(
+                    "REASONING_FACTS_REQUIRED",
+                    "Supply facts in context['facts'] or a fenced JSON list. Facts remain unverified input.",
+                )
+            result = await asyncio.to_thread(self.reasoning.reason, facts)
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_REASONING_FAILED"),
+                    result.get("message", "Native reasoning rejected the supplied facts."),
+                )
+            output = "\n".join([
+                "PIKA NATIVE FACT REASONING",
+                f"Status: {result.get('completion_status')}",
+                f"Input facts: {result.get('base_fact_count')} (records supplied: {result.get('input_record_count')})",
+                f"Derived hypotheses: {result.get('derived_fact_count')}",
+                f"Contradictions: {result.get('contradiction_count')}",
+                f"Knowledge graph: {result.get('knowledge_graph', {}).get('node_count', 0)} nodes / {result.get('knowledge_graph', {}).get('edge_count', 0)} edges",
+                f"Reasoning ID: {result.get('reasoning_id')}",
+                "Trust: supplied facts and all derivations remain unverified.",
+                "Policy: no code execution, persistence, memory update, or promotion.",
+            ])
+            completed = result.get("completion_status") in {
+                "COMPLETED_WITH_DERIVATIONS",
+                "COMPLETED_NO_DERIVATIONS",
+            }
+            return self._response(
+                completed, output, knowledge_consumed=False, raw=result
+            )
+
+        symbolic_reasoning_markers = (
+            "bounded symbolic reasoning",
+            "reason about",
+            "reason with declarative rules",
+            "apply declarative rules",
+            "evaluate supplied logical rules",
+            "check contradictions in supplied facts",
+            "reason over supplied facts and rules",
+            "what follows",
+            "logical conclusion",
+            "check contradiction",
+        )
+        if any(marker in lower for marker in symbolic_reasoning_markers):
             facts = context.get("facts", [])
             rules = context.get("rules", [])
             question = context.get("question", text)
             try:
-                result = self.reasoner.reason(question=question, facts=facts, rules=rules)
-            except NativeReasoningError as exc:
-                return self._failure("INVALID_REASONING_INPUT", str(exc))
+                result = self.reasoner.reason(
+                    question=question,
+                    facts=facts,
+                    rules=rules,
+                )
+            except (NativeSymbolicReasoningError, TypeError, ValueError) as exc:
+                return self._failure("INVALID_SYMBOLIC_REASONING_INPUT", str(exc))
             self._append_event({
                 "type": "native_symbolic_reasoning",
-                "input_facts": result["input_fact_count"],
-                "rules": result["rule_count"],
-                "derived_facts": result["derived_fact_count"],
-                "contradictions": result["contradiction_count"],
+                "input_facts": result.get("input_fact_count", 0),
+                "rules": result.get("rule_count", 0),
+                "derived_facts": result.get("derived_fact_count", 0),
+                "contradictions": result.get("contradiction_count", 0),
                 "external_inference_used": False,
+                "memory_admission": False,
+                "promotion_allowed": False,
             })
-            output = json.dumps(result, indent=2, ensure_ascii=False)
             return self._response(
-                True, output, knowledge_consumed=bool(result["facts"]), raw=result,
+                True,
+                json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False,
+                raw=result,
             )
 
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
@@ -746,6 +1461,11 @@ class NativeCognitionEngine:
             ),
             "capability_gap": capability_gap,
             "retryable": False if capability_gap else None,
+            "source_executed": False,
+            "source_modified": False,
+            "source_persisted": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
             "raw": {
                 "error": code,
                 "failure_class": (
@@ -754,6 +1474,11 @@ class NativeCognitionEngine:
                 ),
                 "capability_gap": capability_gap,
                 "retryable": False if capability_gap else None,
+                "source_executed": False,
+                "source_modified": False,
+                "source_persisted": False,
+                "memory_updated": False,
+                "promotion_allowed": False,
             },
         }
 

@@ -297,23 +297,89 @@
         "PC installation is not upgraded until explicit operator authorization",
         "No draft branch is merged to main without separate review and approval"
       ]
+    },
+    {
+      "id": "43",
+      "name": "Native Test Impact Planning",
+      "status": "implemented_ci_verified",
+      "outcomes": [
+        "Trace static dependency paths from changed modules to likely test modules and test functions",
+        "Verify each test candidate against acquired commit, path and source hashes",
+        "Keep candidate discovery explicitly separate from test execution or coverage claims"
+      ],
+      "exit_criteria": [
+        "No import, collection, fixture, test or repository source execution during discovery",
+        "Every test candidate is traceable to bounded proof paths and exact source hashes",
+        "Incomplete graph/source coverage remains visibly partial",
+        "Python 3.12 and 3.14 focused and broad regressions pass"
+      ]
+    },
+    {
+      "id": "44",
+      "name": "Native Multi-Target Change-Set Impact",
+      "status": "implemented_ci_verified",
+      "outcomes": [
+        "Analyze up to ten changed targets against one acquired graph snapshot",
+        "Deduplicate shared impacted entities while retaining target-bound proof references",
+        "Preserve partial target failures and independently validate nested proofs, aggregates and digests",
+        "Reject malformed predicates and boolean limit values without unsafe coercion"
+      ],
+      "exit_criteria": [
+        "Only acquired, hash-verified static graph relationships are traversed",
+        "One graph build is reused per change-set analysis",
+        "Source execution, source modification, persistence, memory admission and promotion remain blocked",
+        "Python 3.12, Python 3.14 and Docker isolation regressions pass"
+      ]
+    },
+    {
+      "id": "45",
+      "name": "Native Reasoning and Evolution Convergence",
+      "status": "implemented_ci_verified",
+      "outcomes": [
+        "Unify source-graph reasoning, proof queries, code impact, test planning and multi-target analysis",
+        "Preserve bounded declarative symbolic reasoning under a separate module and explicit route",
+        "Restore deterministic self-evolution candidate staging without overwriting the source-graph reasoner",
+        "Apply Brain-level contracts that prevent unverified reasoning or staged candidates entering memory or production promotion",
+        "Integrated focused, broad, legacy, architecture-audit and isolated-candidate validation on Python 3.12 and Python 3.14"
+      ],
+      "exit_criteria": [
+        "Both reasoning engines have separate stable APIs and dedicated regression suites",
+        "Native-only requests cannot fall through to an external inference worker",
+        "Evolution candidates remain hash-bound, UNVERIFIED_LOCAL, unexecuted and unpromoted",
+        "Graph reasoning, proof, impact, test-selection and change-set reports pass independent validation",
+        "Python 3.12, Python 3.14 and Docker isolation CI pass on the integrated head"
+      ]
     }
   ],
   "updated_at": "2026-11-24",
-  "current_milestone": "42",
+  "current_milestone": "45",
   "next_milestone": "external_host_and_operator_validation",
   "validation": {
     "workflow_run_id": 45367335525,
     "python_3_12": {
-      "passed": 443,
-      "skipped": 1
+      "focused_tests": 220,
+      "broad_first_party_passed": 529,
+      "broad_first_party_skipped": 1,
+      "legacy_root_passed": 532,
+      "legacy_root_skipped": 1
     },
     "python_3_14": {
-      "passed": 443,
-      "skipped": 1
+      "focused_tests": 220,
+      "broad_first_party_passed": 529,
+      "broad_first_party_skipped": 1,
+      "legacy_root_passed": 532,
+      "legacy_root_skipped": 1
     },
     "pc_docker_isolation_smoke_test": "PASSED",
     "trust_state": "FAIL_CLOSED_UNTIL_INDEPENDENT_HOST_AND_OPERATOR_KEYS_ARE_DEPLOYED",
-    "pc_installation": "UNCHANGED_PENDING_EXPLICIT_OPERATOR_AUTHORIZATION"
+    "pc_installation": "UNCHANGED_PENDING_EXPLICIT_OPERATOR_AUTHORIZATION",
+    "integrated_branch": "phase45/source-graph-evolution-convergence",
+    "status": "INTEGRATED_CI_PASSED",
+    "core_workflow_run_id": 45376716475,
+    "isolated_candidate_workflow_run_id": 45376714033,
+    "architecture_audit_findings": 0,
+    "architecture_audit_source_skipped_files": 0,
+    "isolated_candidate_python_3_12": "PASSED",
+    "isolated_candidate_python_3_14": "PASSED"
   }
 }

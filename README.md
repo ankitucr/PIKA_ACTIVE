@@ -86,3 +86,15 @@ PIKA can now apply an explicitly allowlisted deterministic transformation, produ
 ## Phase 37.4: Independent trust and production gates
 
 The consolidated branch also carries the Phase 37.4 independent host-attestor, result-bound learning admission, operator approval, and production-promotion gates. These gates remain fail-closed when the independently administered host, pinned trust configuration, and operator keys are absent. GitHub Actions results and local Docker smoke tests are not production attestation. Host provisioning and any PC installation upgrade remain separate operator-controlled steps.
+
+## Phase 43: Native test-impact planning
+
+PIKA statically discovers likely test files and test definitions from hash-bound source-graph impact paths. Test candidates are explicitly marked as not executed and are not a coverage or pass/fail claim. See [Phase 43 test-impact planning](docs/PHASE43_NATIVE_TEST_IMPACT_PLANNING.md).
+
+## Phase 44: Native multi-file change-set analysis
+
+PIKA analyzes bounded sets of changed modules against one acquired graph snapshot, deduplicates shared impacted entities, and retains per-target proof references. Partial coverage remains explicit; source execution, persistence, memory admission and promotion remain blocked. See [Phase 44 change-set analysis](docs/PHASE44_NATIVE_CHANGE_SET_ANALYSIS.md).
+
+## Phase 45: Unified native reasoning and evolution
+
+The integrated architecture keeps the Phase 39 declarative symbolic reasoner separate from the source-graph reasoning engine, and restores deterministic self-evolution staging alongside proof, impact and test planning. Both paths are validated before Brain returns; unverified hypotheses and staged candidates cannot update memory or promote production. PC activation and external host-attestor provisioning remain separate operator-controlled steps. See [Phase 45 architecture convergence](docs/PHASE45_REASONING_EVOLUTION_CONVERGENCE.md).

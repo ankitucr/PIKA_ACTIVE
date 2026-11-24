@@ -25,7 +25,7 @@ on:
       - ".github/workflows/pika-core-safety.yml"
       - ".github/workflows/pika-isolated-candidate-ci.yml"
   pull_request:
-    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust]
+    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust, phase42/native-code-impact-analysis, phase43/native-test-impact-planning, phase44/native-change-set-impact, phase45/source-graph-evolution-convergence]
     paths:
       - "core/**"
       - "PIKA_KNOWLEDGE/**"
@@ -104,7 +104,18 @@ jobs:
             tests/test_phase37_remote_backend.py \
             tests/test_phase37_production_gates.py \
             tests/test_pc_body.py \
-            tests/test_pc_docker_sandbox.py
+            tests/test_pc_docker_sandbox.py \
+            tests/test_native_symbolic_reasoning.py \
+            tests/test_native_reasoning.py \
+            tests/test_native_knowledge_graph_adapter.py \
+            tests/test_native_code_proof_queries.py \
+            tests/test_native_code_impact_analysis.py \
+            tests/test_native_test_impact_planner.py \
+            tests/test_native_change_set_analysis.py \
+            tests/test_native_evolution.py \
+            tests/test_native_multilang_analyzer.py \
+            tests/test_phase42_consolidation.py \
+            tests/test_native_phase42_routes.py
 
       - name: Run broad first-party test suite (excluding live-provider scripts)
         run: |

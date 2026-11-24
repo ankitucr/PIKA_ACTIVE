@@ -213,16 +213,82 @@ class TaskAnalyzer:
             "figure out",
             "determine",
         ]
+        native_fact_reasoning_markers = (
+            "reason from facts",
+            "infer from facts",
+            "deduce from facts",
+            "run native reasoning",
+            "perform native inference",
+            "reason over learned code",
+            "reason over learned github code",
+            "reason over acquired github source",
+            "build a knowledge graph from learned code",
+            "analyze the learned dependency graph",
+            "explain code dependency path",
+            "explain learned code relation",
+            "show proof path in learned code",
+            "trace learned code relation",
+            "trace learned github dependency",
+            "analyze code change impact",
+            "find downstream dependents",
+            "what depends on this module",
+            "trace class consumers",
+            "find consumers of this class",
+            "analyze impact of changing",
+            "discover tests for code change",
+            "find tests for this code change",
+            "find tests affected by this module",
+            "build a test plan for code change",
+            "plan tests for code impact",
+            "select tests for changed module",
+            "analyze change set impact",
+            "analyze multi-file change impact",
+            "trace impacts for changed modules",
+            "analyze impact for changed files",
+            "multi target code impact",
+            "analyze combined code changes",
+        )
+        explicit_fact_reasoning = any(
+            marker in text for marker in native_fact_reasoning_markers
+        )
+        self_evolution_markers = (
+            "self-evolve",
+            "stage native improvement",
+            "propose deterministic improvement",
+        )
+        symbolic_reasoning_markers = (
+            "bounded symbolic reasoning",
+            "reason with declarative rules",
+            "apply declarative rules",
+            "evaluate supplied logical rules",
+            "check contradictions in supplied facts",
+            "reason over supplied facts and rules",
+        )
+        explicit_self_evolution = any(marker in text for marker in self_evolution_markers)
+        explicit_symbolic_reasoning = any(marker in text for marker in symbolic_reasoning_markers)
 
-        if any(
-            marker in text
-            for marker in reasoning_markers
-        ):
+        special_native_capability = None
+        if explicit_fact_reasoning:
+            special_native_capability = "native_fact_reasoning"
+        elif explicit_self_evolution:
+            special_native_capability = "native_self_evolution"
+        elif explicit_symbolic_reasoning:
+            special_native_capability = "native_symbolic_reasoning"
+
+        if special_native_capability:
+            capabilities.append(special_native_capability)
+        elif any(marker in text for marker in reasoning_markers):
             capabilities.append("reasoning")
 
         # ---------------------------------------------------------
         # REMOVE DUPLICATES
         # ---------------------------------------------------------
+
+        if special_native_capability:
+            # Bounded native routes must not mix with workspace generation,
+            # unrelated tools or a generic provider's reasoning capability.
+            capabilities = [special_native_capability]
+            tool_capabilities = []
 
         capabilities = list(
             dict.fromkeys(capabilities)

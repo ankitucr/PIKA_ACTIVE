@@ -29,6 +29,13 @@ class NativeCognitionAgent(Agent):
         "deterministic_self_evolution_staging",
     ]
 
+    # Explicit native-only routes, separate from broad public capabilities.
+    native_reasoning_capabilities = (
+        "native_fact_reasoning",
+        "native_self_evolution",
+        "native_symbolic_reasoning",
+    )
+
     def __init__(self, root: str | None = None) -> None:
         self.engine = NativeCognitionEngine(root)
 
