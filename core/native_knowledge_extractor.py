@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from core.native_multilang_analyzer import analyze_source as analyze_multilanguage_source
+
 SCHEMA = "pika.native_engineering_knowledge.v1"
 SKIP_PARTS = {
     ".git", ".venv", ".sandbox_venv", "venv", "node_modules", "vendor",
@@ -104,7 +106,11 @@ def _analyze_file(path: Path, rel: str, repo: str, commit: str, license_id: str)
         "source_executed": False,
     }
     if not rel.lower().endswith(".py"):
-        return {**record, "language": Path(rel).suffix.lower().lstrip("."), "parse_status": "not_python", "symbols": [], "imports": [], "metrics": {}}
+        structural = analyze_multilanguage_source(
+            source, rel, repository=repo, commit=commit,
+            expected_sha256=record["sha256"],
+        )
+        return {**record, **structural, "license_id": record["license_id"]}
     try:
         tree = ast.parse(source, filename=rel)
     except (SyntaxError, ValueError) as exc:
@@ -249,8 +255,45 @@ class NativeEngineeringKnowledgeExtractor:
                 errors.append(f"{item.get('path', '?')}: {type(exc).__name__}: {exc}")
 
         python_files = [x for x in records if x.get("language") == "python" and x.get("parse_status") == "parsed"]
+        multilang_files = [x for x in records if x.get("parse_status") == "structural_scan_complete"]
         tests = [x for x in python_files if x.get("test_file")]
+        multilang_tests = [x for x in multilang_files if x.get("test_file")]
         facts: list[dict[str, Any]] = []
+
+        # Cross-language source observations stay separate from Python AST facts.
+        multilang_evidence = []
+        for file_record in multilang_files:
+            for symbol in file_record.get("symbol_evidence", [])[:40]:
+                multilang_evidence.append({
+                    **_evidence(file_record, note=f"{file_record['language']} declaration at line {symbol.get('line')}: {symbol.get('evidence', '')}"),
+                    "kind": symbol.get("kind"),
+                    "name": symbol.get("name"),
+                    "line_start": symbol.get("line"),
+                    "source_excerpt": symbol.get("evidence"),
+                })
+        if multilang_files:
+            language_counts: dict[str, int] = {}
+            for item in multilang_files:
+                language_counts[item["language"]] = language_counts.get(item["language"], 0) + 1
+            facts.append(_make_fact(
+                repo, commit, "cross_language_source_structure",
+                f"Static text recognizers scanned {len(multilang_files)} non-Python source files across languages: {', '.join(f'{key}={value}' for key, value in sorted(language_counts.items()))}.",
+                multilang_evidence[:MAX_EVIDENCE_PER_FACT],
+                fact_type="cross_language_structural_observation",
+                caveat="Regex-based structural observations are not compiler-grade parsing, type checking, dependency resolution, build validation, or runtime evidence.",
+            ))
+        if multilang_tests:
+            test_evidence = [
+                _evidence(item, note=f"{item['language']} test-like path; assertion-like calls={item.get('metrics', {}).get('assertion_like_calls', 0)}; tests were not executed.")
+                for item in multilang_tests[:MAX_EVIDENCE_PER_FACT]
+            ]
+            facts.append(_make_fact(
+                repo, commit, "cross_language_test_structure",
+                f"The acquired corpus contains {len(multilang_tests)} test-like non-Python source files; assertion-like call matches={sum(x.get('metrics', {}).get('assertion_like_calls', 0) for x in multilang_tests)}.",
+                test_evidence,
+                fact_type="test_evidence_not_test_result",
+                caveat="Path and assertion-like text matches do not prove that tests execute, pass, or provide meaningful coverage.",
+            ))
 
         # Evidence-backed symbol inventory. This is factual indexing, not semantic inference.
         symbol_evidence: list[dict[str, Any]] = []
@@ -382,6 +425,12 @@ class NativeEngineeringKnowledgeExtractor:
             "registered_files": len(files_meta),
             "files_read": len(records),
             "python_files_parsed": len(python_files),
+            "multilanguage_files_scanned": len(multilang_files),
+            "multilanguage_test_files": len(multilang_tests),
+            "multilanguage_declarations": sum(x.get("metrics", {}).get("declarations", 0) for x in multilang_files),
+            "multilanguage_imports": sum(x.get("metrics", {}).get("imports", 0) for x in multilang_files),
+            "multilanguage_assertion_like_calls": sum(x.get("metrics", {}).get("assertion_like_calls", 0) for x in multilang_files),
+            "language_counts": {language: sum(x.get("language") == language for x in multilang_files) for language in sorted({x.get("language") for x in multilang_files})},
             "python_syntax_errors": sum(x.get("parse_status") == "syntax_error" for x in records),
             "classes": sum(x.get("metrics", {}).get("classes", 0) for x in python_files),
             "functions": sum(x.get("metrics", {}).get("functions", 0) + x.get("metrics", {}).get("async_functions", 0) for x in python_files),
@@ -399,7 +448,7 @@ class NativeEngineeringKnowledgeExtractor:
         report = {
             "schema": SCHEMA,
             "generated_at": _now(),
-            "success": bool(records) and bool(python_files),
+            "success": bool(records) and bool(python_files or multilang_files),
             "repository": repo,
             "url": meta.get("url"),
             "commit": commit,
@@ -408,7 +457,7 @@ class NativeEngineeringKnowledgeExtractor:
                 "file": meta.get("license_file"),
                 "reuse_policy": reuse_policy,
             },
-            "method": "deterministic_ast_docstring_test_evidence_extraction",
+            "method": "python_ast_plus_multilanguage_static_structure_and_test_evidence_extraction",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
@@ -418,6 +467,7 @@ class NativeEngineeringKnowledgeExtractor:
             "errors": errors[:100],
             "limits": [
                 "This creates source-backed observations, not human-like semantic understanding.",
+                "Non-Python analysis uses conservative regex recognizers, not compiler-grade parsers; false positives and omissions are possible.",
                 "Docstrings and identifiers may be incomplete or misleading.",
                 "Test assertions were counted, not executed; test correlation is not test coverage proof.",
                 "No third-party source was imported or executed.",

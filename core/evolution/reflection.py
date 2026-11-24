@@ -127,6 +127,10 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
             "event_id": o.get("event_id"), "outcome": state, "agent": o.get("agent"),
             "strategy": o.get("strategy"), "error_types": errs[:5],
             "attempt_count": o.get("attempt_count"), "evidence_missing": missing,
+            "traceback_frames": o.get("traceback_frames", [])[:8] if isinstance(o.get("traceback_frames"), list) else [],
+            "traceback_text_hints": o.get("traceback_text_hints", [])[:8] if isinstance(o.get("traceback_text_hints"), list) else [],
+            "source_context": o.get("source_context") if isinstance(o.get("source_context"), dict) else None,
+            "source_context_hint": o.get("source_context_hint") if isinstance(o.get("source_context_hint"), dict) else None,
             "issue_texts": sorted({t for a in (o.get("attempts") or []) if isinstance(a, dict) for t in (a.get("issue_texts") or []) if isinstance(t, str)})[:10],
             "worker_errors": sorted({a.get("worker_error") for a in (o.get("attempts") or []) if isinstance(a, dict) and a.get("worker_error")})[:5],
         })

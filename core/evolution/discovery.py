@@ -24,6 +24,9 @@ SCHEMA = "pika.phase37.discovery-queue.v1"
 _MAX_ITEMS = 50
 _MAX_CANDIDATES = 3
 _MAX_PROPOSAL_BYTES = 500_000
+_MAX_TEST_SCAN = 500
+_MAX_TEST_SOURCE_BYTES = 500_000
+_MAX_TEST_SUGGESTIONS = 5
 
 
 _DIAGNOSTIC_CLASSES = frozenset({
@@ -224,6 +227,102 @@ class CandidateDiscoveryQueue:
         self.experiments = experiments
         self.ledger = experiments.ledger
 
+    def _attach_traceback_context(self, item: dict[str, Any], reflected: dict[str, Any], diagnostic: dict[str, Any]) -> None:
+        context = reflected.get("source_context") if isinstance(reflected.get("source_context"), dict) else diagnostic.get("source_context")
+        hint = reflected.get("source_context_hint") if isinstance(reflected.get("source_context_hint"), dict) else diagnostic.get("source_context_hint")
+        validated = validate_source_context(context, self.baseline)
+        if validated is not None and not all(
+            isinstance(frame, dict) and frame.get("current_source_matches") is True
+            for frame in validated.get("frames", [])
+        ):
+            validated = None
+        validated_hint = validate_source_context(hint, self.baseline)
+        item["traceback_frames"] = reflected.get("traceback_frames", [])[:8] if isinstance(reflected.get("traceback_frames"), list) else diagnostic.get("traceback_frames", [])[:8] if isinstance(diagnostic.get("traceback_frames"), list) else []
+        item["traceback_text_hints"] = reflected.get("traceback_text_hints", [])[:8] if isinstance(reflected.get("traceback_text_hints"), list) else diagnostic.get("traceback_text_hints", [])[:8] if isinstance(diagnostic.get("traceback_text_hints"), list) else []
+        item["source_context"] = validated if validated and validated.get("capture_mode") == "PYTHON_EXCEPTION_TRACEBACK" else None
+        item["source_context_hint"] = validated_hint if validated_hint else (
+            validated if validated and validated.get("capture_mode") == "PYTHON_TRACEBACK_TEXT" else None
+        )
+        primary = None
+        if item["source_context"] is not None:
+            frames = item["source_context"].get("frames", [])
+            primary = next((frame for frame in frames if isinstance(frame, dict) and frame.get("source_kind") != "test"), frames[0] if frames else None)
+        if isinstance(primary, dict):
+            item["target"] = primary.get("path")
+            item["source_sha256"] = primary.get("source_sha256")
+            item["traceback_context_status"] = "CURRENT_SOURCE_HASH_MATCH"
+        elif item["source_context_hint"] is not None:
+            item.pop("target", None)
+            item.pop("source_sha256", None)
+            item["traceback_context_status"] = "UNTRUSTED_TEXT_HINT_ONLY"
+        else:
+            item["traceback_context_status"] = "STALE_OR_UNAVAILABLE" if item["traceback_frames"] else "NOT_CAPTURED_LEGACY"
+
+    def _suggest_related_test_paths(self, target_value: Any) -> list[dict[str, Any]]:
+        """Suggest tests with an exact AST import reference; never pin them automatically."""
+        try:
+            target = _safe_python_path(target_value)
+        except ExperimentError:
+            return []
+        module_parts = list(target.with_suffix("").parts)
+        if module_parts and module_parts[-1] == "__init__":
+            module_parts.pop()
+        if not module_parts:
+            return []
+        module_name = ".".join(module_parts)
+        tests_root = self.baseline / "tests"
+        if tests_root.is_symlink() or not tests_root.is_dir():
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        try:
+            paths = sorted(tests_root.rglob("*.py"))
+        except OSError:
+            return []
+        for path in paths[:_MAX_TEST_SCAN]:
+            if not (path.name.startswith("test_") or path.name.endswith("_test.py")):
+                continue
+            try:
+                relative = path.relative_to(self.baseline)
+                cursor = self.baseline
+                unsafe_path = False
+                for part in relative.parts:
+                    cursor = cursor / part
+                    if cursor.is_symlink():
+                        unsafe_path = True
+                        break
+                if unsafe_path or not path.is_file() or path.stat().st_size > _MAX_TEST_SOURCE_BYTES:
+                    continue
+                source_bytes = path.read_bytes()
+                source = source_bytes.decode("utf-8")
+                tree = ast.parse(source, filename=relative.as_posix())
+            except (OSError, UnicodeError, SyntaxError, ValueError):
+                continue
+
+            matching_imports = 0
+            for node in ast.walk(tree):
+                imported_modules = []
+                if isinstance(node, ast.Import):
+                    imported_modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    imported_modules = [node.module]
+                if any(
+                    name == module_name or name.startswith(module_name + ".")
+                    for name in imported_modules
+                ):
+                    matching_imports += 1
+            if matching_imports:
+                candidates.append({
+                    "path": relative.as_posix(),
+                    "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                    "matching_import_count": matching_imports,
+                    "evidence": "AST_IMPORT_REFERENCE_ONLY",
+                    "pinned": False,
+                })
+                if len(candidates) >= _MAX_TEST_SUGGESTIONS:
+                    break
+        return candidates
+
     def _load(self) -> dict[str, Any]:
         if self.path.is_symlink():
             raise ExperimentError("Discovery queue symlink is not allowed.")
@@ -362,6 +461,12 @@ class CandidateDiscoveryQueue:
             for row in diagnostic_events
             if isinstance(row, dict) and isinstance(row.get("event_id"), str)
         }
+        reflection_events = reflection.get("diagnosis_queue", [])
+        reflected_by_event = {
+            row.get("event_id"): row
+            for row in reflection_events
+            if isinstance(row, dict) and isinstance(row.get("event_id"), str)
+        } if isinstance(reflection_events, list) else {}
 
         prior = self._load()
         existing = {
@@ -452,6 +557,7 @@ class CandidateDiscoveryQueue:
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
                 self._attach_observed_evidence(previous, diag)
+                self._attach_traceback_context(previous, reflected_by_event.get(event_id, {}), diag)
                 previous["review_gaps"] = _review_gaps(previous, self.baseline)
                 refreshed += 1
                 continue
@@ -480,6 +586,10 @@ class CandidateDiscoveryQueue:
                 "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
                 "source_context": None,
+                "source_context_hint": None,
+                "traceback_frames": [],
+                "traceback_text_hints": [],
+                "traceback_context_status": "NOT_CAPTURED_LEGACY",
                 "native_proposal_ids": [],
                 "state": "SOURCE_REVIEW_REQUIRED",
                 "next_action": "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS",
@@ -488,6 +598,7 @@ class CandidateDiscoveryQueue:
                 "last_seen_at": time.time(),
             }
             self._attach_observed_evidence(queue_item, diag)
+            self._attach_traceback_context(queue_item, reflected_by_event.get(event_id, {}), diag)
             queue_item["review_gaps"] = _review_gaps(queue_item, self.baseline)
             existing[discovery_id] = queue_item
             added += 1
@@ -617,6 +728,36 @@ class CandidateDiscoveryQueue:
                     "event_level_causality_verified": False,
                     "recommended_action": "VERIFY_THE_MATCHING_HANDLER_AND_ADD_A_BOUNDED_CAPABILITY_REGRESSION_TEST",
                 }
+            context_frames = validated_context.get("frames", []) if validated_context is not None else []
+            primary_frame = next(
+                (frame for frame in context_frames if isinstance(frame, dict) and frame.get("source_kind") != "test"),
+                context_frames[0] if context_frames else None,
+            )
+            context_target = primary_frame.get("path") if isinstance(primary_frame, dict) else None
+            related_test_suggestions = (
+                self._suggest_related_test_paths(context_target)
+                if isinstance(context_target, str) else []
+            )
+            traceback_context_status = (
+                "CURRENT_SOURCE_HASH_MATCH" if validated_context is not None
+                else "UNTRUSTED_TEXT_HINT_ONLY" if validated_hint is not None
+                else item.get("traceback_context_status", "NOT_CAPTURED_LEGACY")
+            )
+            if classification == "UNSUPPORTED_NATIVE_CAPABILITY":
+                next_action = "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
+            elif "traceback_referenced_source_context" in gaps:
+                next_action = "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
+            elif related_test_suggestions:
+                next_action = "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
+            elif "current_source_binding" in gaps:
+                next_action = "BIND_CURRENT_SOURCE_HASH"
+            elif "pinned_regression_tests" in gaps:
+                next_action = "PIN_REGRESSION_TEST_PATHS_AND_HASHES"
+            elif "native_proposal_envelope" in gaps:
+                next_action = "ATTACH_NATIVE_PROPOSAL_ENVELOPE"
+            else:
+                next_action = "HUMAN_REVIEW_ROOT_CAUSE_BEFORE_CANDIDATE_STAGING"
+
             items.append({
                 "discovery_id": item.get("discovery_id"),
                 "event_id": item.get("event_id"),
@@ -657,28 +798,13 @@ class CandidateDiscoveryQueue:
                     "root_cause_verified": False,
                 } if validated_hint is not None else None,
                 "candidate_ids": item.get("candidate_ids", []),
+                "target": context_target,
+                "source_sha256": primary_frame.get("source_sha256") if isinstance(primary_frame, dict) else None,
+                "related_test_suggestions": related_test_suggestions,
+                "traceback_context_status": traceback_context_status,
+                "traceback_text_hint_status": "CURRENT_FILE_HASH_MATCH_UNTRUSTED_HINT" if validated_hint is not None else "NO_CURRENT_UNTRUSTED_HINT",
                 "source_review_hint": source_review_hint,
-                "next_action": (
-                    "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
-                    if classification == "UNSUPPORTED_NATIVE_CAPABILITY"
-                    else (
-                        "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
-                        if "traceback_referenced_source_context" in gaps
-                        else (
-                            "BIND_CURRENT_SOURCE_HASH"
-                            if "current_source_binding" in gaps
-                            else (
-                                "PIN_REGRESSION_TEST_PATHS_AND_HASHES"
-                                if "pinned_regression_tests" in gaps
-                                else (
-                                    "ATTACH_NATIVE_PROPOSAL_ENVELOPE"
-                                    if "native_proposal_envelope" in gaps
-                                    else "HUMAN_REVIEW_ROOT_CAUSE_BEFORE_CANDIDATE_STAGING"
-                                )
-                            )
-                        )
-                    )
-                ),
+                "next_action": next_action,
             })
         return {
             "success": True,

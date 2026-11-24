@@ -8,6 +8,8 @@ on:
       - "host_attestor/**"
       - "tests/**"
       - "pika_live.py"
+      - "pika_pc.py"
+      - "sandbox/pc/**"
       - "main.py"
       - "pika.py"
       - "agents/**"
@@ -26,8 +28,11 @@ on:
     branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust]
     paths:
       - "core/**"
+      - "PIKA_KNOWLEDGE/**"
       - "tests/**"
       - "pika_live.py"
+      - "pika_pc.py"
+      - "sandbox/pc/**"
       - "main.py"
       - "pika.py"
       - "agents/**"
@@ -74,7 +79,7 @@ jobs:
           python -m pip install -r requirements.txt pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
 
       - name: Compile all first-party Python
-        run: python -m compileall -q core agents tests host_attestor pika_live.py main.py pika.py remote_bridge
+        run: python -m compileall -q core agents tests host_attestor pika_live.py pika_pc.py main.py pika.py remote_bridge sandbox/pc/worker.py
 
       - name: Prepare best-effort local diagnostic venv (not an OS sandbox)
         run: python -m core.evolution.local_runner setup
@@ -94,9 +99,12 @@ jobs:
             tests/test_pika_brain_native_generator_integration.py \
             tests/test_live_runtime_think_handoff.py \
             tests/test_phase37_native_capability_short_circuit.py \
+            tests/test_phase37_traceback_source_context.py \
             tests/test_phase37_host_attestor.py \
             tests/test_phase37_remote_backend.py \
-            tests/test_phase37_production_gates.py
+            tests/test_phase37_production_gates.py \
+            tests/test_pc_body.py \
+            tests/test_pc_docker_sandbox.py
 
       - name: Run broad first-party test suite (excluding live-provider scripts)
         run: |
@@ -129,3 +137,40 @@ jobs:
               "governance": governance,
           }, indent=2))
           PY
+
+  pc-body-sandbox:
+    name: PC body Docker isolation smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install host test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest==9.2.0 pytest-asyncio==1.5.0 cryptography==50.0.2
+
+      - name: Build PIKA PC sandbox image
+        run: docker build --pull -f sandbox/pc/Dockerfile -t pika-pc-sandbox:ci .
+
+      - name: Pin the local image ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PIKA_PC_SANDBOX_IMAGE_ID=$(docker image inspect pika-pc-sandbox:ci --format '{{.Id}}')" >> "$GITHUB_ENV"
+
+      - name: Verify non-root, read-only and networkless isolation
+        run: |
+          python pika_pc.py run-tests \
+            --source tests/test_pc_sandbox_probe.py \
+            --test tests/test_pc_sandbox_probe.py \
+            --timeout 15 \
+            --acknowledge-untrusted-sandbox

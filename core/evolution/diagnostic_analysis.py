@@ -160,10 +160,14 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             obs.get("source_context")
             if isinstance(obs.get("source_context"), dict) else None
         )
+        traceback_text_hints = obs.get("traceback_text_hints", [])
+        if not isinstance(traceback_text_hints, list):
+            traceback_text_hints = []
         events.append({
             "event_id": _text(obs.get("event_id"), 80) or None,
             "task_sha256": _text(obs.get("task_sha256"), 64) or None,
             "source_context": source_context,
+            "traceback_text_hints": traceback_text_hints[:8],
             "native_proposal_ids": native_proposal_ids,
             "outcome": outcome,
             "event_classification": event_class,
