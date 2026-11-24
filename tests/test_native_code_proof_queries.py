@@ -209,7 +209,7 @@ def test_native_cognition_exposes_fenced_json_proof_query_and_no_api_fallback(tm
     engine = NativeCognitionEngine(tmp_path)
     fence = chr(96) * 3
     task = (
-        "explain code dependency path sample/graph\n"
+        "explain code dependency path in GitHub sample/graph\n"
         + fence + "json\n"
         + '{"subject":"pkg.a","predicate":"depends_on","object":"pkg.c"}\n'
         + fence
@@ -272,7 +272,7 @@ def test_brain_blocks_proof_query_hypotheses_from_memory(tmp_path):
 
     fence = chr(96) * 3
     task = (
-        "explain code dependency path sample/graph\n"
+        "explain code dependency path in GitHub sample/graph\n"
         + fence + "json\n"
         + '{"subject":"pkg.a","predicate":"depends_on","object":"pkg.c"}\n'
         + fence
