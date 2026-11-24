@@ -395,3 +395,41 @@ def test_core_import_relationships_over_budget_fail_closed(tmp_path):
     assert graph["source_persisted"] is False
     assert graph["promotion_allowed"] is False
 
+def test_oversized_ast_complexity_is_rejected_without_execution(tmp_path):
+    repository = "sample/astbudget"
+    source = "x = 0\n" * 7000
+    entry = _write_source(tmp_path, repository, "large.py", source)
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    result = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    assert result["success"] is False
+    assert result["error"] == "NO_HASH_VERIFIED_PYTHON_SOURCE"
+    assert any("AST node budget exceeded" in error for error in result["errors"])
+    assert result["source_executed"] is False
+    assert result["promotion_allowed"] is False
+
+
+def test_overlong_repository_identifier_is_rejected(tmp_path):
+    adapter = NativeKnowledgeGraphAdapter(tmp_path)
+    repository = ("owner" + "x" * 200) + "/repo"
+
+    result = adapter.build_repository_facts(repository)
+
+    assert result["success"] is False
+    assert result["error"] == "INVALID_REPOSITORY"
+
