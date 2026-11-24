@@ -40,7 +40,11 @@ class NativeCodeImpactAnalyzer:
         max_results: int = MAX_IMPACTS,
         max_paths_per_impact: int = MAX_PATHS_PER_IMPACT,
     ) -> dict[str, Any]:
-        if predicate not in IMPACT_PREDICATES or predicate not in TRANSITIVE_PREDICATES:
+        if (
+            not isinstance(predicate, str)
+            or predicate not in IMPACT_PREDICATES
+            or predicate not in TRANSITIVE_PREDICATES
+        ):
             return self._failure(
                 "UNSUPPORTED_IMPACT_PREDICATE",
                 f"Impact analysis supports: {', '.join(sorted(IMPACT_PREDICATES))}.",
