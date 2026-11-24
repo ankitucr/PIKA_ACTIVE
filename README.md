@@ -95,3 +95,16 @@ unverified. Source is never executed, graph output is not persisted, and
 memory admission or promotion remains disabled. No LLM, local model, or
 external inference API is used. See
 [docs/PHASE40_GITHUB_SOURCE_GRAPH_REASONING.md](docs/PHASE40_GITHUB_SOURCE_GRAPH_REASONING.md).
+
+## Phase 41: native code proof queries
+
+PIKA can explain a selected code-graph relation by returning bounded,
+deterministic source paths over registered AST observations. Queries support
+depends_on, is_a, part_of and requires, with path depth capped at 12, eight
+results and 10,000 expansions. Each path exposes root fact IDs and the exact
+source evidence (repository, full commit, file hash and line span); Phase 39
+derivation support is attached when a matching transitive hypothesis exists.
+Ambiguous short names are rejected with candidates, contradictions remain
+unresolved, and a missing path is not treated as proof of no runtime
+dependency. All explanations remain unverified and cannot enter memory or
+authorize promotion. See docs/PHASE41_NATIVE_CODE_PROOF_QUERIES.md.
