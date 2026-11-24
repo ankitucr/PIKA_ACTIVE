@@ -126,8 +126,11 @@ class NativeKnowledgeGraphAdapter:
     def build_repository_facts(self, repository: str) -> dict[str, Any]:
         """Read registered, hash-bound Python source and emit AST-only graph facts."""
         repo = repository.strip().strip("/") if isinstance(repository, str) else ""
-        if not _REPOSITORY_RE.fullmatch(repo):
-            return self._failure("INVALID_REPOSITORY", "Repository must be owner/name.")
+        if (
+            not _REPOSITORY_RE.fullmatch(repo)
+            or any(part in {"", ".", ".."} for part in repo.split("/"))
+        ):
+            return self._failure("INVALID_REPOSITORY", "Repository must be a safe owner/name identifier.")
 
         registry = self._load_registry().get("repositories", {})
         metadata = registry.get(repo) if isinstance(registry, dict) else None
@@ -144,6 +147,21 @@ class NativeKnowledgeGraphAdapter:
             return self._failure("REPOSITORY_FILE_LIMIT_EXCEEDED", f"At most {MAX_FILES} registered files are accepted.")
 
         repo_dir = self.corpus.joinpath(*repo.split("/"))
+        current = self.corpus
+        for part in repo.split("/"):
+            current = current / part
+            if current.is_symlink():
+                return self._failure(
+                    "INVALID_REGISTERED_REPOSITORY_PATH",
+                    "Symlinked repository or owner directories are not accepted.",
+                )
+        try:
+            repo_dir.resolve().relative_to(self.corpus.resolve())
+        except (OSError, ValueError):
+            return self._failure(
+                "INVALID_REGISTERED_REPOSITORY_PATH",
+                "Registered repository resolves outside the acquired source corpus.",
+            )
         parsed: list[dict[str, Any]] = []
         errors: list[str] = []
         skipped_non_python = 0
