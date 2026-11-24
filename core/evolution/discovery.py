@@ -456,6 +456,12 @@ class CandidateDiscoveryQueue:
             for row in diagnostic_events
             if isinstance(row, dict) and isinstance(row.get("event_id"), str)
         }
+        reflection_events = reflection.get("diagnosis_queue", [])
+        reflected_by_event = {
+            row.get("event_id"): row
+            for row in reflection_events
+            if isinstance(row, dict) and isinstance(row.get("event_id"), str)
+        } if isinstance(reflection_events, list) else {}
 
         prior = self._load()
         existing = {
@@ -546,6 +552,7 @@ class CandidateDiscoveryQueue:
                 previous["repeated_issue_fingerprints"] = safe_fingerprints[:8]
                 previous["attempt_classifications"] = classifications[:12]
                 self._attach_observed_evidence(previous, diag)
+                self._attach_traceback_context(previous, reflected_by_event.get(event_id, {}), diag)
                 previous["review_gaps"] = _review_gaps(previous, self.baseline)
                 refreshed += 1
                 continue
@@ -574,6 +581,10 @@ class CandidateDiscoveryQueue:
                 "evidence_missing": evidence_missing,
                 "source_backed_root_cause_verified": False,
                 "source_context": None,
+                "source_context_hint": None,
+                "traceback_frames": [],
+                "traceback_text_hints": [],
+                "traceback_context_status": "NOT_CAPTURED_LEGACY",
                 "native_proposal_ids": [],
                 "state": "SOURCE_REVIEW_REQUIRED",
                 "next_action": "ATTACH_TRACEBACK_SOURCE_CONTEXT_AND_PINNED_TESTS",
@@ -582,6 +593,7 @@ class CandidateDiscoveryQueue:
                 "last_seen_at": time.time(),
             }
             self._attach_observed_evidence(queue_item, diag)
+            self._attach_traceback_context(queue_item, reflected_by_event.get(event_id, {}), diag)
             queue_item["review_gaps"] = _review_gaps(queue_item, self.baseline)
             existing[discovery_id] = queue_item
             added += 1
