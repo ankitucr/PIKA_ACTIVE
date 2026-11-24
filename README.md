@@ -103,3 +103,7 @@ PIKA analyzes bounded sets of changed modules against one acquired graph snapsho
 ## Phase 45: Unified native reasoning and evolution
 
 The integrated architecture keeps the Phase 39 declarative symbolic reasoner separate from the source-graph reasoning engine, and restores deterministic self-evolution staging alongside proof, impact and test planning. Both paths are validated before Brain returns; unverified hypotheses and staged candidates cannot update memory or promote production. PC activation and external host-attestor provisioning remain separate operator-controlled steps. See [Phase 45 architecture convergence](docs/PHASE45_REASONING_EVOLUTION_CONVERGENCE.md).
+
+## Phase 36.9: Same-task strategy evidence
+
+PIKA's reflection can compare two strategies only when both have evaluator outcomes within the same Brain event for the exact same task hash, with at least five paired events. Comparisons remain descriptive and cannot autonomously change routing. See [same-task strategy evidence](docs/PHASE36_9_SAME_TASK_STRATEGY_EVIDENCE.md).
