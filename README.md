@@ -71,3 +71,8 @@ Start the body status view with `python pika_pc.py status`; inside `python pika_
 ## Phase 39: Native symbolic reasoning
 
 PIKA's native Brain now includes bounded, evidence-traced symbolic forward chaining over structured facts and declarative rules. Conclusions preserve premise/rule provenance, inherit uncertainty, and remain unverified unless every premise and rule is explicitly verified. Contradictions are reported rather than silently resolved. This capability uses no LLM, local model, Ollama, or external inference API. See [Phase 39 Native Reasoning](docs/PHASE39_NATIVE_REASONING.md).
+
+
+## Phase 40: Deep GitHub learning
+
+GitHub acquisition now feeds provenance-backed engineering extraction for Python and bounded structural observations across JavaScript, TypeScript, Dart, Go, Rust, Java, Kotlin, Swift, C#, C/C++, Ruby, PHP, SQL, HTML, and CSS. Every observation is bound to repository commit and source hash and remains unverified for reuse. Non-Python recognizers are intentionally conservative and are not compiler-grade parsers. See [Phase 40 Deep GitHub Learning](docs/PHASE40_DEEP_GITHUB_LEARNING.md).
