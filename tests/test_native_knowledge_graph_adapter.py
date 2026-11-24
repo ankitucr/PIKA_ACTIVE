@@ -494,3 +494,55 @@ class Child(Duplicate):
     assert len(repeated_functions) == 2
     assert child_fact["object"].startswith("unresolved_class_reference:")
 
+def test_aggregate_ast_budget_stops_scanning_remaining_manifest_entries(tmp_path):
+    repository = "sample/totalast"
+    files = [
+        _write_source(
+            tmp_path,
+            repository,
+            f"module_{index}.py",
+            "x = 0\n" * 6500,
+        )
+        for index in range(5)
+    ]
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": files,
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    graph = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    assert graph["success"] is True
+    assert graph["coverage_status"] == "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+    assert graph["metrics"]["python_files_parsed"] == 3
+    assert graph["metrics"]["ast_nodes_analyzed"] <= 60_000
+    assert graph["metrics"]["manifest_entries_not_scanned_after_ast_limit"] == 1
+    assert any("repository AST node budget" in error for error in graph["errors"])
+
+
+def test_symlinked_corpus_root_is_rejected(tmp_path):
+    root = _make_repository(tmp_path)
+    data = root / "data"
+    corpus = data / "github_code_corpus"
+    external = root / "external_corpus"
+    corpus.rename(external)
+    corpus.symlink_to(external, target_is_directory=True)
+
+    result = NativeKnowledgeGraphAdapter(root).build_repository_facts("sample/graph")
+
+    assert result["success"] is False
+    assert result["error"] == "INVALID_SOURCE_CORPUS_ROOT"
+    assert result["source_executed"] is False
+    assert result["promotion_allowed"] is False
+
