@@ -207,6 +207,93 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
             "automatic_routing_change": False,
             "automatic_learning_admission": False,
         }
+    # Compare strategies only when they ran for the exact same task hash
+    # inside the same Brain event. These remain descriptive observations.
+    task_event_results: dict[str, dict[str, dict[str, bool | None]]] = {}
+    for row in brain_events:
+        obs = row["observation"]
+        task_hash = obs.get("task_sha256")
+        event_id = obs.get("event_id")
+        if (
+            not isinstance(task_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", task_hash) is None
+            or not isinstance(event_id, str)
+            or not event_id
+        ):
+            continue
+        attempts = obs.get("attempts")
+        if not isinstance(attempts, list):
+            continue
+        per_strategy: dict[str, bool | None] = {}
+        for attempt in attempts[:12]:
+            if not isinstance(attempt, dict):
+                continue
+            raw_strategy = attempt.get("strategy") or attempt.get("decision_mode")
+            if not isinstance(raw_strategy, str):
+                continue
+            strategy_name = raw_strategy.strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", strategy_name):
+                continue
+            result_known = isinstance(attempt.get("result_success"), bool)
+            evaluation_known = isinstance(attempt.get("evaluation_passed"), bool)
+            if result_known and evaluation_known:
+                per_strategy[strategy_name] = (
+                    attempt["result_success"] is True
+                    and attempt["evaluation_passed"] is True
+                )
+            else:
+                per_strategy[strategy_name] = None
+        if len(per_strategy) >= 2:
+            task_event_results.setdefault(task_hash, {})[event_id] = per_strategy
+
+    same_task_strategy_comparisons = []
+    for task_hash, event_results in sorted(task_event_results.items()):
+        strategy_names = sorted({
+            name for strategies_for_event in event_results.values()
+            for name in strategies_for_event
+        })
+        for index, strategy_a in enumerate(strategy_names):
+            for strategy_b in strategy_names[index + 1:]:
+                paired = [
+                    (event_id, values[strategy_a], values[strategy_b])
+                    for event_id, values in event_results.items()
+                    if strategy_a in values
+                    and strategy_b in values
+                    and isinstance(values[strategy_a], bool)
+                    and isinstance(values[strategy_b], bool)
+                ]
+                if len(paired) < 5:
+                    continue
+                a_wins = sum(a and not b for _, a, b in paired)
+                b_wins = sum(b and not a for _, a, b in paired)
+                ties = len(paired) - a_wins - b_wins
+                a_successes = sum(a for _, a, _ in paired)
+                b_successes = sum(b for _, _, b in paired)
+                same_task_strategy_comparisons.append({
+                    "task_cohort_id": task_hash[:16],
+                    "strategy_a": strategy_a,
+                    "strategy_b": strategy_b,
+                    "paired_event_count": len(paired),
+                    "strategy_a_wins": a_wins,
+                    "strategy_b_wins": b_wins,
+                    "ties": ties,
+                    "strategy_a_success_rate": round(a_successes / len(paired), 4),
+                    "strategy_b_success_rate": round(b_successes / len(paired), 4),
+                    "success_rate_difference_a_minus_b": round(
+                        (a_successes - b_successes) / len(paired), 4
+                    ),
+                    "evidence_level": "SAME_TASK_PAIRED_OBSERVATIONAL_SAMPLE",
+                    "statistical_significance_claimed": False,
+                    "causal_claim": False,
+                    "trust": "UNVERIFIED_OBSERVATION_ONLY",
+                    "operator_review_required": True,
+                    "automatic_routing_change": False,
+                    "automatic_learning_admission": False,
+                })
+    same_task_strategy_comparisons.sort(
+        key=lambda item: (item["task_cohort_id"], item["strategy_a"], item["strategy_b"])
+    )
+
     failures = outcomes["FAILED"] + outcomes["ERROR"] + len(non_brain_failures)
     if failures:
         root_status = "REQUIRES_SOURCE_BACKED_DIAGNOSIS"
@@ -260,6 +347,8 @@ def reflect(memory_path: Path, limit: int = 500, live_only: bool = False) -> dic
         "error_type_counts": dict(error_types.most_common(10)),
         "strategy_counts": dict(strategies.most_common(10)),
         "strategy_effectiveness": strategy_effectiveness,
+        "same_task_strategy_comparisons": same_task_strategy_comparisons,
+        "same_task_strategy_comparison_policy": "EXACT_TASK_HASH_AND_SAME_EVENT_ONLY_MINIMUM_FIVE_PAIRED_EVENTS",
         "strategy_meta_learning_policy": "OBSERVATIONAL_ONLY_NO_AUTOMATIC_ROUTING_CHANGE",
         "quality_issue_counts": dict(quality_issues.most_common(20)),
         "quality_issue_count": sum(quality_issues.values()),

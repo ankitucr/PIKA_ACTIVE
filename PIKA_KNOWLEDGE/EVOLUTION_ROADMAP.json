@@ -88,7 +88,8 @@
         "Hardware-aware model and runtime optimization",
         "C++ and Rust extension build pipeline",
         "Evolution monitoring, recovery, and long-term evaluation",
-        "Default-deny, candidate-hash-bound permission manifests for staged tool proposals"
+        "Default-deny, candidate-hash-bound permission manifests for staged tool proposals",
+        "Exact-task, same-event descriptive strategy comparisons from paired evaluator outcomes with a five-pair minimum and no automatic route changes"
       ],
       "exit_criteria": [
         "New tools and modules are staged, sandbox-tested, reviewed, and reversible",
@@ -96,11 +97,14 @@
         "Optimizations are benchmarked against a stable baseline",
         "Long-term evaluation detects regressions, forgetting, and capability degradation",
         "Tool permission requests are explicit, versioned, default-deny, and bound to exact candidate hashes",
-        "Unknown requested permissions are rejected; staging does not grant, activate or execute permissions"
+        "Unknown requested permissions are rejected; staging does not grant, activate or execute permissions",
+        "Strategy comparisons require identical task hashes and outcomes for both strategies inside each paired Brain event",
+        "Unpaired events, different task hashes and incomplete evaluator outcomes cannot support a strategy comparison",
+        "The planner can propose a controlled experiment but cannot select or change a production route"
       ],
       "remaining_gaps": [
+        "Adaptive route selection remains disabled pending randomized same-task experiments, per-attempt resource measurements, pinned evaluator versions and independent reproduction",
         "Permission manifests remain proposal metadata only; a separately reviewed runtime enforcement and activation layer is still required",
-        "Adaptive routing still lacks controlled, same-task strategy comparison and benchmark-backed selection",
         "Hardware-aware model optimization needs trustworthy RAM/GPU/resource measurements and benchmark evidence",
         "A network-isolated C++ and Rust extension build pipeline with pinned toolchains and reproducible artifacts is not yet integrated",
         "Long-term forgetting and capability-degradation evaluation needs durable longitudinal benchmark cohorts"
