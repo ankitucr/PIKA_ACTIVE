@@ -23,7 +23,7 @@ on:
       - "pytest.ini"
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, phase37-3/result-bound-attestation, phase38/pc-body-on-phase37]
+    branches: [main, phase37-3/result-bound-attestation, phase38/pc-body-on-phase37, phase41/native-code-proof-queries]
   workflow_dispatch:
     inputs:
       candidate_sha:
