@@ -723,6 +723,36 @@ class CandidateDiscoveryQueue:
                     "event_level_causality_verified": False,
                     "recommended_action": "VERIFY_THE_MATCHING_HANDLER_AND_ADD_A_BOUNDED_CAPABILITY_REGRESSION_TEST",
                 }
+            context_frames = validated_context.get("frames", []) if validated_context is not None else []
+            primary_frame = next(
+                (frame for frame in context_frames if isinstance(frame, dict) and frame.get("source_kind") != "test"),
+                context_frames[0] if context_frames else None,
+            )
+            context_target = primary_frame.get("path") if isinstance(primary_frame, dict) else None
+            related_test_suggestions = (
+                self._suggest_related_test_paths(context_target)
+                if isinstance(context_target, str) else []
+            )
+            traceback_context_status = (
+                "CURRENT_SOURCE_HASH_MATCH" if validated_context is not None
+                else "UNTRUSTED_TEXT_HINT_ONLY" if validated_hint is not None
+                else item.get("traceback_context_status", "NOT_CAPTURED_LEGACY")
+            )
+            if classification == "UNSUPPORTED_NATIVE_CAPABILITY":
+                next_action = "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
+            elif "traceback_referenced_source_context" in gaps:
+                next_action = "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
+            elif related_test_suggestions:
+                next_action = "REVIEW_SUGGESTED_TEST_PATHS_AND_PIN_EXPLICITLY"
+            elif "current_source_binding" in gaps:
+                next_action = "BIND_CURRENT_SOURCE_HASH"
+            elif "pinned_regression_tests" in gaps:
+                next_action = "PIN_REGRESSION_TEST_PATHS_AND_HASHES"
+            elif "native_proposal_envelope" in gaps:
+                next_action = "ATTACH_NATIVE_PROPOSAL_ENVELOPE"
+            else:
+                next_action = "HUMAN_REVIEW_ROOT_CAUSE_BEFORE_CANDIDATE_STAGING"
+
             items.append({
                 "discovery_id": item.get("discovery_id"),
                 "event_id": item.get("event_id"),
@@ -763,28 +793,13 @@ class CandidateDiscoveryQueue:
                     "root_cause_verified": False,
                 } if validated_hint is not None else None,
                 "candidate_ids": item.get("candidate_ids", []),
+                "target": context_target,
+                "source_sha256": primary_frame.get("source_sha256") if isinstance(primary_frame, dict) else None,
+                "related_test_suggestions": related_test_suggestions,
+                "traceback_context_status": traceback_context_status,
+                "traceback_text_hint_status": "CURRENT_FILE_HASH_MATCH_UNTRUSTED_HINT" if validated_hint is not None else "NO_CURRENT_UNTRUSTED_HINT",
                 "source_review_hint": source_review_hint,
-                "next_action": (
-                    "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
-                    if classification == "UNSUPPORTED_NATIVE_CAPABILITY"
-                    else (
-                        "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
-                        if "traceback_referenced_source_context" in gaps
-                        else (
-                            "BIND_CURRENT_SOURCE_HASH"
-                            if "current_source_binding" in gaps
-                            else (
-                                "PIN_REGRESSION_TEST_PATHS_AND_HASHES"
-                                if "pinned_regression_tests" in gaps
-                                else (
-                                    "ATTACH_NATIVE_PROPOSAL_ENVELOPE"
-                                    if "native_proposal_envelope" in gaps
-                                    else "HUMAN_REVIEW_ROOT_CAUSE_BEFORE_CANDIDATE_STAGING"
-                                )
-                            )
-                        )
-                    )
-                ),
+                "next_action": next_action,
             })
         return {
             "success": True,
