@@ -144,8 +144,8 @@ def test_manifest_hash_mismatch_marks_test_selection_partial(tmp_path):
     selection = result["test_selection"]
     assert result["success"] is True
     assert selection["status"] == "PARTIAL_TEST_CANDIDATES"
-    assert "TEST_SOURCE_OR_SELECTION_LIMITS" in selection["coverage_flags"]
-    assert any("SHA-256" in error for error in selection["errors"])
+    assert "REJECTED_OR_UNPARSEABLE_FILES" in selection["coverage_flags"]
+    assert selection["impact_analysis_status"] == "PARTIAL_IMPACT_ANALYSIS"
     assert validate_native_test_selection(result) is True
 
 
