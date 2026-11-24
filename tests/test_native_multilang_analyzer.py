@@ -13,9 +13,9 @@ from core.native_multilang_analyzer import analyze_source
         ("src/app.ts", "typescript", "ChatService", "socket.io"),
         ("lib/main.dart", "dart", "ChatRepository", "package:flutter/material.dart"),
         ("src/server.go", "go", "StartServer", "net/http"),
-        ("src/lib.rs", "rust", "MessageStore", "std::collections"),
+        ("src/lib.rs", "rust", "MessageStore", "std::collections::HashMap"),
         ("src/App.java", "java", "MessageController", "java.util.List"),
-        ("src/app.kt", "kotlin", "ChatViewModel", "kotlinx.coroutines"),
+        ("src/app.kt", "kotlin", "ChatViewModel", "kotlinx.coroutines.launch"),
         ("src/style.css", "css", ".chat-panel", None),
     ],
 )
