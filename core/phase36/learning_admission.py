@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import fcntl
+from core.file_lock import fcntl
 import hashlib
 import json
 import math
@@ -34,13 +34,52 @@ def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _owner_only_path(path: str | Path) -> bool:
+    """Verify that a trust-bearing file or directory is restricted to its owner."""
+    candidate = Path(path)
+    try:
+        if candidate.is_symlink() or not candidate.exists():
+            return False
+        if os.name == "posix":
+            metadata = candidate.stat()
+            get_uid = getattr(os, "geteuid", None)
+            return (
+                stat.S_IMODE(metadata.st_mode) & 0o077 == 0
+                and (not callable(get_uid) or metadata.st_uid == get_uid())
+            )
+        if os.name == "nt":
+            from .windows_acl import is_owner_only_acl
+            return is_owner_only_acl(candidate)
+        return False
+    except OSError:
+        return False
+
+
+def _secure_directory(path: Path, *, existed_before: bool) -> bool:
+    if path.is_symlink() or not path.is_dir():
+        return False
+    if os.name == "posix":
+        try:
+            path.chmod(0o700)
+        except OSError:
+            return False
+        return _owner_only_path(path)
+    if os.name == "nt":
+        from .windows_acl import set_owner_only_acl
+        return _owner_only_path(path) if existed_before else set_owner_only_acl(path)
+    return False
+
+
 class TrustedLearningAdmission:
     """Separate operator-approved admission of independently result-attested learning evidence."""
 
     def __init__(self, project_root: str | Path, *, journal_path: str | Path | None = None):
         self.root = Path(project_root).expanduser().resolve(strict=True)
         self.knowledge = self.root / "PIKA_KNOWLEDGE"
+        knowledge_existed = self.knowledge.exists()
         self.knowledge.mkdir(parents=True, exist_ok=True)
+        if not _secure_directory(self.knowledge, existed_before=knowledge_existed):
+            raise LearningAdmissionError("PIKA_KNOWLEDGE must have an owner-only directory ACL.")
         raw = Path(journal_path).expanduser() if journal_path is not None else self.knowledge / "TRUSTED_LEARNING_ADMISSIONS.jsonl"
         if not raw.is_absolute():
             raw = self.root / raw
@@ -55,16 +94,18 @@ class TrustedLearningAdmission:
     def _ensure_outside_approval_data(self):
         if self.journal.is_symlink() or self.lock_path.is_symlink():
             raise LearningAdmissionError("Admission journal/lock symlinks are forbidden.")
+        parent_existed = self.journal.parent.exists()
         self.journal.parent.mkdir(parents=True, exist_ok=True)
         if self.journal.parent == self.root or self.root not in self.journal.parents:
             raise LearningAdmissionError("Trusted learning journal must be inside the selected PIKA project.")
-        self.journal.parent.chmod(0o700)
+        if not _secure_directory(self.journal.parent, existed_before=parent_existed):
+            raise LearningAdmissionError("Trusted learning journal directory must have an owner-only ACL.")
 
     def _open_lock(self) -> int:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(self.lock_path, flags, 0o600)
         meta = os.fstat(fd)
-        if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+        if not stat.S_ISREG(meta.st_mode) or not _owner_only_path(self.lock_path):
             os.close(fd)
             raise LearningAdmissionError("Admission lock must be regular and owner-only.")
         return fd
@@ -78,7 +119,7 @@ class TrustedLearningAdmission:
         fd = os.open(self.journal, flags)
         try:
             meta = os.fstat(fd)
-            if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+            if not stat.S_ISREG(meta.st_mode) or not _owner_only_path(self.journal):
                 raise LearningAdmissionError("Admission journal must be regular and owner-only.")
             chunks, total = [], 0
             while True:
@@ -160,7 +201,7 @@ class TrustedLearningAdmission:
         )
         try:
             metadata = os.fstat(lock_fd)
-            if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+            if not stat.S_ISREG(metadata.st_mode) or not _owner_only_path(self.projection_lock):
                 raise LearningAdmissionError("Trusted-learning projection lock must be owner-only.")
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
@@ -169,7 +210,7 @@ class TrustedLearningAdmission:
                 raise LearningAdmissionError("Experience Memory symlink rejected.")
             if self.memory_path.exists():
                 meta = self.memory_path.stat()
-                if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                if not stat.S_ISREG(meta.st_mode) or not _owner_only_path(self.memory_path):
                     raise LearningAdmissionError("Experience Memory must be a regular owner-only file.")
                 for number, line in enumerate(self.memory_path.read_text(encoding="utf-8").splitlines(), 1):
                     if not line.strip():
@@ -209,7 +250,7 @@ class TrustedLearningAdmission:
                 fd = os.open(self.memory_path, flags, 0o600)
                 try:
                     meta = os.fstat(fd)
-                    if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                    if not stat.S_ISREG(meta.st_mode) or not _owner_only_path(self.memory_path):
                         raise LearningAdmissionError("Experience Memory append target must be regular and owner-only.")
                     offset = 0
                     while offset < len(encoded):
@@ -253,6 +294,8 @@ class TrustedLearningAdmission:
         if self.memory_path.is_symlink():
             return {"valid": False, "errors": ["experience_memory_symlink_rejected"]}
         if self.memory_path.exists():
+            if not _owner_only_path(self.memory_path):
+                return {"valid": False, "errors": ["experience_memory_acl_rejected"]}
             try:
                 for number, line in enumerate(self.memory_path.read_text(encoding="utf-8").splitlines(), 1):
                     if not line.strip():
@@ -340,8 +383,16 @@ class TrustedLearningAdmission:
             raise LearningAdmissionError("Attested report must be a regular non-symlink file.")
         source = source.resolve(strict=True)
         metadata = source.stat()
-        if metadata.st_size > MAX_REPORT_BYTES or stat.S_IMODE(metadata.st_mode) & 0o022:
+        if metadata.st_size > MAX_REPORT_BYTES:
             raise LearningAdmissionError("Attested report is oversized or group/world writable.")
+        if os.name == "posix":
+            if stat.S_IMODE(metadata.st_mode) & 0o022:
+                raise LearningAdmissionError("Attested report is oversized or group/world writable.")
+        elif os.name == "nt":
+            if not _owner_only_path(source):
+                raise LearningAdmissionError("Attested report ACL must be restricted to trusted principals.")
+        else:
+            raise LearningAdmissionError("Unsupported platform for attested report permission checks.")
         raw = source.read_bytes()
         try:
             report = json.loads(raw.decode("utf-8"))
@@ -463,8 +514,8 @@ class TrustedLearningAdmission:
             flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
             fd = os.open(self.journal, flags, 0o600)
             try:
-                if not stat.S_ISREG(os.fstat(fd).st_mode):
-                    raise LearningAdmissionError("Admission journal must be a regular file.")
+                if not stat.S_ISREG(os.fstat(fd).st_mode) or not _owner_only_path(self.journal):
+                    raise LearningAdmissionError("Admission journal must be a regular owner-only file.")
                 offset = 0
                 while offset < len(encoded):
                     written = os.write(fd, encoded[offset:])
