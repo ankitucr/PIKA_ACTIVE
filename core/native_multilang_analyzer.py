@@ -63,7 +63,7 @@ def _patterns(language: str) -> tuple[list[re.Pattern[str]], list[re.Pattern[str
         imports = [r"\buse\s+([^;]+);"]
     elif language in {"java", "kotlin", "csharp", "swift"}:
         declaration = [
-            r"\b(?:public|private|protected|internal|open|final|abstract|sealed|static|partial|data|record|actor|struct|class|interface|enum|protocol|object|trait|extension|annotation)\s+(?:class\s+|interface\s+|enum\s+|record\s+|struct\s+|protocol\s+|object\s+|actor\s+)?([A-Za-z_]\w*)",
+            r"\b(?:(?:public|private|protected|internal|open|final|abstract|sealed|static|partial|data|record|actor)\s+)*(?:class|interface|enum|record|struct|protocol|object|trait|extension|annotation)\s+([A-Za-z_]\w*)",
             r"\b(?:fun|func)\s+([A-Za-z_]\w*)\s*\(",
         ]
         imports = [r"^\s*import\s+(?:static\s+)?([A-Za-z_][\w.*]+)", r"^\s*using\s+([A-Za-z_][\w.]+)\s*;"]
