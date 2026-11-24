@@ -218,9 +218,9 @@ class NativeCognitionEngine:
             start = task.find(marker)
             if start >= 0:
                 start += len(marker)
-                if task[start:start + 2] == "\\r\\n":
+                if task[start:start + 2] == "\r\n":
                     start += 2
-                elif task[start:start + 1] == "\\n":
+                elif task[start:start + 1] == "\n":
                     start += 1
                 end = task.find(fence, start)
                 if end >= 0:
@@ -785,7 +785,7 @@ class NativeCognitionEngine:
             ])
             return self._response(
                 True,
-                "\\n".join(report),
+                "\n".join(report),
                 knowledge_consumed=False,
                 raw=result,
             )
