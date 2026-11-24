@@ -92,6 +92,9 @@ def test_failure_discovery_queue_is_stable_deduplicated_and_diagnostic_only(tmp_
     assert item["state"] == "SOURCE_REVIEW_REQUIRED"
     assert item["source_backed_root_cause_verified"] is False
     assert item["diagnostic_classification"] == "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED"
+    assert item["evidence_missing"] == ["source_backed_diagnosis"]
+    assert "traceback_referenced_source_context" in item["review_gaps"]
+    assert "current_source_binding" in item["review_gaps"]
     assert stored["policy"]["root_cause_claims"] == "NOT_INFERRED_FROM_FREQUENCY"
     assert queue.summary()["candidate_count"] == 0
     assert queue.summary()["promotion"] == "BLOCKED"
@@ -273,3 +276,50 @@ def test_discovery_refresh_preserves_staged_candidate_state(tmp_path):
     assert refreshed["refreshed"] == 1
     assert item["state"] == "CANDIDATES_STAGED"
     assert item["candidate_ids"] == staged["candidate_ids"]
+
+
+
+def test_discovery_review_reports_missing_evidence_without_mutating_queue(tmp_path):
+    root = _project(tmp_path / "repo")
+    knowledge = tmp_path / "knowledge"
+    queue = CandidateDiscoveryQueue(knowledge, root, CandidateExperimentEngine(knowledge))
+    queue.refresh(_reflection(), _diagnostics())
+    queue_path = knowledge / "CANDIDATE_DISCOVERY_QUEUE.json"
+    before = queue_path.read_bytes()
+
+    result = queue.review()
+
+    assert result["success"] is True
+    assert result["schema"] == "pika.phase37.discovery-review.v1"
+    assert result["summary"]["source_review_required_count"] == 1
+    assert result["summary"]["candidate_count"] == 0
+    item = result["items"][0]
+    assert item["state"] == "SOURCE_REVIEW_REQUIRED"
+    assert item["source_backed_root_cause_verified"] is False
+    assert item["reflection_evidence_missing"] == ["source_backed_diagnosis"]
+    assert set(item["review_gaps"]) == {
+        "traceback_referenced_source_context",
+        "current_source_binding",
+        "pinned_regression_tests",
+        "native_proposal_envelope",
+    }
+    assert item["next_action"] == "CAPTURE_TRACEBACK_SOURCE_CONTEXT"
+    assert result["policy"]["root_cause_inferred"] is False
+    assert result["policy"]["source_modified"] is False
+    assert queue_path.read_bytes() == before
+
+
+def test_review_after_staging_keeps_root_cause_unverified(tmp_path):
+    root = _project(tmp_path / "repo")
+    knowledge = tmp_path / "knowledge"
+    engine = CandidateExperimentEngine(knowledge)
+    queue = CandidateDiscoveryQueue(knowledge, root, engine)
+    discovery_id = queue.refresh(_reflection(), _diagnostics())["discovery_ids"][0]
+    old_text = (root / "core" / "calc.py").read_text(encoding="utf-8")
+    queue.stage_native_proposal(discovery_id, _native_proposal(old_text))
+
+    item = queue.review()["items"][0]
+    assert item["state"] == "CANDIDATES_STAGED"
+    assert item["candidate_ids"]
+    assert item["source_backed_root_cause_verified"] is False
+    assert item["review_gaps"] == ["traceback_referenced_source_context"]

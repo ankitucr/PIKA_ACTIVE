@@ -13,12 +13,28 @@ from .repair import RepairCoordinator
 from .experiments import CandidateExperimentEngine
 from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
+from .verified_memory import VerifiedExperimentMemory
+from .attested_experiments import ResultAttestedCandidateExperimentEngine
+from core.phase36.result_learning import ResultAttestedLearningGate
+from core.phase36.learning_admission import TrustedLearningAdmission
+from core.phase36.production_promotion import ProductionPromotionManager
+from core.phase36.operator_approval import load_operator_approval_trust_policy
+from core.phase36.result_attestation import (
+    RunAttestationReplayGuard,
+    ResultBoundSandboxRunner,
+    load_result_attestation_trust_policy,
+)
+from core.phase36.remote_backend import HttpResultAttestationBackend
 
 
 class EvolutionController:
     def __init__(self, root="."):
-        self.root = Path(root).resolve()
+        requested_root = Path(root).expanduser()
+        self.root_input = str(requested_root.absolute())
+        self.root_input_is_symlink = requested_root.is_symlink()
+        self.root = requested_root.resolve()
         self.knowledge = self.root / "PIKA_KNOWLEDGE"
+        self.knowledge_real = self.knowledge.resolve()
         self.knowledge.mkdir(parents=True, exist_ok=True)
         self.identity = load_identity(self.knowledge)
         self.ledger = Ledger(self.knowledge / "EVOLUTION_LEDGER.jsonl")
@@ -26,6 +42,8 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
+        self.verified_memory = VerifiedExperimentMemory(self.knowledge)
+        self.trusted_learning = TrustedLearningAdmission(self.root)
         self.discovery = CandidateDiscoveryQueue(
             self.knowledge, self.root, self.experiments
         )
@@ -39,10 +57,22 @@ class EvolutionController:
             "identity": self.identity["name"],
             "mission": self.identity["mission"],
             "python_file_count": inventory.get("python_file_count"),
+            "workspace_identity": {
+                "requested_root": self.root_input,
+                "project_root": str(self.root),
+                "knowledge_root": str(self.knowledge_real),
+                "root_input_is_symlink": self.root_input_is_symlink,
+                "knowledge_within_project": (
+                    self.knowledge_real == self.root
+                    or self.root in self.knowledge_real.parents
+                ),
+            },
             "ledger": ledger,
             "phase37": {
                 **self.experiments.summary(),
                 "discovery": self.discovery.summary(),
+                "experiment_memory": self.verified_memory.verify(),
+                "trusted_learning_admission": self.trusted_learning.verify(),
             },
             "safety": {
                 "live_source_writes": False,
@@ -51,6 +81,26 @@ class EvolutionController:
                 "automatic_promotion": False,
                 "sandbox": "EXTERNAL_PENDING",
                 "candidate_trust": "UNVERIFIED_LOCAL",
+                "independent_result_attestation": "DENY_ALL_UNTIL_EXTERNAL_BACKEND_AND_PINNED_TRUST_ARE_INJECTED",
+                "trusted_learning_admission": "OPERATOR_APPROVAL_REQUIRED",
+                "production_gates": {
+                    "independent_os_attestation": {
+                        "implementation": "HOST_ATTESTOR_DEPLOYMENT_PACKAGE_READY",
+                        "status": "EXTERNAL_LINUX_HOST_DEPLOYMENT_REQUIRED",
+                        "actual_host_verified": False,
+                    },
+                    "trusted_learning_admission": {
+                        "status": "SEPARATE_ED25519_OPERATOR_APPROVAL_REQUIRED",
+                        "journal": self.trusted_learning.verify(),
+                        "automatic_admission": False,
+                    },
+                    "production_promotion": {
+                        "status": "SEPARATE_PRODUCTION_APPROVAL_AND_ROLLBACK_REQUIRED",
+                        "automatic_promotion": False,
+                        "post_promotion_attestation_required": True,
+                        "manual_rollback_approval_required": True,
+                    },
+                },
             },
         }
 
@@ -99,12 +149,137 @@ class EvolutionController:
         )
 
     def evaluate_candidate(self, candidate_id, *, timeout=120, python=None, repetitions=3):
-        return self.experiments.evaluate_candidate(
+        result = self.experiments.evaluate_candidate(
             candidate_id,
             timeout=timeout,
             python=python,
             repetitions=repetitions,
         )
+        report_path = result.get("report_path") if isinstance(result, dict) else None
+        if result.get("success") is True and report_path:
+            try:
+                result["memory_record"] = self.verified_memory.record(report_path)
+            except Exception as exc:
+                # Keep the diagnostic report available; the operator can retry
+                # the idempotent projection with record-experiment-memory.
+                result["memory_record"] = {
+                    "success": False,
+                    "error_type": type(exc).__name__,
+                    "retry_command": "record-experiment-memory",
+                }
+        return result
+
+
+    def evaluate_candidate_attested(
+        self, candidate_id, *, result_runner, timeout=120,
+        performance_threshold=0.10, repetitions=3, argv=None
+    ):
+        """Evaluate a staged candidate using signed post-run OS measurements.
+
+        No local-vnev fallback is permitted. The caller must inject a configured
+        external result-attested runner. Results remain pending the separate
+        LearningTrustGate and can never authorize production promotion.
+        """
+        engine = ResultAttestedCandidateExperimentEngine(self.experiments, result_runner)
+        return engine.evaluate_candidate(
+            candidate_id, timeout=timeout, performance_threshold=performance_threshold,
+            repetitions=repetitions, argv=argv
+        )
+
+
+    def verify_attested_learning_report(self, report, *, trust_policy):
+        """Re-verify every signed run before candidate evidence is eligible for learning.
+
+        This is an eligibility check only. It never writes experience memory,
+        grants replay, changes source, or authorizes production promotion.
+        """
+        return ResultAttestedLearningGate(trust_policy).verify_report(report)
+
+
+    def prepare_learning_approval(self, report_path, *, result_attestor_config):
+        return self.trusted_learning.approval_payload(
+            report_path, result_attestor_config=result_attestor_config
+        )
+
+    def admit_attested_learning(
+        self, report_path, *, result_attestor_config,
+        operator_approval_file, operator_trust_config,
+    ):
+        operator_policy = load_operator_approval_trust_policy(
+            operator_trust_config,
+            project_root=self.root,
+            purpose="TRUSTED_LEARNING_ADMISSION",
+        )
+        return self.trusted_learning.admit(
+            report_path=report_path,
+            result_attestor_config=result_attestor_config,
+            operator_approval_path=operator_approval_file,
+            operator_trust_policy=operator_policy,
+        )
+
+    def _production_promotion_manager(self, rollback_root):
+        return ProductionPromotionManager(
+            self.root, self.experiments, self.trusted_learning,
+            rollback_root=rollback_root,
+        )
+
+    def prepare_production_promotion(
+        self, candidate_id, *, report_path, result_attestor_config, rollback_root,
+    ):
+        return self._production_promotion_manager(rollback_root).prepare(
+            candidate_id,
+            report_path=report_path,
+            result_attestor_config=result_attestor_config,
+        )
+
+    def promote_candidate(
+        self, *, plan_file, approval_file, approval_trust_config,
+        result_attestor_config, attestor_url, attestor_token_file,
+        attestor_backend_id, replay_journal, rollback_root,
+    ):
+        result_policy = load_result_attestation_trust_policy(
+            result_attestor_config, project_root=self.root
+        )
+        approval_policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_PROMOTION",
+        )
+        replay = RunAttestationReplayGuard(
+            replay_journal, project_root=self.root
+        )
+        backend = HttpResultAttestationBackend(
+            attestor_url, attestor_token_file, backend_id=attestor_backend_id
+        )
+        runner = ResultBoundSandboxRunner(backend, result_policy, replay)
+        return self._production_promotion_manager(rollback_root).promote(
+            plan_path=plan_file,
+            approval_path=approval_file,
+            approval_policy=approval_policy,
+            result_runner=runner,
+            result_attestor_config=result_attestor_config,
+        )
+
+    def prepare_rollback_approval(self, *, plan_file, rollback_root):
+        return self._production_promotion_manager(rollback_root).rollback_approval_payload(plan_file)
+
+    def rollback_candidate(
+        self, *, plan_file, approval_file, approval_trust_config, rollback_root,
+    ):
+        policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_ROLLBACK",
+        )
+        return self._production_promotion_manager(rollback_root).rollback(
+            plan_file, approval_path=approval_file, approval_policy=policy
+        )
+
+    def record_experiment_memory(self, report_path):
+        return self.verified_memory.record(report_path)
+
+    def verify_experiment_memory(self):
+        return self.verified_memory.verify()
 
     def refresh_candidate_discovery(self):
         """Refresh the Phase 37 queue from live reflection and diagnostic signatures."""
@@ -118,6 +293,12 @@ class EvolutionController:
         )
         temp.replace(diagnostic_path)
         return self.discovery.refresh(reflection, diagnostics)
+
+    def review_candidate_discoveries(self):
+        """Read-only report of queue gaps joined to current live reflection/diagnostics."""
+        reflection = reflect(self.memory.path, live_only=True)
+        diagnostics = analyze_file(self.memory.path)
+        return self.discovery.review(reflection, diagnostics)
 
     def stage_native_proposal(self, discovery_id, proposal, *, test_paths=None):
         """Stage a native repair proposal against its exact current source and tests."""
@@ -147,6 +328,7 @@ class EvolutionController:
         phase37 = {
             **self.experiments.summary(),
             "discovery": self.discovery.summary(),
+            "experiment_memory": self.verified_memory.verify(),
         }
         self.ledger.append("evolution_cycle", {
             "failures": reflection["failure_count"],

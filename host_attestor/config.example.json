@@ -1,0 +1,16 @@
+{
+  "schema": "pika.host-attestor-config.v1",
+  "backend_id": "pika-prod-podman-attestor-v1",
+  "attestor_id": "pika-production-host-01",
+  "integration_type": "core.phase36.remote_backend.HttpResultAttestationBackend",
+  "listen_host": "127.0.0.1",
+  "listen_port": 8765,
+  "token_file": "/etc/pika-attestor/bearer-token.txt",
+  "token_sha256": "GENERATED_BY_HOST_PROVISIONER",
+  "private_key_file": "/etc/pika-attestor/attestor-ed25519.pem",
+  "runner_runtime": "podman",
+  "runner_image": "ghcr.io/owner/pika-attestor-runner@sha256:REPLACE_WITH_64_HEX_DIGEST",
+  "storage_dir": "/var/lib/pika-attestor",
+  "replay_journal_file": "/var/lib/pika-attestor/consumed-runs.jsonl",
+  "max_bundle_bytes": 50331648
+}

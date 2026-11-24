@@ -186,12 +186,32 @@ class CandidateExperimentEngine:
             decision = row.get("decision")
             if isinstance(decision, str):
                 decisions[decision] = decisions.get(decision, 0) + 1
+        attested_count = 0
+        attested_decisions: dict[str, int] = {}
+        attested_dir = self.runs / "result_attested"
+        if attested_dir.is_dir() and not attested_dir.is_symlink():
+            for path in attested_dir.glob("*.json"):
+                if path.is_symlink() or not path.is_file():
+                    continue
+                try:
+                    row = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if row.get("schema") != "pika.phase37.result-attested-experiment.v1":
+                    continue
+                attested_count += 1
+                decision = row.get("decision")
+                if isinstance(decision, str):
+                    attested_decisions[decision] = attested_decisions.get(decision, 0) + 1
         return {
             "candidate_count": candidate_count,
             "experiment_count": experiment_count,
             "decisions": dict(sorted(decisions.items())),
             "execution_mode": "LOCAL_VENV_DIAGNOSTIC_ONLY",
             "candidate_trust": "UNVERIFIED_LOCAL",
+            "result_attested_experiment_count": attested_count,
+            "result_attested_decisions": dict(sorted(attested_decisions.items())),
+            "result_attestation_runtime": "EXTERNAL_BACKEND_INJECTION_REQUIRED",
             "promotion": "BLOCKED",
         }
 
@@ -606,6 +626,7 @@ class CandidateExperimentEngine:
             "provenance": dict(metadata.get("provenance", {})),
             "argv": list(argv),
             "timeout": timeout,
+            "performance_threshold": threshold,
             "repetitions": repetitions,
             "started_at": started,
             "finished_at": time.time(),

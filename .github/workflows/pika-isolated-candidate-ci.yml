@@ -2,11 +2,12 @@ name: PIKA Isolated Candidate CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust]
     paths:
       - ".github/workflows/pika-isolated-candidate-ci.yml"
       - ".github/workflows/pika-core-safety.yml"
       - "core/**"
+      - "host_attestor/**"
       - "tests/**"
       - "agents/**"
       - "memory/**"
@@ -19,6 +20,8 @@ on:
       - "main.py"
       - "pika.py"
       - "pika_live.py"
+      - "pika_pc.py"
+      - "sandbox/pc/**"
       - "requirements.txt"
       - "pytest.ini"
   pull_request_target:
@@ -57,7 +60,7 @@ jobs:
       - name: Check out trusted base workflow source
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
           path: trusted
           persist-credentials: false
           submodules: false
@@ -182,7 +185,7 @@ jobs:
             cd /work/source
 
             echo "===== CANDIDATE SOURCE COMPILE ====="
-            python -m compileall -q core agents tests pika_live.py main.py pika.py remote_bridge
+            python -m compileall -q core agents tests host_attestor pika_live.py pika_pc.py main.py pika.py remote_bridge sandbox/pc/worker.py
 
             echo "===== PREPARE CONTAINER-LOCAL DIAGNOSTIC VENV ====="
             python -m venv --system-site-packages .sandbox_venv

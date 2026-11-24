@@ -20,6 +20,14 @@ from core.evolution.retry_guard import assess_retry_progress
 
 
 
+# Deterministic native capability failures cannot be repaired by replaying
+# the same request through the same unchanged native handler.
+_TERMINAL_NATIVE_CAPABILITY_ERRORS = frozenset({
+    "UNSUPPORTED_NATIVE_OPERATION",
+    "NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED",
+})
+
+
 # PHASE35_VERIFIED_LOOP_V3
 def _phase35_save_repair(
     memory, task, candidates, outcome, diagnosis,
@@ -710,6 +718,82 @@ class PIKABrain:
 
             result["strategy"] = "agent"
             result["decision"] = decision
+
+            # Fast-fail explicit native capability gaps before entering
+            # workspace execution, repair generation or identical retries.
+            # The native worker has already returned a deterministic,
+            # machine-readable unsupported-operation code. Replaying the
+            # same request cannot add a missing handler.
+            native_error = result.get("error")
+            if (
+                result.get("agent") == "native"
+                and native_error in _TERMINAL_NATIVE_CAPABILITY_ERRORS
+            ):
+                evaluation = {
+                    "passed": False,
+                    "score": 0.0,
+                    "reason": "The native runtime does not implement this capability.",
+                    "issues": [native_error],
+                    "checks": {
+                        "worker_success": False,
+                        "native_capability_available": False,
+                        "retry_would_change_capability_coverage": False,
+                    },
+                    "feedback": (
+                        f"{native_error}: no verified native handler is registered. "
+                        "Add and test a bounded native capability before retrying."
+                    ),
+                }
+                attempts.append({
+                    "attempt": attempt_number,
+                    "decision": decision,
+                    "result": result,
+                    "evaluation": evaluation,
+                })
+                self.memory.remember_failure({
+                    "task": task,
+                    "task_signature": decision.get("task_signature"),
+                    "task_analysis": task_analysis,
+                    "result": result,
+                    "evaluation": evaluation,
+                    "decision": decision,
+                    "strategy": "native_capability_fast_fail",
+                    "feedback": evaluation["feedback"],
+                })
+                experience = self.experience.create_experience(
+                    task=task,
+                    result=result,
+                    evaluation=evaluation,
+                    decision=decision,
+                )
+                self.memory.remember_lesson(experience["lesson"])
+                return {
+                    "success": False,
+                    "task": task,
+                    "task_analysis": task_analysis,
+                    "decision_trace": decision_trace,
+                    "attempts": attempts,
+                    "agent": "native",
+                    "provider": result.get("provider"),
+                    "model": result.get("model"),
+                    "output": result.get("output"),
+                    "evaluation": evaluation,
+                    "retry_control": {
+                        "stop": True,
+                        "reason": "unsupported_native_capability",
+                        "retryable": False,
+                        "attempts_used": 1,
+                    },
+                    "capability_failure": {
+                        "code": native_error,
+                        "classification": "UNSUPPORTED_NATIVE_CAPABILITY",
+                        "recommended_action": "IMPLEMENT_AND_TEST_BOUNDED_NATIVE_HANDLER",
+                        "source_modified": False,
+                        "candidate_executed": False,
+                        "promotion": "BLOCKED",
+                    },
+                    "experience": experience,
+                }
 
             # =================================================
             # PHASE 31 WORKSPACE EXECUTION

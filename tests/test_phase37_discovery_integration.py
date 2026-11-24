@@ -108,3 +108,98 @@ def test_controller_can_stage_native_proposal_from_discovery_item(tmp_path, monk
     assert result["candidate_trust"] == "UNVERIFIED_LOCAL"
     assert result["promotion"] == "BLOCKED"
     assert root_source.read_text(encoding="utf-8") == old_text
+
+
+
+def test_review_joins_live_reflection_for_legacy_discovery_entries(tmp_path, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    knowledge = tmp_path / "PIKA_KNOWLEDGE"
+    observer = ExecutionObserver(knowledge)
+    token = observer.begin("review legacy failure")
+    recorded = observer.finish(
+        token,
+        {
+            "success": False,
+            "evaluation": {"passed": False, "issues": ["expected output mismatch"]},
+            "attempts": [{
+                "attempt": 1,
+                "result": {"success": False, "error": "AssertionError"},
+                "evaluation": {"passed": False, "issues": ["expected output mismatch"]},
+            }],
+        },
+        elapsed_seconds=0.1,
+    )
+    controller = EvolutionController(tmp_path)
+    controller.refresh_candidate_discovery()
+
+    queue_path = knowledge / "CANDIDATE_DISCOVERY_QUEUE.json"
+    stored = json.loads(queue_path.read_text(encoding="utf-8"))
+    stored["items"][0].pop("evidence_missing", None)
+    queue_path.write_text(json.dumps(stored), encoding="utf-8")
+
+    review = controller.review_candidate_discoveries()
+    item = next(row for row in review["items"] if row["event_id"] == recorded["event_id"])
+
+    assert item["reflection_evidence_missing"] == ["error_trace", "source_backed_diagnosis"]
+    assert item["source_backed_root_cause_verified"] is False
+    assert "traceback_referenced_source_context" in item["review_gaps"]
+
+
+
+def test_unsupported_native_operation_review_points_to_capability_handler(tmp_path, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    knowledge = tmp_path / "PIKA_KNOWLEDGE"
+    observer = ExecutionObserver(knowledge)
+    token = observer.begin("unsupported native workspace operation")
+    recorded = observer.finish(
+        token,
+        {
+            "success": False,
+            "agent": "native",
+            "error": "UNSUPPORTED_NATIVE_OPERATION",
+            "evaluation": {
+                "passed": False,
+                "issues": ["UNSUPPORTED_NATIVE_OPERATION"],
+            },
+            "attempts": [{
+                "attempt": 1,
+                "decision": {"mode": "agent"},
+                "result": {
+                    "success": False,
+                    "agent": "native",
+                    "error": "UNSUPPORTED_NATIVE_OPERATION",
+                },
+                "evaluation": {
+                    "passed": False,
+                    "issues": ["UNSUPPORTED_NATIVE_OPERATION"],
+                },
+            }],
+        },
+        elapsed_seconds=0.1,
+    )
+    assert recorded["recorded"] is True
+
+    controller = EvolutionController(tmp_path)
+    controller.refresh_candidate_discovery()
+    queue_path = knowledge / "CANDIDATE_DISCOVERY_QUEUE.json"
+    stored = json.loads(queue_path.read_text(encoding="utf-8"))
+    # Simulate a pre-classifier queue record. Review must use live diagnostics.
+    stored["items"][0]["diagnostic_classification"] = "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED"
+    queue_path.write_text(json.dumps(stored), encoding="utf-8")
+    item = controller.review_candidate_discoveries()["items"][0]
+
+    assert item["event_id"] == recorded["event_id"]
+    assert item["diagnostic_classification"] == "UNSUPPORTED_NATIVE_CAPABILITY"
+    assert "unsupported_native_operation" in item["issue_fingerprints"]
+    assert item["source_review_hint"]["kind"] == "native_capability_gap"
+    assert item["source_review_hint"]["source_files_to_inspect"] == [
+        "core/native_cognition.py",
+        "core/runtime.py",
+        "agents/native_cognition.py",
+    ]
+    assert item["source_review_hint"]["evidence_status"] == "STATIC_HANDLER_MATCH_ONLY"
+    assert item["source_review_hint"]["event_level_causality_verified"] is False
+    assert item["next_action"] == "VERIFY_NATIVE_CAPABILITY_HANDLER_AND_PIN_REGRESSION_TEST"
+    assert item["source_backed_root_cause_verified"] is False
+    assert item["state"] == "SOURCE_REVIEW_REQUIRED"
+    assert item["candidate_ids"] == []

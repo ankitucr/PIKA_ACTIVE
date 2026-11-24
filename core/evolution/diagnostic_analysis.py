@@ -15,6 +15,10 @@ _CODE_OUTPUT = re.compile(
     re.I,
 )
 _PARSE = re.compile(r"json.*parse|syntaxerror|could not be parsed|invalid syntax", re.I)
+_NATIVE_UNSUPPORTED = re.compile(
+    r"\b(?:UNSUPPORTED_NATIVE_OPERATION|NATIVE_CODE_GENERATION_NOT_YET_SUPPORTED)\b",
+    re.I,
+)
 _SECRET = re.compile(
     r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+|"
     r"bearer\s+[A-Za-z0-9._~+/=-]+"
@@ -48,6 +52,8 @@ def classify_attempt(attempt: dict[str, Any]) -> dict[str, Any]:
     joined = " | ".join(texts)
     if _TIMEOUT.search(joined):
         kind = "NETWORK_OR_PROVIDER_TIMEOUT"
+    elif _NATIVE_UNSUPPORTED.search(joined):
+        kind = "UNSUPPORTED_NATIVE_CAPABILITY"
     elif _CODE_OUTPUT.search(joined):
         kind = "CODE_OUTPUT_CONTRACT_FAILURE"
     elif _PARSE.search(joined):
@@ -110,6 +116,8 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             event_class = "MIXED_TIMEOUT_AND_CODE_OUTPUT_FAILURE"
         elif "NETWORK_OR_PROVIDER_TIMEOUT" in kinds:
             event_class = "NETWORK_OR_PROVIDER_TIMEOUT"
+        elif "UNSUPPORTED_NATIVE_CAPABILITY" in kinds:
+            event_class = "UNSUPPORTED_NATIVE_CAPABILITY"
         elif "CODE_OUTPUT_CONTRACT_FAILURE" in kinds:
             event_class = "CODE_OUTPUT_CONTRACT_FAILURE"
         elif "OUTPUT_PARSE_FAILURE" in kinds:
@@ -130,6 +138,8 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             proposed_action = "STOP_IDENTICAL_RETRIES_AND_CHANGE_OUTPUT_STRATEGY"
         elif event_class == "NETWORK_OR_PROVIDER_TIMEOUT":
             proposed_action = "RECORD_PROVIDER_TIMEOUT_AND_USE_BOUNDED_BACKOFF_OR_FALLBACK"
+        elif event_class == "UNSUPPORTED_NATIVE_CAPABILITY":
+            proposed_action = "MAP_NATIVE_CAPABILITY_GAP_TO_HANDLER_AND_REGRESSION_TESTS"
         elif event_class == "INCOMPLETE_EVALUATION_EVIDENCE":
             proposed_action = "CAPTURE_EVALUATOR_COMPLETION_STATUS_BEFORE_SCORING"
         elif event_class == "EVALUATOR_REJECTED_OUTPUT_UNCLASSIFIED":
@@ -139,9 +149,22 @@ def analyze_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
         outcome = _text(obs.get("outcome_status") or row.get("category"), 40) or "UNKNOWN"
         outcome_counts[outcome] += 1
+        native_proposal_ids = obs.get("native_proposal_ids", [])
+        if not isinstance(native_proposal_ids, list):
+            native_proposal_ids = []
+        native_proposal_ids = [
+            value for value in native_proposal_ids
+            if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value)
+        ][:3]
+        source_context = (
+            obs.get("source_context")
+            if isinstance(obs.get("source_context"), dict) else None
+        )
         events.append({
             "event_id": _text(obs.get("event_id"), 80) or None,
             "task_sha256": _text(obs.get("task_sha256"), 64) or None,
+            "source_context": source_context,
+            "native_proposal_ids": native_proposal_ids,
             "outcome": outcome,
             "event_classification": event_class,
             "attempt_count": len(classified),

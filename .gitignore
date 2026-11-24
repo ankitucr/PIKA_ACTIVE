@@ -70,6 +70,25 @@ backups/
 *.backup2
 *.backup3
 
+# Ephemeral process locks for private runtime journals
+/PIKA_KNOWLEDGE/*.lock
+
+# Private Phase 37 discovery and candidate runtime artifacts
+/PIKA_KNOWLEDGE/CANDIDATE_DISCOVERY_QUEUE.json
+/PIKA_KNOWLEDGE/PHASE37_NATIVE_PROPOSALS/
+/PIKA_KNOWLEDGE/PHASE37_EXPERIMENTS/
+
+# Never commit provisioned host identities, tokens, or offline approvals
+/host_attestor/*.pem
+/host_attestor/*token*
+/host_attestor/host-config*.json
+/host_attestor/*approval*.json
+/host_attestor/generated/
+
+# Phase 37.4 trusted admission and promotion runtime state
+/PIKA_KNOWLEDGE/TRUSTED_LEARNING_ADMISSIONS.jsonl
+/PIKA_KNOWLEDGE/PHASE37_PROMOTIONS/
+
 # PIKA private runtime knowledge and personal state
 /PIKA_KNOWLEDGE/*LEDGER*.jsonl
 /PIKA_KNOWLEDGE/*MEMORY*.jsonl

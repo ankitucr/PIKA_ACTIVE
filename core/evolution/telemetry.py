@@ -12,6 +12,10 @@ from typing import Any
 
 from .ledger import Ledger
 from .memory import ExperienceMemory
+from .source_context import (
+    capture_exception_source_context,
+    capture_traceback_text_source_context,
+)
 
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+"),
@@ -101,6 +105,7 @@ class ExecutionObserver:
         knowledge = Path(knowledge_dir).expanduser().resolve()
         knowledge.mkdir(parents=True, exist_ok=True)
         self.knowledge = knowledge
+        self.root = knowledge.parent.resolve()
         self.proposal_dir = knowledge / "PHASE37_NATIVE_PROPOSALS"
         self.memory = ExperienceMemory(knowledge / "EXPERIENCE_MEMORY.jsonl")
         self.ledger = Ledger(knowledge / "EVOLUTION_LEDGER.jsonl")
@@ -355,6 +360,28 @@ class ExecutionObserver:
         else:
             outcome_status, success, category = "INCOMPLETE", None, "incomplete"
 
+        source_context = (
+            capture_exception_source_context(exception, self.root)
+            if exception is not None else None
+        )
+        if source_context is None:
+            traceback_candidates: list[str] = []
+            for key in ("traceback", "stacktrace", "error", "worker_error"):
+                value = result_dict.get(key)
+                if isinstance(value, str):
+                    traceback_candidates.append(value)
+            for attempt in reversed(attempts[-12:]):
+                attempt_result = _dict(_dict(attempt).get("result"))
+                for key in ("traceback", "stacktrace", "error", "worker_error"):
+                    value = attempt_result.get(key)
+                    if isinstance(value, str):
+                        traceback_candidates.append(value)
+            for candidate_traceback in traceback_candidates:
+                source_context = capture_traceback_text_source_context(
+                    candidate_traceback, self.root
+                )
+                if source_context is not None:
+                    break
         native_proposals = self._capture_native_proposals(
             token, attempts, outcome_status=outcome_status
         )
@@ -410,6 +437,12 @@ class ExecutionObserver:
             "strategy": _safe_name(result_dict.get("strategy")),
             "error_types": error_types,
             "exception_type": type(exception).__name__ if exception is not None else None,
+            "source_context": source_context,
+            "native_proposal_ids": [
+                row["proposal_id"] for row in native_proposals
+                if isinstance(row, dict)
+                and isinstance(row.get("proposal_id"), str)
+            ][:3],
             "phase32_seen": any(
                 bool(_dict(_dict(x).get("result")).get("workspace_execution"))
                 for x in attempts
