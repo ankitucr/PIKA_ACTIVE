@@ -155,7 +155,7 @@ def test_same_task_comparison_requires_five_same_event_pairs(tmp_path):
 
     result = reflect(memory, live_only=True)
     if "same_task_strategy_comparisons" not in result:
-        unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
+        raise unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
     comparison = result["same_task_strategy_comparisons"][0]
 
     assert comparison["paired_event_count"] == 5
@@ -184,7 +184,7 @@ def test_same_task_comparison_does_not_combine_unpaired_events(tmp_path):
 
     result = reflect(memory, live_only=True)
     if "same_task_strategy_comparisons" not in result:
-        unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
+        raise unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
     assert result["same_task_strategy_comparisons"] == []
 
 
@@ -239,6 +239,6 @@ def test_planner_does_not_propose_strategy_comparison_from_unpaired_aggregate_co
     probe = tmp_path / "contract_probe.jsonl"
     probe.write_text("", encoding="utf-8")
     if "same_task_strategy_comparisons" not in reflect(probe, live_only=True):
-        unittest.SkipTest("same-task planner gate is introduced by the paired-evidence implementation")
+        raise unittest.SkipTest("same-task planner gate is introduced by the paired-evidence implementation")
     result = plan({"scan_errors": 0}, reflection, tmp_path)
     assert all(item["id"] != "compare_learning_strategy_effectiveness" for item in result["goals"])
