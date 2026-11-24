@@ -24,6 +24,8 @@ class NativeCognitionAgent(Agent):
         "bounded_symbolic_reasoning",
         "evidence_provenance_reasoning",
         "contradiction_detection",
+        "cross_language_static_analysis",
+        "provenance_backed_github_knowledge",
     ]
 
     def __init__(self, root: str | None = None) -> None:
