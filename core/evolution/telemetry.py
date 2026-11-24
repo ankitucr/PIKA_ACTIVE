@@ -6,6 +6,7 @@ import json
 import os
 import re
 import time
+import traceback as traceback_module
 import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -101,11 +102,12 @@ def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
 class ExecutionObserver:
     """Records bounded Brain metadata and inert native proposals; observations remain untrusted."""
 
-    def __init__(self, knowledge_dir: str | Path):
+    def __init__(self, knowledge_dir: str | Path, *, project_root: str | Path | None = None):
         knowledge = Path(knowledge_dir).expanduser().resolve()
         knowledge.mkdir(parents=True, exist_ok=True)
         self.knowledge = knowledge
         self.root = knowledge.parent.resolve()
+        self.project_root = Path(project_root).expanduser().resolve() if project_root is not None else self.root
         self.proposal_dir = knowledge / "PHASE37_NATIVE_PROPOSALS"
         self.memory = ExperienceMemory(knowledge / "EXPERIENCE_MEMORY.jsonl")
         self.ledger = Ledger(knowledge / "EVOLUTION_LEDGER.jsonl")
@@ -168,6 +170,161 @@ class ExecutionObserver:
                 _dict(result.get("phase33_generation")).get("success") is True
             ),
         }
+
+    def _capture_traceback_frames(
+        self,
+        exception: BaseException | None,
+    ) -> list[dict[str, Any]]:
+        """Capture bounded, project-relative traceback references, never raw tracebacks."""
+        root = self.project_root
+        if (
+            not isinstance(exception, BaseException)
+            or exception.__traceback__ is None
+            or not isinstance(root, Path)
+            or not root.is_dir()
+        ):
+            return []
+
+        captured: list[dict[str, Any]] = []
+        try:
+            extracted = traceback_module.extract_tb(exception.__traceback__)
+        except Exception:
+            return []
+
+        # The innermost in-project frames are usually the most actionable.
+        for frame in reversed(extracted):
+            if len(captured) >= _MAX_TRACEBACK_FRAMES:
+                break
+            try:
+                candidate = Path(frame.filename)
+                if not candidate.is_absolute():
+                    candidate = root / candidate
+                candidate = Path(os.path.abspath(candidate))
+                relative = candidate.relative_to(root)
+                if (
+                    not relative.parts
+                    or relative.suffix != ".py"
+                    or any(part in {"", ".", ".."} for part in relative.parts)
+                ):
+                    continue
+
+                cursor = root
+                unsafe_path = False
+                for part in relative.parts:
+                    cursor = cursor / part
+                    if cursor.is_symlink():
+                        unsafe_path = True
+                        break
+                if unsafe_path or not cursor.is_file():
+                    continue
+                resolved = cursor.resolve(strict=True)
+                if resolved != cursor or not resolved.is_relative_to(root):
+                    continue
+                if cursor.stat().st_size > _MAX_TRACEBACK_SOURCE_BYTES:
+                    continue
+                source_bytes = cursor.read_bytes()
+                source = source_bytes.decode("utf-8")
+                line_number = frame.lineno
+                if (
+                    isinstance(line_number, bool)
+                    or not isinstance(line_number, int)
+                    or line_number < 1
+                    or line_number > len(source.splitlines())
+                ):
+                    continue
+                captured.append({
+                    "path": relative.as_posix(),
+                    "line": line_number,
+                    "function": _safe_name(frame.name, 80),
+                    "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                })
+            except (OSError, UnicodeError, ValueError):
+                continue
+        return captured
+
+    def _capture_returned_traceback_hints(
+        self,
+        result: Any,
+        attempts: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Capture untrusted source hints from returned Python traceback text.
+
+        Worker output can fabricate traceback strings. These frames are stored
+        separately from live exception frames and must never bind candidate
+        targets or pinned tests.
+        """
+        root = self.project_root
+        if not isinstance(root, Path) or not root.is_dir():
+            return []
+
+        candidates: list[str] = []
+        result_dict = _dict(result)
+        for key in ("traceback", "stacktrace", "error", "worker_error"):
+            value = result_dict.get(key)
+            if isinstance(value, str):
+                candidates.append(value[:_MAX_TRACEBACK_TEXT_CHARS])
+        for attempt in attempts[-12:]:
+            attempt_result = _dict(_dict(attempt).get("result"))
+            for key in ("traceback", "stacktrace", "error", "worker_error"):
+                value = attempt_result.get(key)
+                if isinstance(value, str):
+                    candidates.append(value[:_MAX_TRACEBACK_TEXT_CHARS])
+
+        captured: list[dict[str, Any]] = []
+        seen: set[tuple[str, int]] = set()
+        for candidate_text in reversed(candidates):
+            for line in reversed(candidate_text.splitlines()):
+                match = _TRACEBACK_TEXT_FRAME.fullmatch(line[:1400])
+                if match is None:
+                    continue
+                try:
+                    candidate = Path(match.group(1))
+                    if not candidate.is_absolute():
+                        candidate = root / candidate
+                    candidate = Path(os.path.abspath(candidate))
+                    relative = candidate.relative_to(root)
+                    if (
+                        not relative.parts
+                        or relative.suffix != ".py"
+                        or any(part in {"", ".", ".."} for part in relative.parts)
+                    ):
+                        continue
+
+                    cursor = root
+                    unsafe_path = False
+                    for part in relative.parts:
+                        cursor = cursor / part
+                        if cursor.is_symlink():
+                            unsafe_path = True
+                            break
+                    if unsafe_path or not cursor.is_file():
+                        continue
+                    resolved = cursor.resolve(strict=True)
+                    if resolved != cursor or not resolved.is_relative_to(root):
+                        continue
+                    if cursor.stat().st_size > _MAX_TRACEBACK_SOURCE_BYTES:
+                        continue
+                    source_bytes = cursor.read_bytes()
+                    source = source_bytes.decode("utf-8")
+                    line_number = int(match.group(2))
+                    if line_number < 1 or line_number > len(source.splitlines()):
+                        continue
+                    identity = (relative.as_posix(), line_number)
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    captured.append({
+                        "path": relative.as_posix(),
+                        "line": line_number,
+                        "function": _safe_name(match.group(3), 80),
+                        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                        "hint_source": "RETURNED_TRACEBACK_TEXT_UNTRUSTED",
+                    })
+                    if len(captured) >= _MAX_TRACEBACK_FRAMES:
+                        return captured
+                except (OSError, UnicodeError, ValueError):
+                    continue
+        return captured
 
     def _capture_native_proposals(
         self,
@@ -385,6 +542,11 @@ class ExecutionObserver:
         native_proposals = self._capture_native_proposals(
             token, attempts, outcome_status=outcome_status
         )
+        traceback_frames = self._capture_traceback_frames(exception)
+        traceback_text_hints = (
+            self._capture_returned_traceback_hints(result, attempts)
+            if exception is None else []
+        )
 
         evaluation_checks = _dict(evaluation.get("checks"))
         quality_codes = evaluation_checks.get("quality_issue_codes", [])
@@ -438,6 +600,10 @@ class ExecutionObserver:
             "error_types": error_types,
             "exception_type": type(exception).__name__ if exception is not None else None,
             "source_context": source_context,
+            "traceback_frames": traceback_frames,
+            "traceback_text_hints": traceback_text_hints,
+            "traceback_text_hint_capture": "UNTRUSTED_RETURNED_TEXT_FRAMES" if traceback_text_hints else "NO_RETURNED_TRACEBACK_TEXT_FRAMES",
+            "traceback_capture": "PROJECT_RELATIVE_HASH_BOUND_FRAMES" if exception is not None and traceback_frames else ("NO_IN_PROJECT_FRAMES" if exception is not None else "NO_EXCEPTION"),
             "native_proposal_ids": [
                 row["proposal_id"] for row in native_proposals
                 if isinstance(row, dict)
