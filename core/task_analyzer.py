@@ -229,6 +229,12 @@ class TaskAnalyzer:
             "show proof path in learned code",
             "trace learned code relation",
             "trace learned github dependency",
+            "analyze code change impact",
+            "find downstream dependents",
+            "what depends on this module",
+            "trace class consumers",
+            "find consumers of this class",
+            "analyze impact of changing",
         )
         explicit_fact_reasoning = any(
             marker in text for marker in native_fact_reasoning_markers
