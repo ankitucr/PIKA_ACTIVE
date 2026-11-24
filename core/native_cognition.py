@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
 from core.native_reasoning import NativeReasoningEngine, NativeReasoningError
+from core.native_evolution import NativeSelfEvolutionEngine, NativeSelfEvolutionError
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -211,6 +212,7 @@ class NativeCognitionEngine:
                 "contradiction_detection",
                 "cross_language_static_analysis",
                 "provenance_backed_github_knowledge",
+                "deterministic_self_evolution_staging",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -545,6 +547,33 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        evolution_markers = ("self-evolve", "stage native improvement", "propose deterministic improvement")
+        if any(marker in lower for marker in evolution_markers):
+            try:
+                engine = NativeSelfEvolutionEngine(self.root)
+                result = engine.propose_and_stage(
+                    context.get("target"),
+                    test_paths=context.get("test_paths"),
+                    rule_id=context.get("rule_id"),
+                    evidence=context.get("evidence"),
+                    rationale=context.get("rationale"),
+                )
+            except (NativeSelfEvolutionError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_SELF_EVOLUTION_REJECTED", str(exc))
+            self._append_event({
+                "type": "native_self_evolution_candidate_staged",
+                "candidate_id": result["candidate_id"],
+                "target": result["target"],
+                "rule_id": result["rule_id"],
+                "source_modified": False,
+                "execution": "NOT_EXECUTED",
+                "promotion_allowed": False,
+            })
+            return self._response(
+                True, json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False, raw=result,
+            )
 
         reasoning_markers = ("reason", "infer", "deduce", "what follows", "logical conclusion", "check contradiction")
         if any(marker in lower for marker in reasoning_markers):
