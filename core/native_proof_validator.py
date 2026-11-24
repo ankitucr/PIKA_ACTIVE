@@ -321,3 +321,158 @@ def validate_native_code_proof_query(result: Any) -> bool:
         ) and result.get("memory_admission") == "BLOCKED_UNVERIFIED_HYPOTHESES"
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
+
+
+def validate_native_code_impact_analysis(result: Any) -> bool:
+    """Validate every nested impact proof against the original source facts."""
+    try:
+        if not isinstance(result, dict):
+            return False
+        analysis = result.get("impact_analysis")
+        source_graph = result.get("source_graph")
+        if not isinstance(analysis, dict) or not isinstance(source_graph, dict):
+            return False
+        if (
+            analysis.get("schema") != "pika.native_code_impact_analysis.v1"
+            or analysis.get("trust") != "UNVERIFIED_IMPACT_ANALYSIS"
+            or analysis.get("repository") != source_graph.get("repository")
+            or analysis.get("commit") != source_graph.get("commit")
+            or analysis.get("reasoning_id") != result.get("reasoning_id")
+            or analysis.get("coverage_status") != source_graph.get("coverage_status")
+            or analysis.get("coverage_flags") != source_graph.get("coverage_flags")
+            or analysis.get("predicate") not in {"depends_on", "is_a"}
+            or not isinstance(analysis.get("target"), str)
+            or not analysis.get("target")
+        ):
+            return False
+        impacts = analysis.get("impacts")
+        search = analysis.get("search")
+        if not isinstance(impacts, list) or not isinstance(search, dict):
+            return False
+        max_results = search.get("max_results")
+        max_paths = search.get("max_paths_per_impact")
+        max_depth = search.get("max_depth")
+        expansions = search.get("expansions")
+        if (
+            not isinstance(max_results, int) or isinstance(max_results, bool) or not 1 <= max_results <= 50
+            or not isinstance(max_paths, int) or isinstance(max_paths, bool) or not 1 <= max_paths <= 3
+            or not isinstance(max_depth, int) or isinstance(max_depth, bool) or not 1 <= max_depth <= 12
+            or not isinstance(expansions, int) or isinstance(expansions, bool) or not 0 <= expansions <= 10_001
+            or search.get("expansion_limit") != 10_000
+            or search.get("resource_limited") != (expansions > 10_000)
+            or not isinstance(search.get("results_truncated"), bool)
+            or len(impacts) > max_results
+            or analysis.get("impact_count") != len(impacts)
+        ):
+            return False
+        total_count = analysis.get("total_impact_count")
+        if (
+            not isinstance(total_count, int)
+            or isinstance(total_count, bool)
+            or total_count < len(impacts)
+            or search.get("results_truncated") != (total_count > len(impacts))
+        ):
+            return False
+        status = analysis.get("status")
+        if status not in {
+            "IMPACT_PATHS_FOUND",
+            "PARTIAL_IMPACT_ANALYSIS",
+            "NO_RECORDED_IMPACT",
+            "NO_RECORDED_IMPACT_WITH_PARTIAL_COVERAGE",
+        }:
+            return False
+        partial = (
+            analysis.get("coverage_status") != "COMPLETE_REGISTERED_SOURCE_SET"
+            or search.get("resource_limited") is True
+            or search.get("results_truncated") is True
+        )
+        if impacts:
+            expected_status = "PARTIAL_IMPACT_ANALYSIS" if partial else "IMPACT_PATHS_FOUND"
+        else:
+            expected_status = (
+                "NO_RECORDED_IMPACT_WITH_PARTIAL_COVERAGE"
+                if partial else "NO_RECORDED_IMPACT"
+            )
+        if status != expected_status:
+            return False
+
+        seen_entities: set[str] = set()
+        expected_impact_ids: list[str] = []
+        previous_rank: tuple[int, str] | None = None
+        for impact in impacts:
+            if not isinstance(impact, dict):
+                return False
+            entity = impact.get("entity")
+            proof = impact.get("proof_query")
+            if not isinstance(entity, str) or not entity or entity in seen_entities:
+                return False
+            seen_entities.add(entity)
+            if not isinstance(proof, dict):
+                return False
+            if (
+                proof.get("subject") != entity
+                or proof.get("object") != analysis.get("target")
+                or proof.get("predicate") != analysis.get("predicate")
+            ):
+                return False
+            synthetic = dict(result)
+            synthetic["proof_query"] = proof
+            if not validate_native_code_proof_query(synthetic):
+                return False
+            paths = proof.get("paths", [])
+            if not paths:
+                return False
+            shortest = min(path.get("length", 0) for path in paths)
+            expected_type = (
+                "DIRECT_CONSUMER"
+                if any(path.get("length") == 1 for path in paths)
+                else "TRANSITIVE_CONSUMER"
+            )
+            if (
+                impact.get("path_count") != len(paths)
+                or impact.get("shortest_path_length") != shortest
+                or impact.get("impact_type") != expected_type
+                or any(path.get("length", 0) > max_depth for path in paths)
+            ):
+                return False
+            rank = (shortest, entity)
+            if previous_rank is not None and rank < previous_rank:
+                return False
+            previous_rank = rank
+            expected_impact_ids.append(_digest({
+                "repository": analysis["repository"],
+                "target": analysis["target"],
+                "predicate": analysis["predicate"],
+                "entity": entity,
+                "path_ids": proof.get("path_ids", []),
+            }))
+        if analysis.get("impact_ids") != expected_impact_ids:
+            return False
+        expected_analysis_payload = {
+            "schema": analysis["schema"],
+            "repository": analysis["repository"],
+            "commit": analysis["commit"],
+            "target": analysis["target"],
+            "predicate": analysis["predicate"],
+            "status": analysis["status"],
+            "impact_ids": expected_impact_ids,
+            "reasoning_id": analysis["reasoning_id"],
+        }
+        if analysis.get("analysis_id") != _digest(expected_analysis_payload):
+            return False
+        if not isinstance(analysis.get("claim_scope"), str) or not analysis.get("claim_scope"):
+            return False
+        return all(
+            result.get(field) is False
+            for field in (
+                "source_executed",
+                "source_modified",
+                "source_persisted",
+                "memory_updated",
+                "knowledge_admitted",
+                "promotion_allowed",
+            )
+        ) and result.get("memory_admission") == "BLOCKED_UNVERIFIED_HYPOTHESES"
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+
