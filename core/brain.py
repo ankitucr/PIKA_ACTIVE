@@ -17,7 +17,10 @@ from core.learning_engine import LearningEngine
 from core.pika_code_learning import PikaCodeLearning
 from core.phase36.evidence import EvidenceAuthority, LearningTrustGate
 from core.evolution.retry_guard import assess_retry_progress
-from core.native_proof_validator import validate_native_code_proof_query
+from core.native_proof_validator import (
+    validate_native_code_impact_analysis,
+    validate_native_code_proof_query,
+)
 
 
 
@@ -823,6 +826,11 @@ class PIKABrain:
                     if isinstance(raw_reasoning, dict) and raw_reasoning.get("proof_query") is None
                     else validate_native_code_proof_query(raw_reasoning)
                 )
+                impact_analysis_contract_valid = (
+                    True
+                    if isinstance(raw_reasoning, dict) and raw_reasoning.get("impact_analysis") is None
+                    else validate_native_code_impact_analysis(raw_reasoning)
+                )
                 safety_contract_valid = (
                     isinstance(raw_reasoning, dict)
                     and all(
@@ -843,6 +851,7 @@ class PIKABrain:
                     and contradiction_contract_valid
                     and proof_contract_valid
                     and proof_query_contract_valid
+                    and impact_analysis_contract_valid
                 )
                 completed = (
                     result.get("success") is True
@@ -870,6 +879,7 @@ class PIKABrain:
                         "contradiction_contract_valid": contradiction_contract_valid,
                         "proof_contract_valid": proof_contract_valid,
                         "proof_query_contract_valid": proof_query_contract_valid,
+                        "impact_analysis_contract_valid": impact_analysis_contract_valid,
                         "input_facts_verified": False,
                         "derived_hypotheses_verified": False,
                         "memory_admission": False,
