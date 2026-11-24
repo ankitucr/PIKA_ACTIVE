@@ -21,7 +21,10 @@ MAX_FILES = 300
 MAX_FILE_BYTES = 200_000
 MAX_FACTS = 500
 MAX_CANDIDATE_FACTS = 20_000
+MAX_AST_NODES_PER_FILE = 20_000
+MAX_AST_NODES_TOTAL = 60_000
 MAX_PATH_LENGTH = 500
+MAX_REPOSITORY_LENGTH = 200
 _REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _COMMIT_RE = re.compile(r"[A-Fa-f0-9]{6,64}\Z")
 _SKIP_PARTS = {
@@ -128,7 +131,8 @@ class NativeKnowledgeGraphAdapter:
         """Read registered, hash-bound Python source and emit AST-only graph facts."""
         repo = repository.strip().strip("/") if isinstance(repository, str) else ""
         if (
-            not _REPOSITORY_RE.fullmatch(repo)
+            len(repo) > MAX_REPOSITORY_LENGTH
+            or not _REPOSITORY_RE.fullmatch(repo)
             or any(part in {"", ".", ".."} for part in repo.split("/"))
         ):
             return self._failure("INVALID_REPOSITORY", "Repository must be a safe owner/name identifier.")
@@ -167,6 +171,8 @@ class NativeKnowledgeGraphAdapter:
         errors: list[str] = []
         skipped_non_python = 0
         syntax_errors = 0
+        ast_nodes_total = 0
+        seen_paths: set[str] = set()
 
         for item in sorted(entries, key=lambda row: str(row.get("path", "")) if isinstance(row, dict) else ""):
             if not isinstance(item, dict):
@@ -174,6 +180,9 @@ class NativeKnowledgeGraphAdapter:
                 continue
             try:
                 relative_path = _safe_path(item.get("path"))
+                if relative_path in seen_paths:
+                    raise ValueError("duplicate repository path in source manifest")
+                seen_paths.add(relative_path)
                 if not relative_path.lower().endswith(".py"):
                     skipped_non_python += 1
                     continue
@@ -196,10 +205,26 @@ class NativeKnowledgeGraphAdapter:
                 source = raw.decode("utf-8", errors="replace")
                 try:
                     tree = ast.parse(source, filename=relative_path)
-                except (SyntaxError, ValueError) as exc:
+                except (SyntaxError, ValueError, RecursionError) as exc:
                     syntax_errors += 1
                     errors.append(f"{relative_path}: syntax error: {str(exc)[:180]}")
                     continue
+                ast_node_count = 0
+                for _node in ast.walk(tree):
+                    ast_node_count += 1
+                    if ast_node_count > MAX_AST_NODES_PER_FILE:
+                        break
+                if ast_node_count > MAX_AST_NODES_PER_FILE:
+                    errors.append(
+                        f"{relative_path}: AST node budget exceeded ({MAX_AST_NODES_PER_FILE})"
+                    )
+                    continue
+                if ast_nodes_total + ast_node_count > MAX_AST_NODES_TOTAL:
+                    errors.append(
+                        f"{relative_path}: repository AST node budget would exceed {MAX_AST_NODES_TOTAL}"
+                    )
+                    continue
+                ast_nodes_total += ast_node_count
                 parsed.append({
                     "path": relative_path,
                     "sha256": actual_sha,
@@ -459,6 +484,7 @@ class NativeKnowledgeGraphAdapter:
             "metrics": {
                 "registered_files": len(entries),
                 "python_files_parsed": len(parsed),
+                "ast_nodes_analyzed": ast_nodes_total,
                 "syntax_errors": syntax_errors,
                 "non_python_files_skipped": skipped_non_python,
                 "input_relationship_records": len(facts),
@@ -487,6 +513,7 @@ class NativeKnowledgeGraphAdapter:
             "limits": [
                 "Only Python import, class-base, and AST definition-containment structure is represented.",
                 "The 500-fact reasoning budget prioritizes module, import, and inheritance edges; excess containment edges are deterministically omitted and reported.",
+                f"AST limits: {MAX_AST_NODES_PER_FILE} nodes per file and {MAX_AST_NODES_TOTAL} nodes per repository.",
                 "Imports are not resolved at runtime; ambiguous names remain external symbolic references.",
                 "Calls, dynamic imports, reflection, runtime behavior, and test outcomes are not inferred.",
                 "AST observations and all transitive conclusions remain unverified hypotheses.",
