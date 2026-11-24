@@ -76,3 +76,8 @@ PIKA's native Brain now includes bounded, evidence-traced symbolic forward chain
 ## Phase 40: Deep GitHub learning
 
 GitHub acquisition now feeds provenance-backed engineering extraction for Python and bounded structural observations across JavaScript, TypeScript, Dart, Go, Rust, Java, Kotlin, Swift, C#, C/C++, Ruby, PHP, SQL, HTML, and CSS. Every observation is bound to repository commit and source hash and remains unverified for reuse. Non-Python recognizers are intentionally conservative and are not compiler-grade parsers. See [Phase 40 Deep GitHub Learning](docs/PHASE40_DEEP_GITHUB_LEARNING.md).
+
+
+## Phase 41: Native self-evolution
+
+PIKA can now apply an explicitly allowlisted deterministic transformation, produce a hash-bound diff, and stage an isolated candidate with pinned regression-test hashes. The live source remains unchanged, the candidate is not executed by the proposal engine, and promotion remains blocked. See [Phase 41 Native Self-Evolution](docs/PHASE41_NATIVE_SELF_EVOLUTION.md).
