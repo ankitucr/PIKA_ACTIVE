@@ -9,10 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Termux/Linux provides fcntl
-    fcntl = None
+from core.file_lock import fcntl
 
 
 class EvolutionLedger:

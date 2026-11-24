@@ -33,7 +33,15 @@ class EvidenceAuthority:
     def __init__(self, project_root: str | Path):
         self.root = Path(project_root).expanduser().resolve()
         self.key_path = self.root / "data" / ".phase36_trust.key"
+        parent_existed = self.key_path.parent.exists()
         self.key_path.parent.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            from core.windows_acl import is_owner_only_acl, set_owner_only_acl
+            if parent_existed:
+                if not is_owner_only_acl(self.key_path.parent):
+                    raise EvidenceError("Trust key directory ACL is not restricted.")
+            elif not set_owner_only_acl(self.key_path.parent):
+                raise EvidenceError("Could not establish owner-only ACL for the trust key directory.")
         if self.key_path.is_symlink():
             raise EvidenceError("Trust key must not be a symbolic link.")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -55,9 +63,19 @@ class EvidenceAuthority:
                     raise
         if self.key_path.is_symlink() or not self.key_path.is_file():
             raise EvidenceError("Trust key is not a regular file.")
-        mode = stat.S_IMODE(self.key_path.stat().st_mode)
-        if mode & 0o077:
-            raise EvidenceError("Trust key permissions must be owner-only (0600).")
+        if os.name == "posix":
+            mode = stat.S_IMODE(self.key_path.stat().st_mode)
+            if mode & 0o077:
+                raise EvidenceError("Trust key permissions must be owner-only (0600).")
+        elif os.name == "nt":
+            from core.windows_acl import is_owner_only_acl
+            if (not is_owner_only_acl(self.key_path)
+                    or not is_owner_only_acl(self.key_path.parent)):
+                raise EvidenceError(
+                    "Trust key and parent ACLs must be restricted to the current user, SYSTEM, and Administrators."
+                )
+        else:
+            raise EvidenceError("Unsupported platform for trust-key permission verification.")
         self._key = self.key_path.read_bytes()
         if len(self._key) != 32:
             raise EvidenceError("Trust key has invalid length.")

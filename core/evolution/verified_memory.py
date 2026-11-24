@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import fcntl
+from core.file_lock import fcntl
 import hashlib
 import json
 import math
