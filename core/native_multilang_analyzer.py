@@ -81,7 +81,7 @@ def _patterns(language: str) -> tuple[list[re.Pattern[str]], list[re.Pattern[str
     elif language == "html":
         declaration = [r"\bid\s*=\s*[\"']([^\"']+)[\"']"]
     elif language == "css":
-        declaration = [r"(^|})\s*([.#][A-Za-z_][\w-]*)\s*\{"]
+        declaration = [r"(?:^|})\s*([.#][A-Za-z_][\w-]*)\s*\{"]
     return [re.compile(x, re.I | re.M) for x in declaration], [re.compile(x, re.I | re.M) for x in imports]
 
 
