@@ -106,5 +106,7 @@ source evidence (repository, full commit, file hash and line span); Phase 39
 derivation support is attached when a matching transitive hypothesis exists.
 Ambiguous short names are rejected with candidates, contradictions remain
 unresolved, and a missing path is not treated as proof of no runtime
-dependency. All explanations remain unverified and cannot enter memory or
-authorize promotion. See docs/PHASE41_NATIVE_CODE_PROOF_QUERIES.md.
+dependency. The Brain independently validates each returned edge, root fact,
+source sidecar and derivation-support match before accepting the explanation.
+All explanations remain unverified and cannot enter memory or authorize
+promotion. See docs/PHASE41_NATIVE_CODE_PROOF_QUERIES.md.
