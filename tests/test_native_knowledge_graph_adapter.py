@@ -546,3 +546,71 @@ def test_symlinked_corpus_root_is_rejected(tmp_path):
     assert result["source_executed"] is False
     assert result["promotion_allowed"] is False
 
+def test_python_source_encoding_cookie_is_respected_in_provenance(tmp_path):
+    import hashlib
+
+    repository = "sample/encoding"
+    relative = "legacy.py"
+    raw = b'# -*- coding: cp1252 -*-\nVALUE = "caf\xe9"\n'
+    target = tmp_path / "data/github_code_corpus" / repository / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(raw)
+    entry = {
+        "path": relative,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "bytes": len(raw),
+    }
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890abcdef1234567890abcdef12",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    graph = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    assert graph["success"] is True
+    assert graph["coverage_status"] == "COMPLETE_REGISTERED_SOURCE_SET"
+    assert len(graph["source_evidence"]) == 1
+    assert graph["source_evidence"][0]["source_encoding"].lower() == "cp1252"
+
+
+def test_windows_style_manifest_paths_are_rejected(tmp_path):
+    root = _make_repository(tmp_path)
+    registry_path = root / "data/pika_native_git_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["repositories"]["sample/graph"]["files"].append({
+        "path": r"..\outside.py",
+        "sha256": "0" * 64,
+        "bytes": 1,
+    })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    graph = NativeKnowledgeGraphAdapter(root).build_repository_facts("sample/graph")
+
+    assert graph["success"] is True
+    assert graph["coverage_status"] == "PARTIAL_REJECTED_OR_UNPARSEABLE_FILES"
+    assert any("non-POSIX" in error for error in graph["errors"])
+
+
+def test_short_registered_commit_identifier_is_rejected(tmp_path):
+    root = _make_repository(tmp_path)
+    registry_path = root / "data/pika_native_git_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["repositories"]["sample/graph"]["commit"] = "abcdef1234567890"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    result = NativeKnowledgeGraphAdapter(root).build_repository_facts("sample/graph")
+
+    assert result["success"] is False
+    assert result["error"] == "INVALID_REGISTERED_COMMIT"
+
