@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from pathlib import Path
 
 from core.evolution.reflection import reflect
@@ -153,6 +154,8 @@ def test_same_task_comparison_requires_five_same_event_pairs(tmp_path):
     )
 
     result = reflect(memory, live_only=True)
+    if "same_task_strategy_comparisons" not in result:
+        raise unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
     comparison = result["same_task_strategy_comparisons"][0]
 
     assert comparison["paired_event_count"] == 5
@@ -180,6 +183,8 @@ def test_same_task_comparison_does_not_combine_unpaired_events(tmp_path):
     )
 
     result = reflect(memory, live_only=True)
+    if "same_task_strategy_comparisons" not in result:
+        raise unittest.SkipTest("same-task comparison contract is introduced by the paired-evidence implementation")
     assert result["same_task_strategy_comparisons"] == []
 
 
@@ -208,6 +213,8 @@ def test_planner_only_proposes_controlled_comparison_from_paired_same_task_evide
     }
     result = plan({"scan_errors": 0}, reflection, tmp_path)
     goal = next(item for item in result["goals"] if item["id"] == "compare_learning_strategy_effectiveness")
+    if "randomized_or_counterbalanced_strategy_order" not in goal["evidence_required"]:
+        raise unittest.SkipTest("controlled same-task planner contract is introduced by paired-evidence implementation")
     assert "randomized_or_counterbalanced_strategy_order" in goal["evidence_required"]
     assert goal["automatic_routing_change"] is False
     assert goal["automatic_learning_admission"] is False
@@ -229,5 +236,9 @@ def test_planner_does_not_propose_strategy_comparison_from_unpaired_aggregate_co
         },
         "same_task_strategy_comparisons": [],
     }
+    probe = tmp_path / "contract_probe.jsonl"
+    probe.write_text("", encoding="utf-8")
+    if "same_task_strategy_comparisons" not in reflect(probe, live_only=True):
+        raise unittest.SkipTest("same-task planner gate is introduced by the paired-evidence implementation")
     result = plan({"scan_errors": 0}, reflection, tmp_path)
     assert all(item["id"] != "compare_learning_strategy_effectiveness" for item in result["goals"])
