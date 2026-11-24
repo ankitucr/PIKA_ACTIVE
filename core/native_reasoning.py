@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 SCHEMA = "pika.native_reasoning.v1"
@@ -209,7 +210,7 @@ class NativeReasoningEngine:
                     "resolution": "UNRESOLVED_CONTRADICTION",
                 })
 
-        question_tokens = {token.lower() for token in question.split() if len(token) > 2}
+        question_tokens = {token for token in re.findall(r"[A-Za-z0-9_]{3,}", question.lower())}
         ranked = []
         for fact in known.values():
             searchable = " ".join([fact["predicate"], *fact["args"]]).lower()
