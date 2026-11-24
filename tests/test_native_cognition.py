@@ -240,6 +240,9 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "static_improvement_queue",
         "lexical_code_evidence_retrieval",
         "engineering_knowledge_retrieval",
+        "bounded_symbolic_reasoning",
+        "evidence_provenance_reasoning",
+        "contradiction_detection",
     }
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
@@ -257,6 +260,9 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "static_improvement_queue" in capabilities
     assert "lexical_code_evidence_retrieval" in capabilities
     assert "github_repository_learning" in capabilities
+    assert "bounded_symbolic_reasoning" in capabilities
+    assert "evidence_provenance_reasoning" in capabilities
+    assert "contradiction_detection" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
 
@@ -411,3 +417,34 @@ def keyword_only(value, *, enabled=False):
     assert set(symbols["transform"]["argument_annotations"]) == {"b", "values", "enabled", "options"}
     assert set(symbols["transform"]["argument_annotation_types"]) == {"int", "str", "bool", "object"}
     assert analyzed["executed"] is False
+
+
+
+def test_native_cognition_routes_reasoning_without_external_inference(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute(
+        "reason about whether release is ready",
+        context={
+            "question": "Is release ready?",
+            "facts": [
+                {"id": "tests", "predicate": "tests_pass", "args": ["v1"], "status": "VERIFIED", "evidence": ["ci-run-1"]},
+            ],
+            "rules": [{
+                "id": "tests-imply-candidate",
+                "premises": [{"predicate": "tests_pass", "args": ["$version"]}],
+                "conclusion": {"predicate": "candidate_ready", "args": ["$version"]},
+            }],
+        },
+    ))
+    assert result["success"] is True
+    assert result["provider"] == "pika-native"
+    assert result["raw"]["mode"] == "bounded_symbolic_forward_chaining"
+    assert result["raw"]["derived_fact_count"] == 1
+    assert result["raw"]["trust_policy"]["external_inference_used"] is False
+    assert result["raw"]["trust_policy"]["source_modification"] is False
+
+
+def test_native_reasoning_without_structured_facts_does_not_invent_conclusions(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute("reason about this system"))
+    assert result["success"] is True
+    assert result["raw"]["conclusion"] == "INSUFFICIENT_STRUCTURED_EVIDENCE"
+    assert result["raw"]["facts"] == []
