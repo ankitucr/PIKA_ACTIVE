@@ -316,10 +316,82 @@ def test_source_graph_fact_budget_fails_closed_without_partial_reasoning(tmp_pat
     result = NativeKnowledgeGraphAdapter(tmp_path).reason_repository(repository)
 
     assert result["success"] is False
-    assert result["error"] == "SOURCE_GRAPH_FACT_LIMIT_EXCEEDED"
+    assert result["error"] == "SOURCE_GRAPH_CORE_FACT_LIMIT_EXCEEDED"
     assert result["facts"] == []
     assert result["source_executed"] is False
     assert result["source_persisted"] is False
     assert result["memory_updated"] is False
     assert result["promotion_allowed"] is False
+
+def test_containment_edges_are_budgeted_after_core_relationships(tmp_path):
+    repository = "sample/containment"
+    source = "\n".join(
+        f"def function_{index}(): return {index}"
+        for index in range(510)
+    ) + "\n"
+    entry = _write_source(tmp_path, repository, "module.py", source)
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    graph = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    assert graph["success"] is True
+    assert graph["coverage_status"] == "PARTIAL_GRAPH_FACT_BUDGET"
+    assert len(graph["facts"]) == 500
+    assert graph["metrics"]["input_relationship_records"] == 500
+    assert graph["metrics"]["candidate_containment_edges"] == 510
+    assert graph["metrics"]["containment_edges"] == 499
+    assert graph["metrics"]["relationships_omitted"] == 11
+    assert graph["metrics"]["dependency_edges"] == 0
+    assert graph["metrics"]["inheritance_edges"] == 0
+    evidence_ids = {item["source_id"] for item in graph["source_evidence"]}
+    assert all(row["source"] in evidence_ids for row in graph["facts"])
+    assert all(item["trust"] == "OBSERVED_NOT_YET_VERIFIED_FOR_REUSE" for item in graph["source_evidence"])
+    assert graph["promotion_allowed"] is False
+
+
+def test_core_import_relationships_over_budget_fail_closed(tmp_path):
+    repository = "sample/imports"
+    source = "\n".join(
+        f"import external_module_{index}"
+        for index in range(510)
+    ) + "\n"
+    entry = _write_source(tmp_path, repository, "module.py", source)
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    graph = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    assert graph["success"] is False
+    assert graph["error"] == "SOURCE_GRAPH_CORE_FACT_LIMIT_EXCEEDED"
+    assert graph["facts"] == []
+    assert graph["source_executed"] is False
+    assert graph["source_persisted"] is False
+    assert graph["promotion_allowed"] is False
 
