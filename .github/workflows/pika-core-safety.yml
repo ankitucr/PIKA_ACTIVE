@@ -84,6 +84,9 @@ jobs:
       - name: Prepare best-effort local diagnostic venv (not an OS sandbox)
         run: python -m core.evolution.local_runner setup
 
+      - name: Run Phase 46 experiment-quality contract
+        run: python -m pytest -q tests/test_phase46_experiment_quality.py
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \
