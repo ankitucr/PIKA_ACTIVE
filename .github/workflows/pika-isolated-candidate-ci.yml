@@ -20,6 +20,8 @@ on:
       - "main.py"
       - "pika.py"
       - "pika_live.py"
+      - "pika_pc.py"
+      - "sandbox/pc/**"
       - "requirements.txt"
       - "pytest.ini"
   pull_request_target:
@@ -58,7 +60,7 @@ jobs:
       - name: Check out trusted base workflow source
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
           path: trusted
           persist-credentials: false
           submodules: false
@@ -183,7 +185,7 @@ jobs:
             cd /work/source
 
             echo "===== CANDIDATE SOURCE COMPILE ====="
-            python -m compileall -q core agents tests host_attestor pika_live.py main.py pika.py remote_bridge
+            python -m compileall -q core agents tests host_attestor pika_live.py pika_pc.py main.py pika.py remote_bridge sandbox/pc/worker.py
 
             echo "===== PREPARE CONTAINER-LOCAL DIAGNOSTIC VENV ====="
             python -m venv --system-site-packages .sandbox_venv
