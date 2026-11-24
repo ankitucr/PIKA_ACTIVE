@@ -19,6 +19,7 @@ from core.native_reasoning import NativeReasoningEngine
 from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
 from core.native_code_proof_queries import NativeCodeProofQuery
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
+from core.native_test_impact_planner import NativeTestImpactPlanner
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -41,6 +42,7 @@ class NativeCognitionEngine:
         self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
         self.code_proof_query = NativeCodeProofQuery(self.code_graph)
         self.code_impact = NativeCodeImpactAnalyzer(self.code_graph)
+        self.test_impact_planner = NativeTestImpactPlanner(self.code_impact)
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -205,6 +207,67 @@ class NativeCognitionEngine:
         })
         return result
 
+    def plan_learned_code_tests(
+        self,
+        repository: str,
+        target: str,
+        predicate: str = "depends_on",
+        *,
+        max_depth: int = 12,
+        max_results: int = 50,
+        max_paths_per_impact: int = 3,
+    ) -> dict[str, Any]:
+        """Discover source-backed test candidates without executing test code."""
+        result = self.test_impact_planner.plan(
+            repository,
+            target,
+            predicate,
+            max_depth=max_depth,
+            max_results=max_results,
+            max_paths_per_impact=max_paths_per_impact,
+        )
+        selection = result.get("test_selection", {})
+        self._append_event({
+            "type": "native_static_test_selection",
+            "repository": str(repository)[:200],
+            "predicate": str(predicate)[:64],
+            "test_module_count": selection.get("test_module_count", 0),
+            "test_case_count": selection.get("test_case_count", 0),
+            "status": selection.get("status"),
+            "source_executed": False,
+            "test_execution_performed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    @staticmethod
+    def _test_plan_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("test_plan")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("target", "predicate", "max_depth", "max_results", "max_paths_per_impact"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not isinstance(query.get("target"), str) or not query["target"].strip():
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
+
     @staticmethod
     def _impact_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
         supplied = context.get("impact_query")
@@ -345,6 +408,8 @@ class NativeCognitionEngine:
                 "bounded_dependency_path_explanations",
                 "native_code_impact_analysis",
                 "bounded_reverse_dependency_tracing",
+                "native_static_test_discovery",
+                "bounded_test_candidate_planning",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -704,6 +769,81 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        test_plan_markers = (
+            "discover tests for code change",
+            "find tests for this code change",
+            "find tests affected by this module",
+            "build a test plan for code change",
+            "plan tests for code impact",
+            "select tests for changed module",
+        )
+        if any(marker in lower for marker in test_plan_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._test_plan_query_from_request(text, context)
+            target = query.get("target")
+            predicate = query.get("predicate", "depends_on")
+            if not isinstance(target, str) or not target.strip():
+                return self._failure(
+                    "TEST_PLAN_TARGET_REQUIRED",
+                    "Provide target in context['test_plan'] or a fenced JSON object.",
+                )
+            try:
+                result = await asyncio.to_thread(
+                    self.plan_learned_code_tests,
+                    repository,
+                    target,
+                    predicate,
+                    max_depth=query.get("max_depth", 12),
+                    max_results=query.get("max_results", 50),
+                    max_paths_per_impact=query.get("max_paths_per_impact", 3),
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_TEST_PLAN_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_TEST_PLAN_FAILED"),
+                    result.get("message", "Static test candidate discovery was rejected safely."),
+                )
+            selection = result.get("test_selection", {})
+            report = [
+                "PIKA NATIVE STATIC TEST CANDIDATES",
+                f"Repository: {selection.get('repository')}",
+                f"Commit: {selection.get('commit')}",
+                f"Changed target: {selection.get('target')}",
+                f"Relation: {selection.get('predicate')}",
+                f"Status: {selection.get('status')}",
+                f"Candidate modules: {selection.get('test_module_count', 0)}",
+                f"Candidate test cases: {selection.get('test_case_count', 0)}",
+                f"Impact coverage: {selection.get('impact_analysis_status')}",
+            ]
+            for module in selection.get("modules", []):
+                report.append(f"- {module.get('path')} ({module.get('test_case_count', 0)} cases)")
+                for case in module.get("test_cases", []):
+                    report.append(
+                        f"  {case.get('name')} | {module.get('path')}:"
+                        f"{case.get('line_start')}-{case.get('line_end')} | "
+                        f"{case.get('status')}"
+                    )
+            report.extend([
+                "Trust: test cases are statically discovered candidates, not verified semantic coverage.",
+                "No tests were executed. Run and verify them separately before treating any as passed.",
+                "Policy: no source execution/modification, test execution, graph persistence, memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         impact_query_markers = (
             "analyze code change impact",
