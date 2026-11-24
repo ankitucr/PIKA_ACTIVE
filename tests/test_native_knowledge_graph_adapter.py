@@ -124,11 +124,11 @@ def test_builds_hash_bound_import_inheritance_and_containment_graph(tmp_path):
 
     derived_class = next(
         row["subject"] for row in graph["facts"]
-        if row["predicate"] == "is_a" and ":Derived_ in row["subject"]
+        if row["predicate"] == "is_a" and ":Derived_" in row["subject"]
     )
     root_class = next(
         row["object"] for row in graph["facts"]
-        if row["predicate"] == "is_a" and ":Base_ in row["subject"]
+        if row["predicate"] == "is_a" and ":Base_" in row["subject"]
     )
     assert (derived_class, "is_a", root_class) in derived
 
