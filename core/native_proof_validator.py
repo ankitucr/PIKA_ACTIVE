@@ -718,3 +718,206 @@ def validate_native_test_selection(result: Any) -> bool:
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
 
+
+def validate_native_change_set_analysis(result: Any) -> bool:
+    """Validate shared-graph change-set results and every nested impact proof."""
+    try:
+        if not isinstance(result, dict):
+            return False
+        analysis = result.get("change_set_analysis")
+        source_graph = result.get("source_graph")
+        facts = result.get("facts")
+        derived = result.get("derived_facts")
+        source_evidence = result.get("source_evidence")
+        if (
+            not isinstance(analysis, dict)
+            or not isinstance(source_graph, dict)
+            or not isinstance(facts, list)
+            or not isinstance(derived, list)
+            or not isinstance(source_evidence, list)
+        ):
+            return False
+        if (
+            analysis.get("schema") != "pika.native_change_set_analysis.v1"
+            or analysis.get("trust") != "UNVERIFIED_CHANGE_SET_ANALYSIS"
+            or analysis.get("repository") != source_graph.get("repository")
+            or analysis.get("commit") != source_graph.get("commit")
+            or analysis.get("reasoning_id") != result.get("reasoning_id")
+            or analysis.get("coverage_status") != source_graph.get("coverage_status")
+            or analysis.get("coverage_flags") != source_graph.get("coverage_flags")
+            or analysis.get("graph_build_count") != 1
+        ):
+            return False
+
+        target_results = analysis.get("target_results")
+        target_summaries = analysis.get("targets")
+        impacts = analysis.get("impacts")
+        limits = analysis.get("limits")
+        if (
+            not isinstance(target_results, list)
+            or not isinstance(target_summaries, list)
+            or not isinstance(impacts, list)
+            or not isinstance(limits, dict)
+            or not 1 <= len(target_results) <= 10
+            or len(target_summaries) != len(target_results)
+            or analysis.get("target_count") != len(target_results)
+            or limits.get("max_targets") != 10
+            or limits.get("max_total_impacts") != 500
+            or not isinstance(limits.get("max_depth"), int)
+            or isinstance(limits.get("max_depth"), bool)
+            or not 1 <= limits.get("max_depth") <= 12
+            or not isinstance(limits.get("max_results_per_target"), int)
+            or isinstance(limits.get("max_results_per_target"), bool)
+            or not 1 <= limits.get("max_results_per_target") <= 50
+            or not isinstance(limits.get("max_paths_per_impact"), int)
+            or isinstance(limits.get("max_paths_per_impact"), bool)
+            or not 1 <= limits.get("max_paths_per_impact") <= 3
+        ):
+            return False
+
+        seen_targets: set[str] = set()
+        successful = 0
+        failed = 0
+        any_partial = source_graph.get("coverage_status") != "COMPLETE_REGISTERED_SOURCE_SET"
+        aggregate: dict[str, dict[str, Any]] = {}
+        expected_summaries: list[dict[str, Any]] = []
+
+        for target_result in target_results:
+            if not isinstance(target_result, dict):
+                return False
+            target_reference = target_result.get("target_reference")
+            if (
+                not isinstance(target_reference, str)
+                or not target_reference
+                or target_reference in seen_targets
+            ):
+                return False
+            seen_targets.add(target_reference)
+            if target_result.get("success") is not True:
+                failed += 1
+                if (
+                    target_result.get("error") not in {
+                        "AMBIGUOUS_OR_UNKNOWN_IMPACT_TARGET",
+                        "INCOMPLETE_REPOSITORY_REASONING",
+                        "MISSING_TARGET_IMPACT_CONTRACT",
+                    }
+                    or not isinstance(target_result.get("message"), str)
+                ):
+                    return False
+                expected_summaries.append({
+                    "target_reference": target_reference,
+                    "success": False,
+                    "target_resolved": None,
+                    "analysis_id": None,
+                    "impact_count": 0,
+                    "status": target_result.get("error"),
+                })
+                continue
+
+            nested_analysis = target_result.get("impact_analysis")
+            if not isinstance(nested_analysis, dict):
+                return False
+            synthetic = dict(result)
+            synthetic["impact_analysis"] = nested_analysis
+            if not validate_native_code_impact_analysis(synthetic):
+                return False
+            if nested_analysis.get("target") != target_result.get("target_resolved"):
+                return False
+            successful += 1
+            if nested_analysis.get("status") == "PARTIAL_IMPACT_ANALYSIS":
+                any_partial = True
+            expected_summaries.append({
+                "target_reference": target_reference,
+                "success": True,
+                "target_resolved": nested_analysis.get("target"),
+                "analysis_id": nested_analysis.get("analysis_id"),
+                "impact_count": nested_analysis.get("impact_count"),
+                "status": nested_analysis.get("status"),
+            })
+
+            for candidate in nested_analysis.get("impacts", []):
+                entity = candidate.get("entity")
+                if not isinstance(entity, str):
+                    return False
+                item = aggregate.setdefault(entity, {
+                    "entity": entity,
+                    "affected_targets": [],
+                    "impact_types": [],
+                    "shortest_path_length": None,
+                    "proof_references": [],
+                })
+                if target_reference not in item["affected_targets"]:
+                    item["affected_targets"].append(target_reference)
+                impact_type = candidate.get("impact_type")
+                if impact_type not in item["impact_types"]:
+                    item["impact_types"].append(impact_type)
+                distance = candidate.get("shortest_path_length")
+                if not isinstance(distance, int) or isinstance(distance, bool) or distance < 1:
+                    return False
+                if item["shortest_path_length"] is None:
+                    item["shortest_path_length"] = distance
+                else:
+                    item["shortest_path_length"] = min(item["shortest_path_length"], distance)
+                proof = candidate.get("proof_query")
+                if not isinstance(proof, dict):
+                    return False
+                item["proof_references"].append({
+                    "target_reference": target_reference,
+                    "query_id": proof.get("query_id"),
+                    "path_ids": list(proof.get("path_ids", [])),
+                })
+
+        if successful == 0 or analysis.get("successful_target_count") != successful or analysis.get("failed_target_count") != failed:
+            return False
+        if analysis.get("targets") != expected_summaries:
+            return False
+        if len(aggregate) > 500 or analysis.get("unique_impact_count") != len(aggregate):
+            return False
+        expected_impacts = []
+        for entity in sorted(aggregate):
+            item = aggregate[entity]
+            item["affected_targets"].sort()
+            item["impact_types"].sort()
+            item["proof_references"].sort(
+                key=lambda row: (row["target_reference"], row.get("query_id") or "")
+            )
+            expected_impacts.append(item)
+        if impacts != expected_impacts:
+            return False
+
+        any_partial = any_partial or failed > 0
+        if any_partial:
+            expected_status = "PARTIAL_CHANGE_SET_ANALYSIS"
+        elif expected_impacts:
+            expected_status = "CHANGE_SET_IMPACTS_FOUND"
+        else:
+            expected_status = "NO_CHANGE_SET_IMPACTS"
+        if analysis.get("status") != expected_status:
+            return False
+
+        payload = {
+            "schema": analysis["schema"],
+            "repository": analysis["repository"],
+            "commit": analysis["commit"],
+            "predicate": analysis.get("predicate"),
+            "targets": expected_summaries,
+            "impacts": expected_impacts,
+            "status": expected_status,
+            "reasoning_id": analysis["reasoning_id"],
+        }
+        if analysis.get("analysis_id") != _digest(payload):
+            return False
+        return all(
+            result.get(field) is False
+            for field in (
+                "source_executed",
+                "source_modified",
+                "source_persisted",
+                "memory_updated",
+                "knowledge_admitted",
+                "promotion_allowed",
+            )
+        ) and result.get("memory_admission") == "BLOCKED_UNVERIFIED_HYPOTHESES"
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+

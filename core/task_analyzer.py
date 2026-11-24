@@ -241,6 +241,12 @@ class TaskAnalyzer:
             "build a test plan for code change",
             "plan tests for code impact",
             "select tests for changed module",
+            "analyze change set impact",
+            "analyze multi-file change impact",
+            "trace impacts for changed modules",
+            "analyze impact for changed files",
+            "multi target code impact",
+            "analyze combined code changes",
         )
         explicit_fact_reasoning = any(
             marker in text for marker in native_fact_reasoning_markers

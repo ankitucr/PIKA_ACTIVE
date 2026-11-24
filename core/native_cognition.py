@@ -20,6 +20,7 @@ from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
 from core.native_code_proof_queries import NativeCodeProofQuery
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
 from core.native_test_impact_planner import NativeTestImpactPlanner
+from core.native_change_set_analysis import NativeChangeSetAnalyzer
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -43,6 +44,7 @@ class NativeCognitionEngine:
         self.code_proof_query = NativeCodeProofQuery(self.code_graph)
         self.code_impact = NativeCodeImpactAnalyzer(self.code_graph)
         self.test_impact_planner = NativeTestImpactPlanner(self.code_impact)
+        self.change_set_analyzer = NativeChangeSetAnalyzer(self.code_impact)
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -206,6 +208,66 @@ class NativeCognitionEngine:
             "promotion_allowed": False,
         })
         return result
+
+    def analyze_learned_code_change_set(
+        self,
+        repository: str,
+        targets: list[str],
+        predicate: str = "depends_on",
+        *,
+        max_depth: int = 12,
+        max_results_per_target: int = 50,
+        max_paths_per_impact: int = 3,
+    ) -> dict[str, Any]:
+        """Analyze multiple changed targets against one acquired graph snapshot."""
+        result = self.change_set_analyzer.analyze(
+            repository,
+            targets,
+            predicate,
+            max_depth=max_depth,
+            max_results_per_target=max_results_per_target,
+            max_paths_per_impact=max_paths_per_impact,
+        )
+        analysis = result.get("change_set_analysis", {})
+        self._append_event({
+            "type": "native_change_set_analysis",
+            "repository": str(repository)[:200],
+            "target_count": analysis.get("target_count", 0),
+            "unique_impact_count": analysis.get("unique_impact_count", 0),
+            "status": analysis.get("status"),
+            "graph_build_count": analysis.get("graph_build_count", 0),
+            "source_executed": False,
+            "memory_updated": False,
+            "promotion_allowed": False,
+        })
+        return result
+
+    @staticmethod
+    def _change_set_query_from_request(task: str, context: dict[str, Any]) -> dict[str, Any]:
+        supplied = context.get("change_set")
+        query = dict(supplied) if isinstance(supplied, dict) else {}
+        for key in ("targets", "predicate", "max_depth", "max_results_per_target", "max_paths_per_impact"):
+            if key not in query and key in context:
+                query[key] = context[key]
+        if not isinstance(query.get("targets"), list):
+            fence = chr(96) * 3
+            marker = fence + "json"
+            start = task.find(marker)
+            if start >= 0:
+                start += len(marker)
+                if task[start:start + 2] == "\r\n":
+                    start += 2
+                elif task[start:start + 1] == "\n":
+                    start += 1
+                end = task.find(fence, start)
+                if end >= 0:
+                    try:
+                        parsed = json.loads(task[start:end])
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        query = {**parsed, **query}
+        return query
 
     def plan_learned_code_tests(
         self,
@@ -410,6 +472,8 @@ class NativeCognitionEngine:
                 "bounded_reverse_dependency_tracing",
                 "native_static_test_discovery",
                 "bounded_test_candidate_planning",
+                "native_multi_target_change_set_analysis",
+                "shared_graph_change_impact",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -769,6 +833,81 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        change_set_markers = (
+            "analyze change set impact",
+            "analyze multi-file change impact",
+            "trace impacts for changed modules",
+            "analyze impact for changed files",
+            "multi target code impact",
+            "analyze combined code changes",
+        )
+        if any(marker in lower for marker in change_set_markers):
+            repository = context.get("repository")
+            if not isinstance(repository, str) or not repository.strip():
+                repositories = self._repositories_from_task(text)
+                repository = repositories[0] if len(repositories) == 1 else None
+            if not isinstance(repository, str) or not repository.strip():
+                return self._failure(
+                    "GITHUB_REPOSITORY_REQUIRED",
+                    "Name one acquired GitHub repository as owner/repo.",
+                )
+            query = self._change_set_query_from_request(text, context)
+            targets = query.get("targets")
+            predicate = query.get("predicate", "depends_on")
+            if not isinstance(targets, list):
+                return self._failure(
+                    "CHANGE_SET_TARGETS_REQUIRED",
+                    "Provide a targets array in context['change_set'] or a fenced JSON object.",
+                )
+            try:
+                result = await asyncio.to_thread(
+                    self.analyze_learned_code_change_set,
+                    repository,
+                    targets,
+                    predicate,
+                    max_depth=query.get("max_depth", 12),
+                    max_results_per_target=query.get("max_results_per_target", 50),
+                    max_paths_per_impact=query.get("max_paths_per_impact", 3),
+                )
+            except (TypeError, ValueError) as exc:
+                return self._failure("INVALID_CHANGE_SET_QUERY", str(exc)[:300])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "NATIVE_CHANGE_SET_ANALYSIS_FAILED"),
+                    result.get("message", "The bounded multi-target analysis was rejected safely."),
+                )
+            analysis = result.get("change_set_analysis", {})
+            report = [
+                "PIKA NATIVE CHANGE-SET IMPACT ANALYSIS",
+                f"Repository: {analysis.get('repository')}",
+                f"Commit: {analysis.get('commit')}",
+                f"Targets analyzed: {analysis.get('successful_target_count', 0)} / {analysis.get('target_count', 0)}",
+                f"Unique impacted entities: {analysis.get('unique_impact_count', 0)}",
+                f"Status: {analysis.get('status')}",
+                f"Graph builds: {analysis.get('graph_build_count')}",
+                f"Coverage: {analysis.get('coverage_status')}",
+            ]
+            for item in analysis.get("impacts", [])[:100]:
+                report.append(
+                    f"- {item.get('entity')} | targets: {', '.join(item.get('affected_targets', []))} | "
+                    f"shortest path: {item.get('shortest_path_length')}"
+                )
+                for proof_ref in item.get("proof_references", []):
+                    report.append(
+                        f"  {proof_ref.get('target_reference')}: {len(proof_ref.get('path_ids', []))} proof path(s)"
+                    )
+            report.extend([
+                "Trust: all impact paths are unverified AST-observed source relationships.",
+                "A missing consumer is not proof that no runtime or dynamic dependency exists.",
+                "Policy: one in-memory graph snapshot, no source execution/modification, no memory admission or promotion.",
+            ])
+            return self._response(
+                True,
+                "\n".join(report),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         test_plan_markers = (
             "discover tests for code change",
