@@ -563,6 +563,7 @@ class NativeKnowledgeGraphAdapter:
                 "repository": graph["repository"],
                 "commit": graph["commit"],
                 "coverage_status": graph["coverage_status"],
+                "coverage_flags": graph["coverage_flags"],
                 "metrics": graph["metrics"],
                 "trust": graph["trust"],
                 "errors": graph["errors"],
