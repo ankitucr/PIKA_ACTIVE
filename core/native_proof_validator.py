@@ -476,3 +476,245 @@ def validate_native_code_impact_analysis(result: Any) -> bool:
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
 
+
+def validate_native_test_selection(result: Any) -> bool:
+    """Validate statically discovered test cases against impacted modules and file evidence."""
+    try:
+        if not validate_native_code_impact_analysis(result):
+            return False
+        selection = result.get("test_selection")
+        impact = result.get("impact_analysis")
+        source_evidence = result.get("source_evidence")
+        if not isinstance(selection, dict) or not isinstance(impact, dict) or not isinstance(source_evidence, list):
+            return False
+        if (
+            selection.get("schema") != "pika.native_test_selection.v1"
+            or selection.get("trust") != "UNVERIFIED_STATIC_TEST_SELECTION"
+            or selection.get("repository") != impact.get("repository")
+            or selection.get("commit") != impact.get("commit")
+            or selection.get("target") != impact.get("target")
+            or selection.get("predicate") != impact.get("predicate")
+            or selection.get("impact_analysis_status") != impact.get("status")
+            or selection.get("execution_performed") is not False
+            or result.get("test_execution_performed") is not False
+            or result.get("memory_admission") != "BLOCKED_UNVERIFIED_HYPOTHESES"
+        ):
+            return False
+
+        modules = selection.get("modules")
+        errors = selection.get("errors")
+        flags = selection.get("coverage_flags")
+        limits = selection.get("limits")
+        if (
+            not isinstance(modules, list)
+            or len(modules) > 50
+            or not isinstance(errors, list)
+            or not all(isinstance(error, str) for error in errors)
+            or not isinstance(flags, list)
+            or not isinstance(limits, dict)
+            or limits.get("max_test_modules") != 50
+            or limits.get("max_test_cases") != 500
+            or limits.get("max_file_bytes") != 200_000
+            or limits.get("max_ast_nodes_per_file") != 20_000
+        ):
+            return False
+
+        impact_by_entity = {
+            item.get("entity"): item
+            for item in impact.get("impacts", [])
+            if isinstance(item, dict) and isinstance(item.get("entity"), str)
+        }
+        evidence_by_id = {
+            item.get("source_id"): item
+            for item in source_evidence
+            if isinstance(item, dict) and isinstance(item.get("source_id"), str)
+        }
+        seen_modules: set[str] = set()
+        seen_paths: set[str] = set()
+        expected_module_ids: list[str] = []
+        expected_test_ids: list[str] = []
+        total_cases = 0
+        previous_path = ""
+        for module in modules:
+            if not isinstance(module, dict):
+                return False
+            entity = module.get("module_entity")
+            path = module.get("path")
+            file_sha = module.get("sha256")
+            proof = module.get("proof_query")
+            if (
+                not isinstance(entity, str)
+                or entity in seen_modules
+                or entity not in impact_by_entity
+                or not isinstance(path, str)
+                or not (
+                    (path.rsplit("/", 1)[-1].lower().startswith("test_")
+                     and path.rsplit("/", 1)[-1].lower().endswith(".py"))
+                    or path.rsplit("/", 1)[-1].lower().endswith("_test.py")
+                )
+                or path in seen_paths
+                or path < previous_path
+                or not isinstance(file_sha, str)
+                or len(file_sha) != 64
+                or not isinstance(proof, dict)
+                or proof != impact_by_entity[entity].get("proof_query")
+                or module.get("trust") != "UNVERIFIED_STATIC_TEST_CANDIDATE"
+                or not isinstance(module.get("source_encoding"), str)
+                or not isinstance(module.get("ast_node_count"), int)
+                or not 0 <= module.get("ast_node_count", -1) <= 20_000
+            ):
+                return False
+            seen_modules.add(entity)
+            seen_paths.add(path)
+            previous_path = path
+            expected_module_ids.append(entity)
+
+            import_evidence = module.get("import_evidence")
+            if not isinstance(import_evidence, list) or not import_evidence:
+                return False
+            proof_first_steps = [
+                path_item.get("steps", [{}])[0]
+                for path_item in proof.get("paths", [])
+                if isinstance(path_item, dict) and path_item.get("steps")
+            ]
+            allowed_import_ids = {
+                source_id
+                for step in proof_first_steps
+                for source_id in step.get("source_ids", [])
+            }
+            if (
+                any(
+                    not isinstance(item, dict)
+                    or item.get("source_id") not in evidence_by_id
+                    or item != evidence_by_id[item["source_id"]]
+                    or item.get("path") != path
+                    or item.get("sha256") != file_sha
+                    or item.get("source_id") not in allowed_import_ids
+                    for item in import_evidence
+                )
+            ):
+                return False
+
+            cases = module.get("test_cases")
+            case_count = module.get("test_case_count")
+            if not isinstance(cases, list) or case_count != len(cases):
+                return False
+            previous_line = 0
+            for case in cases:
+                if not isinstance(case, dict):
+                    return False
+                name = case.get("name")
+                line_start = case.get("line_start")
+                line_end = case.get("line_end")
+                node_type = case.get("ast_node_type")
+                evidence = case.get("source_evidence")
+                if (
+                    not isinstance(name, str)
+                    or not (
+                        name.startswith("test_")
+                        or (".test_" in name and name.split(".", 1)[0].startswith("Test"))
+                    )
+                    or not isinstance(line_start, int)
+                    or isinstance(line_start, bool)
+                    or not isinstance(line_end, int)
+                    or isinstance(line_end, bool)
+                    or line_start < 1
+                    or line_end < line_start
+                    or line_start < previous_line
+                    or node_type not in {"FunctionDef", "AsyncFunctionDef"}
+                    or case.get("status") != "DISCOVERED_NOT_EXECUTED"
+                    or not isinstance(evidence, dict)
+                ):
+                    return False
+                previous_line = line_start
+                source_identity = "\0".join((
+                    selection["repository"], selection["commit"], path, file_sha,
+                    name, str(line_start), str(line_end), node_type,
+                ))
+                expected_source_id = "github-test-source:" + hashlib.sha256(
+                    source_identity.encode("utf-8")
+                ).hexdigest()
+                expected_test_id = "pytest-case:" + _digest({
+                    "repository": selection["repository"],
+                    "commit": selection["commit"],
+                    "path": path,
+                    "sha256": file_sha,
+                    "qualified_name": name,
+                    "line_start": line_start,
+                    "line_end": line_end,
+                    "ast_node_type": node_type,
+                })
+                if (
+                    case.get("test_id") != expected_test_id
+                    or evidence.get("source_id") != expected_source_id
+                    or evidence.get("repository") != selection["repository"]
+                    or evidence.get("commit") != selection["commit"]
+                    or evidence.get("path") != path
+                    or evidence.get("sha256") != file_sha
+                    or evidence.get("line_start") != line_start
+                    or evidence.get("line_end") != line_end
+                    or evidence.get("ast_node_type") != node_type
+                    or evidence.get("source_encoding") != module.get("source_encoding")
+                    or evidence.get("observation") != "pytest_style_test_function_definition"
+                    or evidence.get("source_executed") is not False
+                    or evidence.get("trust") != "OBSERVED_NOT_YET_VERIFIED_FOR_REUSE"
+                ):
+                    return False
+                expected_test_ids.append(expected_test_id)
+            total_cases += len(cases)
+
+        if (
+            selection.get("test_module_count") != len(modules)
+            or selection.get("test_case_count") != total_cases
+            or total_cases > 500
+            or selection.get("module_ids") != expected_module_ids
+            or selection.get("test_ids") != expected_test_ids
+        ):
+            return False
+
+        partial = (
+            impact.get("status") == "PARTIAL_IMPACT_ANALYSIS"
+            or bool(errors)
+        )
+        if total_cases:
+            expected_status = "PARTIAL_TEST_CANDIDATES" if partial else "TEST_CANDIDATES_FOUND"
+        elif partial:
+            expected_status = "NO_TEST_CANDIDATES_WITH_PARTIAL_COVERAGE"
+        else:
+            expected_status = "NO_TEST_CANDIDATES_FOUND"
+        if selection.get("status") != expected_status:
+            return False
+        expected_flags = list(impact.get("coverage_flags", []))
+        if errors:
+            expected_flags.append("TEST_SOURCE_OR_SELECTION_LIMITS")
+        if flags != expected_flags:
+            return False
+
+        payload = {
+            "schema": selection["schema"],
+            "repository": selection["repository"],
+            "commit": selection["commit"],
+            "target": selection["target"],
+            "predicate": selection["predicate"],
+            "status": selection["status"],
+            "module_ids": expected_module_ids,
+            "test_ids": expected_test_ids,
+            "impact_analysis_id": impact.get("analysis_id"),
+        }
+        if selection.get("selection_id") != _digest(payload):
+            return False
+        return all(
+            result.get(field) is False
+            for field in (
+                "source_executed",
+                "source_modified",
+                "source_persisted",
+                "test_execution_performed",
+                "memory_updated",
+                "knowledge_admitted",
+                "promotion_allowed",
+            )
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+
