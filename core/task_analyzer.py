@@ -235,6 +235,12 @@ class TaskAnalyzer:
             "trace class consumers",
             "find consumers of this class",
             "analyze impact of changing",
+            "discover tests for code change",
+            "find tests for this code change",
+            "find tests affected by this module",
+            "build a test plan for code change",
+            "plan tests for code impact",
+            "select tests for changed module",
         )
         explicit_fact_reasoning = any(
             marker in text for marker in native_fact_reasoning_markers
