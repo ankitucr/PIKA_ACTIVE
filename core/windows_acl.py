@@ -13,9 +13,14 @@ $ErrorActionPreference = 'Stop'
 try {
     $target = $env:PIKA_ACL_TARGET_PATH
     if ([string]::IsNullOrWhiteSpace($target)) { exit 90 }
-    $item = Get-Item -LiteralPath $target -Force -ErrorAction Stop
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 11 }
-    $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
+    $attributes = [System.IO.File]::GetAttributes($target)
+    if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 11 }
+    if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+        $targetInfo = [System.IO.DirectoryInfo]::new($target)
+    } else {
+        $targetInfo = [System.IO.FileInfo]::new($target)
+    }
+    $acl = $targetInfo.GetAccessControl()
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     if ($null -eq $identity.User) { exit 12 }
     $currentSid = $identity.User.Value
@@ -58,21 +63,26 @@ $ErrorActionPreference = 'Stop'
 try {
     $target = $env:PIKA_ACL_TARGET_PATH
     if ([string]::IsNullOrWhiteSpace($target)) { exit 90 }
-    $item = Get-Item -LiteralPath $target -Force -ErrorAction Stop
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 11 }
+    $attributes = [System.IO.File]::GetAttributes($target)
+    if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 11 }
 
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     if ($null -eq $identity.User) { exit 12 }
     $currentSid = $identity.User.Value
     $allowedSids = @($currentSid, 'S-1-5-18', 'S-1-5-32-544')
-    $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
+    if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+        $targetInfo = [System.IO.DirectoryInfo]::new($target)
+        $inheritance = 'OICI'
+    } else {
+        $targetInfo = [System.IO.FileInfo]::new($target)
+        $inheritance = ''
+    }
+    $acl = $targetInfo.GetAccessControl()
     $ownerSid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
     if ($allowedSids -notcontains $ownerSid) { exit 14 }
 
     # Replace the DACL in one operation. This avoids relying on SetOwner or
     # per-ACE removal privileges on hosted Windows runners.
-    $inheritance = ''
-    if ($item.PSIsContainer) { $inheritance = 'OICI' }
     $sddl = 'D:P'
     foreach ($sid in $allowedSids) {
         $sddl += "(A;$inheritance;FA;;;$sid)"
@@ -81,7 +91,7 @@ try {
         $sddl,
         [System.Security.AccessControl.AccessControlSections]::Access
     )
-    Set-Acl -LiteralPath $target -AclObject $acl -ErrorAction Stop
+    $targetInfo.SetAccessControl($acl)
     [Console]::Out.Write('PIKA_ACL_SET_OK')
     exit 0
 } catch {
