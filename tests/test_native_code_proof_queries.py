@@ -9,6 +9,7 @@ from core.native_code_proof_queries import NativeCodeProofQuery
 from core.native_knowledge_graph_adapter import NativeKnowledgeGraphAdapter
 from core.native_reasoning import NativeReasoningEngine
 from core.native_cognition import NativeCognitionEngine
+from core.native_proof_validator import validate_native_code_proof_query
 from core.task_analyzer import TaskAnalyzer
 
 
@@ -98,6 +99,7 @@ def test_transitive_dependency_query_returns_full_source_path_and_engine_support
     assert result["memory_updated"] is False
     assert result["knowledge_admitted"] is False
     assert result["promotion_allowed"] is False
+    assert validate_native_code_proof_query(result) is True
 
 
 def test_direct_relationship_is_reported_without_claiming_transitive_proof(tmp_path):
@@ -291,4 +293,31 @@ def test_brain_blocks_proof_query_hypotheses_from_memory(tmp_path):
     assert result["promotion_allowed"] is False
     assert memory.lessons == []
     assert memory.failures == []
+
+def test_independent_validator_rejects_a_forged_path_edge(tmp_path):
+    import copy
+
+    _make_repository(tmp_path)
+    result = NativeCodeProofQuery(NativeKnowledgeGraphAdapter(tmp_path)).explain(
+        "sample/graph", "pkg.a", "depends_on", "pkg.c"
+    )
+    assert validate_native_code_proof_query(result) is True
+
+    forged = copy.deepcopy(result)
+    forged["proof_query"]["paths"][0]["steps"][0]["object"] = "module:forged"
+
+    assert validate_native_code_proof_query(forged) is False
+
+
+def test_independent_validator_rejects_missing_provenance_sidecar(tmp_path):
+    import copy
+
+    _make_repository(tmp_path)
+    result = NativeCodeProofQuery(NativeKnowledgeGraphAdapter(tmp_path)).explain(
+        "sample/graph", "pkg.a", "depends_on", "pkg.c"
+    )
+    forged = copy.deepcopy(result)
+    forged["proof_query"]["paths"][0]["steps"][0]["source_evidence"] = []
+
+    assert validate_native_code_proof_query(forged) is False
 
