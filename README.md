@@ -123,3 +123,15 @@ validates every nested path before accepting a report. This is structural
 impact evidence, not a runtime breakage prediction. No source execution,
 memory admission or promotion is enabled. See
 docs/PHASE42_NATIVE_CODE_IMPACT_ANALYSIS.md.
+
+## Phase 43: native test impact planning
+
+PIKA can discover likely test files and `test_*` definitions through the
+Phase 42 source-backed impact paths. Candidate test modules are rechecked
+against the registered source manifest and raw file hashes, then parsed with
+AST only. Top-level test functions, async functions and methods in `Test*`
+classes are listed with line-level provenance. Up to 50 modules and 500 test
+cases are selected. Every case is marked `DISCOVERED_NOT_EXECUTED`; no pytest
+collection or test execution takes place. Brain independently validates the
+plan before accepting it, while memory admission and promotion remain
+disabled. See docs/PHASE43_NATIVE_TEST_IMPACT_PLANNING.md.
