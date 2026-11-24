@@ -437,3 +437,60 @@ def test_overlong_repository_identifier_is_rejected(tmp_path):
     assert result["success"] is False
     assert result["error"] == "INVALID_REPOSITORY"
 
+def test_duplicate_qualified_symbols_are_not_collapsed_or_guessed(tmp_path):
+    repository = "sample/duplicates"
+    source = '''if True:
+    class Duplicate:
+        pass
+    def repeat():
+        return 1
+else:
+    class Duplicate:
+        pass
+    def repeat():
+        return 2
+
+class Child(Duplicate):
+    pass
+'''
+    entry = _write_source(tmp_path, repository, "module.py", source)
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "pika_native_git_registry.json").write_text(
+        json.dumps({
+            "schema": "pika.native_git_registry.v1",
+            "repositories": {
+                repository: {
+                    "commit": "abcdef1234567890",
+                    "license_id": "MIT",
+                    "files": [entry],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    graph = NativeKnowledgeGraphAdapter(tmp_path).build_repository_facts(repository)
+
+    duplicate_classes = {
+        row["subject"] for row in graph["facts"]
+        if row["predicate"] == "part_of"
+        and row["subject"].startswith("symbol:")
+        and ":Duplicate_" in row["subject"]
+    }
+    repeated_functions = {
+        row["subject"] for row in graph["facts"]
+        if row["predicate"] == "part_of"
+        and row["subject"].startswith("symbol:")
+        and ":repeat_" in row["subject"]
+    }
+    child_fact = next(
+        row for row in graph["facts"]
+        if row["predicate"] == "is_a" and ":Child_" in row["subject"]
+    )
+
+    assert graph["success"] is True
+    assert len(duplicate_classes) == 2
+    assert len(repeated_functions) == 2
+    assert child_fact["object"].startswith("unresolved_class_reference:")
+
