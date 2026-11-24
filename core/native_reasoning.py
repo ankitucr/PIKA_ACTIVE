@@ -12,6 +12,8 @@ import re
 from collections import defaultdict
 from typing import Any
 
+from core.native_symbolic_reasoning import NativeReasoningError
+
 SCHEMA = "pika.native_reasoning.result.v1"
 RULE_SET = "pika.native_reasoning.transitivity_graph.v2"
 TRANSITIVE_PREDICATES = ("depends_on", "is_a", "part_of", "requires")
@@ -51,7 +53,27 @@ def _text(value: Any, *, field: str, maximum: int = MAX_TEXT_LENGTH) -> str:
 class NativeReasoningEngine:
     """Deterministic, bounded forward chaining over explicit three-part facts."""
 
-    def reason(self, facts: Any) -> dict[str, Any]:
+    def reason(
+        self,
+        facts: Any = None,
+        *,
+        question: str | None = None,
+        rules: Any = None,
+        max_rounds: int = 6,
+    ) -> dict[str, Any]:
+        # Compatibility adapter for the pre-Phase-45 declarative API.
+        # The graph engine remains the default for positional/three-part facts.
+        # Symbolic requests are delegated without conflating the two engines.
+        if question is not None:
+            from core.native_symbolic_reasoning import NativeReasoningEngine as SymbolicReasoningEngine
+            return SymbolicReasoningEngine().reason(
+                question=question,
+                facts=[] if facts is None else facts,
+                rules=rules,
+                max_rounds=max_rounds,
+            )
+        if rules is not None:
+            raise NativeReasoningError("question is required for declarative symbolic reasoning")
         if not isinstance(facts, list):
             return self._failure("FACT_LIST_REQUIRED", "Facts must be supplied as a list.")
         if not facts:
