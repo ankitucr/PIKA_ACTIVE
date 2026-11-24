@@ -87,16 +87,19 @@
         "Adaptive model, agent, and routing selection",
         "Hardware-aware model and runtime optimization",
         "C++ and Rust extension build pipeline",
-        "Evolution monitoring, recovery, and long-term evaluation"
+        "Evolution monitoring, recovery, and long-term evaluation",
+        "Default-deny, candidate-hash-bound permission manifests for staged tool proposals"
       ],
       "exit_criteria": [
         "New tools and modules are staged, sandbox-tested, reviewed, and reversible",
         "Architecture changes preserve interface and regression compatibility",
         "Optimizations are benchmarked against a stable baseline",
-        "Long-term evaluation detects regressions, forgetting, and capability degradation"
+        "Long-term evaluation detects regressions, forgetting, and capability degradation",
+        "Tool permission requests are explicit, versioned, default-deny, and bound to exact candidate hashes",
+        "Unknown requested permissions are rejected; staging does not grant, activate or execute permissions"
       ],
       "remaining_gaps": [
-        "Permission-manifest enforcement and reviewed tool activation are not complete",
+        "Permission manifests remain proposal metadata only; a separately reviewed runtime enforcement and activation layer is still required",
         "Adaptive routing still lacks controlled, same-task strategy comparison and benchmark-backed selection",
         "Hardware-aware model optimization needs trustworthy RAM/GPU/resource measurements and benchmark evidence",
         "A network-isolated C++ and Rust extension build pipeline with pinned toolchains and reproducible artifacts is not yet integrated",
