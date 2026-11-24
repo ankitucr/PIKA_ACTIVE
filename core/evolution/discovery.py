@@ -24,6 +24,9 @@ SCHEMA = "pika.phase37.discovery-queue.v1"
 _MAX_ITEMS = 50
 _MAX_CANDIDATES = 3
 _MAX_PROPOSAL_BYTES = 500_000
+_MAX_TEST_SCAN = 500
+_MAX_TEST_SOURCE_BYTES = 500_000
+_MAX_TEST_SUGGESTIONS = 5
 
 
 _DIAGNOSTIC_CLASSES = frozenset({
@@ -223,6 +226,97 @@ class CandidateDiscoveryQueue:
         self.path = self.knowledge / "CANDIDATE_DISCOVERY_QUEUE.json"
         self.experiments = experiments
         self.ledger = experiments.ledger
+
+    def _attach_traceback_context(self, item: dict[str, Any], reflected: dict[str, Any], diagnostic: dict[str, Any]) -> None:
+        context = reflected.get("source_context") if isinstance(reflected.get("source_context"), dict) else diagnostic.get("source_context")
+        hint = reflected.get("source_context_hint") if isinstance(reflected.get("source_context_hint"), dict) else diagnostic.get("source_context_hint")
+        validated = validate_source_context(context, self.baseline)
+        validated_hint = validate_source_context(hint, self.baseline)
+        item["traceback_frames"] = reflected.get("traceback_frames", [])[:8] if isinstance(reflected.get("traceback_frames"), list) else diagnostic.get("traceback_frames", [])[:8] if isinstance(diagnostic.get("traceback_frames"), list) else []
+        item["traceback_text_hints"] = reflected.get("traceback_text_hints", [])[:8] if isinstance(reflected.get("traceback_text_hints"), list) else diagnostic.get("traceback_text_hints", [])[:8] if isinstance(diagnostic.get("traceback_text_hints"), list) else []
+        item["source_context"] = validated if validated and validated.get("capture_mode") == "PYTHON_EXCEPTION_TRACEBACK" else None
+        item["source_context_hint"] = validated_hint if validated_hint else (
+            validated if validated and validated.get("capture_mode") == "PYTHON_TRACEBACK_TEXT" else None
+        )
+        primary = None
+        if item["source_context"] is not None:
+            frames = item["source_context"].get("frames", [])
+            primary = next((frame for frame in frames if isinstance(frame, dict) and frame.get("source_kind") != "test"), frames[0] if frames else None)
+        if isinstance(primary, dict):
+            item["target"] = primary.get("path")
+            item["source_sha256"] = primary.get("source_sha256")
+            item["traceback_context_status"] = "CURRENT_SOURCE_HASH_MATCH"
+        elif item["source_context_hint"] is not None:
+            item.pop("target", None)
+            item.pop("source_sha256", None)
+            item["traceback_context_status"] = "UNTRUSTED_TEXT_HINT_ONLY"
+        else:
+            item["traceback_context_status"] = "STALE_OR_UNAVAILABLE" if item["traceback_frames"] else "NOT_CAPTURED_LEGACY"
+
+    def _suggest_related_test_paths(self, target_value: Any) -> list[dict[str, Any]]:
+        """Suggest tests with an exact AST import reference; never pin them automatically."""
+        try:
+            target = _safe_python_path(target_value)
+        except ExperimentError:
+            return []
+        module_parts = list(target.with_suffix("").parts)
+        if module_parts and module_parts[-1] == "__init__":
+            module_parts.pop()
+        if not module_parts:
+            return []
+        module_name = ".".join(module_parts)
+        tests_root = self.baseline / "tests"
+        if tests_root.is_symlink() or not tests_root.is_dir():
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        try:
+            paths = sorted(tests_root.rglob("*.py"))
+        except OSError:
+            return []
+        for path in paths[:_MAX_TEST_SCAN]:
+            if not (path.name.startswith("test_") or path.name.endswith("_test.py")):
+                continue
+            try:
+                relative = path.relative_to(self.baseline)
+                cursor = self.baseline
+                unsafe_path = False
+                for part in relative.parts:
+                    cursor = cursor / part
+                    if cursor.is_symlink():
+                        unsafe_path = True
+                        break
+                if unsafe_path or not path.is_file() or path.stat().st_size > _MAX_TEST_SOURCE_BYTES:
+                    continue
+                source_bytes = path.read_bytes()
+                source = source_bytes.decode("utf-8")
+                tree = ast.parse(source, filename=relative.as_posix())
+            except (OSError, UnicodeError, SyntaxError, ValueError):
+                continue
+
+            matching_imports = 0
+            for node in ast.walk(tree):
+                imported_modules = []
+                if isinstance(node, ast.Import):
+                    imported_modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    imported_modules = [node.module]
+                if any(
+                    name == module_name or name.startswith(module_name + ".")
+                    for name in imported_modules
+                ):
+                    matching_imports += 1
+            if matching_imports:
+                candidates.append({
+                    "path": relative.as_posix(),
+                    "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+                    "matching_import_count": matching_imports,
+                    "evidence": "AST_IMPORT_REFERENCE_ONLY",
+                    "pinned": False,
+                })
+                if len(candidates) >= _MAX_TEST_SUGGESTIONS:
+                    break
+        return candidates
 
     def _load(self) -> dict[str, Any]:
         if self.path.is_symlink():
