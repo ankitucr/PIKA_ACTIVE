@@ -7,6 +7,7 @@ call an inference provider or execute downloaded repository code.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.native_code_analyzer import NativeCodeAnalyzer
+from core.native_reasoning import NativeReasoningEngine, NativeReasoningError
+from core.native_evolution import NativeSelfEvolutionEngine, NativeSelfEvolutionError
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -32,6 +35,7 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
+        self.reasoner = NativeReasoningEngine()
         self.learning = None
         try:
             from core.pika_code_learning import PikaCodeLearning
@@ -102,20 +106,30 @@ class NativeCognitionEngine:
             }
         from core.git_learning_loop import run_cycle
         result = run_cycle(repo_list, max_files=max_files)
+        engineering_reports: list[dict[str, Any]] = []
+        if self.engineering_knowledge is not None:
+            for repository in result.get("repositories", []):
+                name = repository.get("repository") if isinstance(repository, dict) else None
+                if isinstance(name, str) and name:
+                    engineering_reports.append(
+                        self.engineering_knowledge.extract_repository(name, max_files=max_files)
+                    )
         self._append_event({
             "type": "github_learning_cycle",
             "repositories": repo_list,
             "scanned": result.get("repositories_scanned", 0),
+            "engineering_reports": len(engineering_reports),
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
         })
         return {
             "success": bool(result.get("repositories_scanned")),
-            "mode": "git_transport_plus_native_static_analysis",
+            "mode": "git_transport_plus_native_static_analysis_and_provenance_extraction",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
+            "engineering_knowledge_reports": engineering_reports,
             **result,
         }
 
@@ -184,6 +198,24 @@ class NativeCognitionEngine:
                 if isinstance(record, dict)
             ),
             "engineering_knowledge_file": str(self.data / "pika_native_engineering_knowledge.json"),
+            "native_capabilities": [
+                "github_repository_learning",
+                "pika_self_ast_analysis",
+                "python_static_analysis",
+                "python_syntax_validation",
+                "python_snippet_comparison",
+                "static_improvement_queue",
+                "lexical_code_evidence_retrieval",
+                "engineering_knowledge_retrieval",
+                "bounded_symbolic_reasoning",
+                "evidence_provenance_reasoning",
+                "contradiction_detection",
+                "cross_language_static_analysis",
+                "provenance_backed_github_knowledge",
+                "deterministic_self_evolution_staging",
+            ],
+            "arbitrary_workspace_code_generation": "UNSUPPORTED",
+            "source_execution_during_static_analysis": False,
         }
 
     @staticmethod
@@ -201,6 +233,313 @@ class NativeCognitionEngine:
                     found.append(value)
         return found
 
+    def analyze_python_snippet(self, source: str) -> dict[str, Any]:
+        """Analyze a bounded user-supplied Python snippet as data; never execute or persist it."""
+        if not isinstance(source, str) or not source.strip():
+            return {
+                "success": False,
+                "error": "PYTHON_SOURCE_REQUIRED",
+                "source_executed": False,
+                "source_modified": False,
+            }
+        encoded = source.encode("utf-8", errors="replace")
+        if len(encoded) > 65_536:
+            return {
+                "success": False,
+                "error": "PYTHON_SOURCE_TOO_LARGE",
+                "max_bytes": 65_536,
+                "actual_bytes": len(encoded),
+                "source_executed": False,
+                "source_modified": False,
+            }
+        result = self.analyzer.analyze_python_source(
+            source,
+            relative_path="submitted_snippet.py",
+            repository="user_supplied",
+            untrusted_source=True,
+        )
+        return {
+            "success": True,
+            "mode": "native_static_python_snippet_analysis",
+            "code_valid": result.get("parse_status") == "parsed",
+            "parse_status": result.get("parse_status"),
+            "parse_error": result.get("parse_error"),
+            "source_sha256": result.get("sha256"),
+            "source_bytes": result.get("bytes"),
+            "imports": result.get("imports", []),
+            "symbols": result.get("symbols", [])[:100],
+            "patterns": result.get("patterns", []),
+            "findings": result.get("findings", [])[:100],
+            "metrics": result.get("metrics", {}),
+            "source_executed": False,
+            "source_modified": False,
+            "source_persisted": False,
+            "trust": "UNTRUSTED_USER_SUPPLIED_SOURCE",
+            "limits": [
+                "AST structure only; no runtime behavior or semantic correctness is proven",
+                "Imports and dependencies are not loaded",
+                "The supplied source is not executed, modified, or persisted",
+            ],
+        }
+
+    def compare_python_snippets(self, baseline_source: str, candidate_source: str) -> dict[str, Any]:
+        """Compare two bounded Python snippets structurally without executing either."""
+        if not isinstance(baseline_source, str) or not baseline_source.strip():
+            return {"success": False, "error": "BASELINE_PYTHON_SOURCE_REQUIRED"}
+        if not isinstance(candidate_source, str) or not candidate_source.strip():
+            return {"success": False, "error": "CANDIDATE_PYTHON_SOURCE_REQUIRED"}
+
+        baseline = self.analyze_python_snippet(baseline_source)
+        candidate = self.analyze_python_snippet(candidate_source)
+        for label, result in (("baseline", baseline), ("candidate", candidate)):
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": result.get("error", "PYTHON_ANALYSIS_FAILED"),
+                    "rejected_input": label,
+                    "source_executed": False,
+                    "source_modified": False,
+                    "source_persisted": False,
+                }
+
+        baseline_valid = baseline.get("parse_status") == "parsed"
+        candidate_valid = candidate.get("parse_status") == "parsed"
+        if not baseline_valid or not candidate_valid:
+            return {
+                "success": True,
+                "mode": "native_static_python_structural_comparison",
+                "comparison_status": "INCOMPLETE_INVALID_SYNTAX",
+                "baseline": {
+                    "sha256": baseline.get("source_sha256"),
+                    "parse_status": baseline.get("parse_status"),
+                    "parse_error": baseline.get("parse_error"),
+                },
+                "candidate": {
+                    "sha256": candidate.get("source_sha256"),
+                    "parse_status": candidate.get("parse_status"),
+                    "parse_error": candidate.get("parse_error"),
+                },
+                "structural_comparison_performed": False,
+                "source_executed": False,
+                "source_modified": False,
+                "source_persisted": False,
+                "promotion_allowed": False,
+                "trust": "UNTRUSTED_USER_SUPPLIED_SOURCE",
+            }
+
+        baseline_symbols = {
+            item["qualified_name"]: item
+            for item in baseline.get("symbols", [])
+            if isinstance(item, dict) and isinstance(item.get("qualified_name"), str)
+        }
+        candidate_symbols = {
+            item["qualified_name"]: item
+            for item in candidate.get("symbols", [])
+            if isinstance(item, dict) and isinstance(item.get("qualified_name"), str)
+        }
+        baseline_names = set(baseline_symbols)
+        candidate_names = set(candidate_symbols)
+        added_names = sorted(candidate_names - baseline_names)
+        removed_names = sorted(baseline_names - candidate_names)
+        common_names = sorted(baseline_names & candidate_names)
+        changed_names = [
+            name for name in common_names
+            if baseline_symbols[name].get("signature") != candidate_symbols[name].get("signature")
+            or baseline_symbols[name].get("kind") != candidate_symbols[name].get("kind")
+        ]
+
+        baseline_imports = set(baseline.get("imports", []))
+        candidate_imports = set(candidate.get("imports", []))
+        metric_names = sorted(set(baseline.get("metrics", {})) | set(candidate.get("metrics", {})))
+        metric_deltas = {
+            name: int(candidate.get("metrics", {}).get(name, 0))
+            - int(baseline.get("metrics", {}).get(name, 0))
+            for name in metric_names
+        }
+
+        def finding_counts(result: dict[str, Any]) -> dict[tuple[str, str], int]:
+            counts: dict[tuple[str, str], int] = {}
+            for finding in result.get("findings", []):
+                if not isinstance(finding, dict):
+                    continue
+                key = (str(finding.get("rule", "unknown")), str(finding.get("symbol", "")))
+                counts[key] = counts.get(key, 0) + 1
+            return counts
+
+        baseline_findings = finding_counts(baseline)
+        candidate_findings = finding_counts(candidate)
+        finding_added = []
+        finding_removed = []
+        for key in sorted(set(baseline_findings) | set(candidate_findings)):
+            delta = candidate_findings.get(key, 0) - baseline_findings.get(key, 0)
+            target = finding_added if delta > 0 else finding_removed
+            target.extend([
+                {"rule": key[0], "symbol": key[1]}
+                for _ in range(abs(delta))
+            ])
+
+        added_details = [
+            {
+                "qualified_name": name,
+                "kind": candidate_symbols[name].get("kind"),
+                "signature": candidate_symbols[name].get("signature"),
+                "lineno": candidate_symbols[name].get("lineno"),
+            }
+            for name in added_names[:100]
+        ]
+        removed_details = [
+            {
+                "qualified_name": name,
+                "kind": baseline_symbols[name].get("kind"),
+                "signature": baseline_symbols[name].get("signature"),
+                "lineno": baseline_symbols[name].get("lineno"),
+            }
+            for name in removed_names[:100]
+        ]
+        changed_details = [
+            {
+                "qualified_name": name,
+                "baseline_signature": baseline_symbols[name].get("signature"),
+                "candidate_signature": candidate_symbols[name].get("signature"),
+                "baseline_kind": baseline_symbols[name].get("kind"),
+                "candidate_kind": candidate_symbols[name].get("kind"),
+            }
+            for name in changed_names[:100]
+        ]
+
+        identity_payload = {
+            "baseline_sha256": baseline["source_sha256"],
+            "candidate_sha256": candidate["source_sha256"],
+            "schema": "pika.native-python-structural-comparison.v1",
+        }
+        comparison_id = hashlib.sha256(
+            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return {
+            "success": True,
+            "mode": "native_static_python_structural_comparison",
+            "schema": "pika.native-python-structural-comparison.v1",
+            "comparison_id": comparison_id,
+            "comparison_status": "STRUCTURAL_DIFF_COMPLETE",
+            "baseline": {
+                "sha256": baseline["source_sha256"],
+                "source_bytes": baseline["source_bytes"],
+                "symbols": len(baseline_symbols),
+                "imports": len(baseline_imports),
+                "findings": len(baseline_findings),
+            },
+            "candidate": {
+                "sha256": candidate["source_sha256"],
+                "source_bytes": candidate["source_bytes"],
+                "symbols": len(candidate_symbols),
+                "imports": len(candidate_imports),
+                "findings": len(candidate_findings),
+            },
+            "symbols": {
+                "added": added_names[:100],
+                "added_details": added_details,
+                "removed": removed_names[:100],
+                "removed_details": removed_details,
+                "changed": changed_names[:100],
+                "changed_details": changed_details,
+                "unchanged_count": len(common_names) - len(changed_names),
+            },
+            "imports": {
+                "added": sorted(candidate_imports - baseline_imports)[:100],
+                "removed": sorted(baseline_imports - candidate_imports)[:100],
+            },
+            "metrics_delta": metric_deltas,
+            "static_findings": {
+                "added": finding_added[:100],
+                "removed": finding_removed[:100],
+            },
+            "interpretation": {
+                "candidate_is_better": None,
+                "runtime_correctness_verified": False,
+                "semantic_equivalence_verified": False,
+                "source_execution": False,
+                "source_modification": False,
+                "source_persistence": False,
+                "promotion_allowed": False,
+                "trust": "UNTRUSTED_USER_SUPPLIED_SOURCE",
+            },
+            "limits": [
+                "AST structural differences do not prove behavioral changes or semantic correctness",
+                "No imports, dependencies, tests or source files are executed",
+                "Risk findings are static indicators and require human review",
+            ],
+        }
+
+    @staticmethod
+    def _python_sources_from_comparison_request(
+        task: str, context: dict[str, Any]
+    ) -> tuple[str, str] | None:
+        baseline = context.get("baseline_source")
+        candidate = context.get("candidate_source")
+        if isinstance(baseline, str) and isinstance(candidate, str):
+            return baseline, candidate
+        blocks = re.findall(r"\x60\x60\x60(?:python|py)\s*\n(.*?)\x60\x60\x60", task, re.I | re.S)
+        return (blocks[0], blocks[1]) if len(blocks) == 2 else None
+
+    @staticmethod
+    def _format_python_comparison_report(result: dict[str, Any]) -> str:
+        if result.get("comparison_status") == "INCOMPLETE_INVALID_SYNTAX":
+            return (
+                "PIKA NATIVE PYTHON STRUCTURAL COMPARISON\n"
+                f"Status: {result['comparison_status']}\n"
+                f"Baseline syntax: {result['baseline'].get('parse_status')}\n"
+                f"Candidate syntax: {result['candidate'].get('parse_status')}\n"
+                "No structural diff was attempted because both snippets must parse.\n"
+                "Neither source was executed, modified or persisted."
+            )
+        symbols = result["symbols"]
+        imports = result["imports"]
+        metrics = result["metrics_delta"]
+        return "\n".join([
+            "PIKA NATIVE PYTHON STRUCTURAL COMPARISON",
+            f"Status: {result['comparison_status']}",
+            f"Comparison ID: {result['comparison_id']}",
+            f"Added symbols: {len(symbols['added'])} | removed: {len(symbols['removed'])} | changed: {len(symbols['changed'])}",
+            f"Added imports: {len(imports['added'])} | removed: {len(imports['removed'])}",
+            f"Static findings added: {len(result['static_findings']['added'])} | removed: {len(result['static_findings']['removed'])}",
+            "Metric deltas: " + ", ".join(f"{key}={value:+d}" for key, value in metrics.items()),
+            "Candidate better: NOT DETERMINED",
+            "Policy: neither source was executed, modified or persisted.",
+            "Limit: structural change is not proof of runtime correctness or semantic equivalence.",
+        ])
+
+    @staticmethod
+    def _python_source_from_request(task: str, context: dict[str, Any]) -> str | None:
+        source = context.get("source_code")
+        if isinstance(source, str) and source.strip():
+            return source
+        match = re.search(r"```(?:python|py)\s*\n(.*?)```", task, re.I | re.S)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _format_python_snippet_report(result: dict[str, Any]) -> str:
+        metrics = result.get("metrics", {})
+        lines = [
+            "PIKA NATIVE PYTHON STATIC ANALYSIS",
+            f"Syntax: {'VALID' if result.get('code_valid') else 'INVALID'}",
+            f"Source SHA-256: {result.get('source_sha256')}",
+            f"Bytes: {result.get('source_bytes', 0)}",
+            f"Classes: {metrics.get('classes', 0)} | functions: {metrics.get('functions', 0)} | async: {metrics.get('async_functions', 0)}",
+            f"Imports: {metrics.get('imports', 0)} | calls: {metrics.get('calls', 0)} | branches: {metrics.get('branch_nodes', 0)}",
+            f"Structural patterns: {', '.join(result.get('patterns', [])) or 'none detected'}",
+            f"Static findings: {len(result.get('findings', []))}",
+            "Policy: untrusted source parsed as data; never imported, executed, modified, or persisted.",
+            "Limit: AST structure is not proof of runtime behavior or semantic correctness.",
+        ]
+        if result.get("parse_error"):
+            lines.append(f"Parser: {result['parse_error']}")
+        for item in result.get("findings", [])[:8]:
+            lines.append(
+                f"- [{item.get('severity', 'unknown')}] {item.get('rule')} "
+                f"| line {item.get('line')} | {item.get('recommendation')}"
+            )
+        return "\n".join(lines)
+
     async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
         text = str(task or "").strip()
@@ -208,6 +547,55 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        evolution_markers = ("self-evolve", "stage native improvement", "propose deterministic improvement")
+        if any(marker in lower for marker in evolution_markers):
+            try:
+                engine = NativeSelfEvolutionEngine(self.root)
+                result = engine.propose_and_stage(
+                    context.get("target"),
+                    test_paths=context.get("test_paths"),
+                    rule_id=context.get("rule_id"),
+                    evidence=context.get("evidence"),
+                    rationale=context.get("rationale"),
+                )
+            except (NativeSelfEvolutionError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_SELF_EVOLUTION_REJECTED", str(exc))
+            self._append_event({
+                "type": "native_self_evolution_candidate_staged",
+                "candidate_id": result["candidate_id"],
+                "target": result["target"],
+                "rule_id": result["rule_id"],
+                "source_modified": False,
+                "execution": "NOT_EXECUTED",
+                "promotion_allowed": False,
+            })
+            return self._response(
+                True, json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False, raw=result,
+            )
+
+        reasoning_markers = ("reason", "infer", "deduce", "what follows", "logical conclusion", "check contradiction")
+        if any(marker in lower for marker in reasoning_markers):
+            facts = context.get("facts", [])
+            rules = context.get("rules", [])
+            question = context.get("question", text)
+            try:
+                result = self.reasoner.reason(question=question, facts=facts, rules=rules)
+            except NativeReasoningError as exc:
+                return self._failure("INVALID_REASONING_INPUT", str(exc))
+            self._append_event({
+                "type": "native_symbolic_reasoning",
+                "input_facts": result["input_fact_count"],
+                "rules": result["rule_count"],
+                "derived_facts": result["derived_fact_count"],
+                "contradictions": result["contradiction_count"],
+                "external_inference_used": False,
+            })
+            output = json.dumps(result, indent=2, ensure_ascii=False)
+            return self._response(
+                True, output, knowledge_consumed=bool(result["facts"]), raw=result,
+            )
 
         github_action = any(word in lower for word in ("learn", "acquire", "clone", "index", "scan", "study")) and "github" in lower
         if github_action:
@@ -226,6 +614,54 @@ class NativeCognitionEngine:
             result = await asyncio.to_thread(self.analyze_self)
             output = self._format_self_report(result)
             return self._response(result.get("success", False), output, knowledge_consumed=False, raw=result)
+
+        python_comparison_markers = (
+            "compare python snippets", "compare these python snippets",
+            "compare python versions", "compare baseline and candidate python",
+            "structural diff python", "compare python source versions",
+        )
+        if any(marker in lower for marker in python_comparison_markers):
+            pair = self._python_sources_from_comparison_request(text, context)
+            if pair is None:
+                return self._failure(
+                    "TWO_PYTHON_SOURCES_REQUIRED",
+                    "Provide context['baseline_source'] and context['candidate_source'], or exactly two fenced Python code blocks.",
+                )
+            result = await asyncio.to_thread(self.compare_python_snippets, pair[0], pair[1])
+            if not result.get("success"):
+                return self._failure(
+                    result.get("error", "PYTHON_COMPARISON_FAILED"),
+                    "Both Python source inputs must be non-empty and within the 64 KiB per-source limit.",
+                )
+            return self._response(
+                True,
+                self._format_python_comparison_report(result),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        python_analysis_markers = (
+            "validate python", "check python syntax", "analyze python snippet",
+            "analyse python snippet", "inspect python snippet", "review python snippet",
+            "static analysis of this python", "analyze this python code",
+            "analyse this python code",
+        )
+        if any(marker in lower for marker in python_analysis_markers):
+            source = self._python_source_from_request(text, context)
+            if source is None:
+                return self._failure(
+                    "PYTHON_SOURCE_REQUIRED",
+                    "Provide Python source in context['source_code'] or one fenced ```python code block. The native analyzer only parses source; it never executes it.",
+                )
+            result = await asyncio.to_thread(self.analyze_python_snippet, source)
+            if not result.get("success"):
+                return self._failure(result.get("error", "PYTHON_ANALYSIS_FAILED"), "Python source analysis could not be completed.")
+            return self._response(
+                True,
+                self._format_python_snippet_report(result),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         if any(marker in lower for marker in ("learning status", "native brain status", "github learning status", "knowledge status")):
             result = self.status()
@@ -287,7 +723,7 @@ class NativeCognitionEngine:
 
         return self._failure(
             "UNSUPPORTED_NATIVE_OPERATION",
-            "This request is outside the current verified native capability set. Current supported operations: GitHub repository learning, PIKA source AST analysis, static improvement-queue generation, and lexical code-evidence retrieval. No LLM/API fallback is enabled.",
+            "This request is outside the current verified native capability set. Current supported operations: GitHub repository learning, PIKA source AST analysis, bounded Python snippet analysis, static improvement-queue generation, and code/engineering-evidence retrieval. Arbitrary workspace code generation is unsupported. No LLM/API fallback is enabled.",
         )
 
     @staticmethod
