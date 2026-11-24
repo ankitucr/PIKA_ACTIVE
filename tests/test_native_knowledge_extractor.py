@@ -109,3 +109,29 @@ def test_unclassified_license_is_explicitly_non_reusable(tmp_path):
     report = NativeEngineeringKnowledgeExtractor(root).extract_repository("sample/transport")
     assert report["license"]["id"] == "LicenseRef-UNCLASSIFIED"
     assert "NO_CODE_REUSE" in report["license"]["reuse_policy"]
+
+
+
+def test_extracts_non_python_source_as_unverified_structural_observations(tmp_path):
+    root = make_root(tmp_path)
+    registry_path = root / "data" / "pika_native_git_registry.json"
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    repo = "sample/transport"
+    ts = write_record(root, repo, "src/client.ts", 'import { Socket } from "socket.io";\\nexport class ChatClient {}\\n')
+    dart = write_record(root, repo, "test/chat_repository_test.dart", "import 'package:test/test.dart';\\nclass ChatRepositoryTest {}\\ntest('loads', () {});\\n")
+    payload["repositories"][repo]["files"].extend([ts, dart])
+    registry_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = NativeEngineeringKnowledgeExtractor(root).extract_repository(repo)
+
+    assert report["success"] is True
+    assert report["metrics"]["multilanguage_files_scanned"] == 2
+    assert report["metrics"]["multilanguage_declarations"] >= 1
+    assert report["metrics"]["multilanguage_test_files"] == 1
+    concepts = {fact["concept"] for fact in report["facts"]}
+    assert "cross_language_source_structure" in concepts
+    assert "cross_language_test_structure" in concepts
+    for fact in report["facts"]:
+        if fact["concept"].startswith("cross_language_"):
+            assert fact["status"] == "OBSERVED_NOT_YET_VERIFIED_FOR_REUSE"
+            assert all(evidence["source_executed"] is False for evidence in fact["evidence"])
