@@ -219,6 +219,11 @@ class TaskAnalyzer:
             "deduce from facts",
             "run native reasoning",
             "perform native inference",
+            "reason over learned code",
+            "reason over learned github code",
+            "reason over acquired github source",
+            "build a knowledge graph from learned code",
+            "analyze the learned dependency graph",
         )
         explicit_fact_reasoning = any(
             marker in text for marker in native_fact_reasoning_markers
