@@ -104,7 +104,8 @@ jobs:
             tests/test_native_knowledge_graph_adapter.py \
             tests/test_native_code_proof_queries.py \
             tests/test_native_code_impact_analysis.py \
-            tests/test_native_test_impact_planner.py
+            tests/test_native_test_impact_planner.py \\
+            tests/test_native_change_set_analysis.py
 
       - name: Run broad first-party test suite (excluding live-provider scripts)
         run: |
