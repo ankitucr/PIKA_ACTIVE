@@ -61,12 +61,16 @@ def _module_name(relative_path: str) -> str:
 
 
 def _dotted_name(node: ast.AST) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        prefix = _dotted_name(node.value)
-        return f"{prefix}.{node.attr}" if prefix else node.attr
-    return ""
+    """Resolve only a syntactic name/attribute chain without recursive descent."""
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return ""
+    parts.append(current.id)
+    return ".".join(reversed(parts))
 
 
 def _entity_id(kind: str, repository: str, commit: str, path: str, label: str) -> str:
@@ -151,6 +155,11 @@ class NativeKnowledgeGraphAdapter:
         if len(entries) > MAX_FILES:
             return self._failure("REPOSITORY_FILE_LIMIT_EXCEEDED", f"At most {MAX_FILES} registered files are accepted.")
 
+        if self.corpus.is_symlink():
+            return self._failure(
+                "INVALID_SOURCE_CORPUS_ROOT",
+                "The acquired source corpus root must not be a symlink.",
+            )
         repo_dir = self.corpus.joinpath(*repo.split("/"))
         current = self.corpus
         for part in repo.split("/"):
@@ -266,8 +275,11 @@ class NativeKnowledgeGraphAdapter:
                 if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
             ]
             node_ids: dict[int, str] = {}
-            qualified_names: dict[int, str] = {}
-            for node in sorted(nodes, key=lambda value: (getattr(value, "lineno", 0), type(value).__name__)):
+            for node in sorted(nodes, key=lambda value: (
+                getattr(value, "lineno", 0),
+                getattr(value, "col_offset", 0),
+                type(value).__name__,
+            )):
                 ancestors: list[str] = []
                 current = parents.get(node)
                 while current is not None:
@@ -275,9 +287,14 @@ class NativeKnowledgeGraphAdapter:
                         ancestors.append(current.name)
                     current = parents.get(current)
                 qualified = ".".join([*reversed(ancestors), node.name])
-                qualified_names[id(node)] = qualified
+                source_identity = (
+                    f"{qualified}@{getattr(node, 'lineno', 0)}:"
+                    f"{getattr(node, 'col_offset', 0)}:"
+                    f"{getattr(node, 'end_lineno', 0)}:"
+                    f"{getattr(node, 'end_col_offset', 0)}:{type(node).__name__}"
+                )
                 node_ids[id(node)] = _entity_id(
-                    "symbol", repo, commit, record["path"], qualified
+                    "symbol", repo, commit, record["path"], source_identity
                 )
                 symbol_records.append({
                     "record": record,
@@ -296,10 +313,11 @@ class NativeKnowledgeGraphAdapter:
                     })
 
         simple_class_ids: dict[str, list[str]] = {}
-        qualified_class_ids: dict[str, str] = {}
+        qualified_class_ids: dict[str, list[str]] = {}
         for item in class_records:
             simple_class_ids.setdefault(item["name"], []).append(item["node_id"])
-            qualified_class_ids[f"{_module_name(item['record']['path'])}.{item['qualified']}"] = item["node_id"]
+            qualified_name = f"{_module_name(item['record']['path'])}.{item['qualified']}"
+            qualified_class_ids.setdefault(qualified_name, []).append(item["node_id"])
 
         fact_groups: dict[str, list[dict[str, str]]] = {
             "module": [],
@@ -420,7 +438,8 @@ class NativeKnowledgeGraphAdapter:
                     base_name = _dotted_name(base)
                     if not base_name or len(base_name) > 300:
                         continue
-                    target_id = qualified_class_ids.get(base_name)
+                    qualified_candidates = qualified_class_ids.get(base_name, [])
+                    target_id = qualified_candidates[0] if len(qualified_candidates) == 1 else None
                     if target_id is None and "." not in base_name:
                         local_candidates = simple_class_ids.get(base_name, [])
                         if len(local_candidates) == 1:
