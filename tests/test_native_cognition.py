@@ -245,6 +245,7 @@ def test_native_agent_advertises_only_implemented_capabilities(tmp_path: Path):
         "contradiction_detection",
         "cross_language_static_analysis",
         "provenance_backed_github_knowledge",
+        "deterministic_self_evolution_staging",
     }
     assert not {
         "coding", "reasoning", "generation", "planning", "debugging",
@@ -267,6 +268,7 @@ def test_native_status_reports_actual_capability_inventory(tmp_path: Path):
     assert "contradiction_detection" in capabilities
     assert "cross_language_static_analysis" in capabilities
     assert "provenance_backed_github_knowledge" in capabilities
+    assert "deterministic_self_evolution_staging" in capabilities
     assert status["arbitrary_workspace_code_generation"] == "UNSUPPORTED"
     assert status["source_execution_during_static_analysis"] is False
 
@@ -452,3 +454,38 @@ def test_native_reasoning_without_structured_facts_does_not_invent_conclusions(t
     assert result["success"] is True
     assert result["raw"]["conclusion"] == "INSUFFICIENT_STRUCTURED_EVIDENCE"
     assert result["raw"]["facts"] == []
+
+
+
+def test_native_brain_stages_deterministic_self_evolution_without_live_write(tmp_path: Path):
+    root = tmp_path / "project"
+    (root / "core").mkdir(parents=True)
+    (root / "tests").mkdir()
+    source = root / "core" / "service.py"
+    original = "def missing(value):\\n    return value == None\\n"
+    source.write_text(original, encoding="utf-8")
+    test = root / "tests" / "test_service.py"
+    test.write_text("def test_missing():\\n    assert True\\n", encoding="utf-8")
+
+    result = asyncio.run(NativeCognitionEngine(root).execute(
+        "self-evolve and stage native improvement",
+        context={
+            "target": "core/service.py",
+            "test_paths": ["tests/test_service.py"],
+            "rule_id": "none_comparison_identity_v1",
+            "evidence": [{"source": "native_static_rule", "finding": "comparison_to_none"}],
+            "rationale": "Deterministic native rule proposal with pinned regression test.",
+        },
+    ))
+
+    assert result["success"] is True
+    assert result["raw"]["stage"] == "ISOLATED_CANDIDATE_STAGED"
+    assert result["raw"]["execution"] == "NOT_EXECUTED"
+    assert result["raw"]["promotion_allowed"] is False
+    assert source.read_text(encoding="utf-8") == original
+
+
+def test_native_self_evolution_requires_explicit_structured_inputs(tmp_path: Path):
+    result = asyncio.run(NativeCognitionEngine(tmp_path).execute("self-evolve"))
+    assert result["success"] is False
+    assert result["error"] == "NATIVE_SELF_EVOLUTION_REJECTED"
