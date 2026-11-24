@@ -145,8 +145,9 @@ class NativeTestImpactPlanner:
             file_evidence = [
                 evidence_item
                 for step in first_steps
-                for evidence_item in step.get("source_evidence", [])
                 if isinstance(step, dict)
+                for evidence_item in step.get("source_evidence", [])
+                if isinstance(evidence_item, dict)
             ]
             candidate_files = sorted({
                 str(item.get("path"))
