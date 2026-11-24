@@ -125,7 +125,7 @@ def test_static_test_planner_finds_direct_and_transitive_test_modules(tmp_path):
 def test_test_candidates_are_not_reported_for_unrelated_module(tmp_path):
     _make_repository(tmp_path)
 
-    result = _planner(tmp_path).plan("sample/graph", "pkg/a.py")
+    result = _planner(tmp_path).plan("sample/graph", "pkg")
 
     assert result["success"] is True
     assert result["test_selection"]["test_case_count"] == 0
@@ -159,10 +159,10 @@ def test_duplicate_manifest_entries_are_rejected_by_graph_and_not_selected(tmp_p
 
     result = _planner(tmp_path).plan("sample/graph", "pkg.c")
 
-    assert result["success"] is True
-    assert result["test_selection"]["status"] == "PARTIAL_TEST_CANDIDATES"
-    assert any("duplicate repository path" in error for error in result["impact_analysis"].get("errors", [])) or result["impact_analysis"]["status"] == "PARTIAL_IMPACT_ANALYSIS"
+    assert result["success"] is False
+    assert result["error"] == "DUPLICATE_SOURCE_MANIFEST_PATHS"
     assert result["test_execution_performed"] is False
+    assert result["promotion_allowed"] is False
 
 
 def test_test_selection_validator_rejects_tampered_case_or_file_provenance(tmp_path):
