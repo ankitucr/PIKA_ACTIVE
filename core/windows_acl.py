@@ -5,6 +5,7 @@ import base64
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 _PS_CHECK = r"""
@@ -47,7 +48,7 @@ try {
     [Console]::Out.Write('PIKA_ACL_OK')
     exit 0
 } catch {
-    [Console]::Error.WriteLine($_.Exception.GetType().FullName)
+    [Console]::Error.WriteLine($_.Exception.ToString())
     exit 99
 }
 """
@@ -84,7 +85,7 @@ try {
     [Console]::Out.Write('PIKA_ACL_SET_OK')
     exit 0
 } catch {
-    [Console]::Error.WriteLine($_.Exception.GetType().FullName)
+    [Console]::Error.WriteLine($_.Exception.ToString())
     exit 99
 }
 """
@@ -125,8 +126,16 @@ def _run_powershell(script: str, path: str | Path, marker: str) -> bool:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             check=False,
         )
-        return result.returncode == 0 and result.stdout.strip() == marker
-    except (OSError, subprocess.SubprocessError, ValueError):
+        success = result.returncode == 0 and result.stdout.strip() == marker
+        if not success and os.environ.get("PIKA_ACL_DEBUG") == "1":
+            sys.stderr.write(
+                "PIKA ACL PowerShell failure: "
+                f"exit={result.returncode}; stdout={result.stdout!r}; stderr={result.stderr!r}\\n"
+            )
+        return success
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        if os.environ.get("PIKA_ACL_DEBUG") == "1":
+            sys.stderr.write(f"PIKA ACL launch failure: {type(exc).__name__}: {exc}\\n")
         return False
 
 
