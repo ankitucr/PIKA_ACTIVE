@@ -43,7 +43,7 @@ def _resolve_node(nodes: set[str], reference: Any) -> tuple[str | None, list[str
     matches = sorted(
         label for label in nodes
         if not label.startswith("unresolved_class_reference:")
-        and re.search(rf":{re.escape(query)}(?:@|:)", label)
+        and re.search(rf":{re.escape(query)}(?:@|:|_\\d+_)", label)
     )
     if len(matches) == 1:
         return matches[0], matches
