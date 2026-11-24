@@ -16,7 +16,6 @@ from typing import Any
 from core.native_reasoning import NativeReasoningEngine
 
 SCHEMA = "pika.native_code_graph_adapter.v1"
-REASONING_SCHEMA = "pika.native_code_graph_reasoning.v1"
 MAX_FILES = 300
 MAX_FILE_BYTES = 200_000
 MAX_FACTS = 500
@@ -181,9 +180,14 @@ class NativeKnowledgeGraphAdapter:
         skipped_non_python = 0
         syntax_errors = 0
         ast_nodes_total = 0
+        unscanned_manifest_entries = 0
         seen_paths: set[str] = set()
 
-        for item in sorted(entries, key=lambda row: str(row.get("path", "")) if isinstance(row, dict) else ""):
+        ordered_entries = sorted(
+            entries,
+            key=lambda row: str(row.get("path", "")) if isinstance(row, dict) else "",
+        )
+        for entry_index, item in enumerate(ordered_entries):
             if not isinstance(item, dict):
                 errors.append("manifest contains a non-object entry")
                 continue
@@ -229,10 +233,12 @@ class NativeKnowledgeGraphAdapter:
                     )
                     continue
                 if ast_nodes_total + ast_node_count > MAX_AST_NODES_TOTAL:
+                    unscanned_manifest_entries = len(ordered_entries) - entry_index - 1
                     errors.append(
-                        f"{relative_path}: repository AST node budget would exceed {MAX_AST_NODES_TOTAL}"
+                        f"{relative_path}: repository AST node budget would exceed {MAX_AST_NODES_TOTAL}; "
+                        f"{unscanned_manifest_entries} later manifest entries were not scanned"
                     )
-                    continue
+                    break
                 ast_nodes_total += ast_node_count
                 parsed.append({
                     "path": relative_path,
@@ -514,6 +520,7 @@ class NativeKnowledgeGraphAdapter:
                 "registered_files": len(entries),
                 "python_files_parsed": len(parsed),
                 "ast_nodes_analyzed": ast_nodes_total,
+                "manifest_entries_not_scanned_after_ast_limit": unscanned_manifest_entries,
                 "syntax_errors": syntax_errors,
                 "non_python_files_skipped": skipped_non_python,
                 "input_relationship_records": len(facts),
