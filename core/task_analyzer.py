@@ -258,11 +258,15 @@ class TaskAnalyzer:
         )
         symbolic_reasoning_markers = (
             "bounded symbolic reasoning",
+            "reason about",
             "reason with declarative rules",
             "apply declarative rules",
             "evaluate supplied logical rules",
             "check contradictions in supplied facts",
             "reason over supplied facts and rules",
+            "what follows",
+            "logical conclusion",
+            "check contradiction",
         )
         explicit_self_evolution = any(marker in text for marker in self_evolution_markers)
         explicit_symbolic_reasoning = any(marker in text for marker in symbolic_reasoning_markers)

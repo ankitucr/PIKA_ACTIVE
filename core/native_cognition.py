@@ -1267,11 +1267,15 @@ class NativeCognitionEngine:
 
         symbolic_reasoning_markers = (
             "bounded symbolic reasoning",
+            "reason about",
             "reason with declarative rules",
             "apply declarative rules",
             "evaluate supplied logical rules",
             "check contradictions in supplied facts",
             "reason over supplied facts and rules",
+            "what follows",
+            "logical conclusion",
+            "check contradiction",
         )
         if any(marker in lower for marker in symbolic_reasoning_markers):
             facts = context.get("facts", [])
