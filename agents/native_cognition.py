@@ -26,6 +26,7 @@ class NativeCognitionAgent(Agent):
         "contradiction_detection",
         "cross_language_static_analysis",
         "provenance_backed_github_knowledge",
+        "deterministic_self_evolution_staging",
     ]
 
     def __init__(self, root: str | None = None) -> None:
