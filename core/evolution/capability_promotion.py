@@ -406,6 +406,10 @@ class CapabilityPromotionManager:
         result_attestor_config: str | Path,
         result_runner: ResultBoundSandboxRunner,
     ) -> dict[str, Any]:
+        if getattr(approval_policy, "purpose", None) != "PRODUCTION_PROMOTION":
+            raise CapabilityPromotionError("A PRODUCTION_PROMOTION approval policy is required.")
+        if getattr(result_runner, "available", False) is not True:
+            raise CapabilityPromotionError("Independent post-promotion result runner is unavailable; live writes denied.")
         plan, plan_sha = self._read_plan(plan_path)
         if plan.get("state") != "PREPARED_PENDING_OPERATOR_APPROVAL":
             raise CapabilityPromotionError("Promotion plan is not pending approval.")
@@ -464,7 +468,12 @@ class CapabilityPromotionManager:
                 source_paths=source_paths,
                 timeout=plan["timeout"],
             )
-            if post.get("verified") is not True or post.get("outcome") != "PASSED":
+            if (post.get("verified") is not True
+                    or post.get("evidence_class") != "INDEPENDENT_OS_RESULT_ATTESTATION"
+                    or post.get("outcome") != "PASSED"
+                    or not isinstance(post.get("result_attestation"), dict)
+                    or not isinstance(post["result_attestation"].get("result_sha256"), str)
+                    or not _DIGEST.fullmatch(post["result_attestation"]["result_sha256"])):
                 raise CapabilityPromotionError("Post-promotion independent OS attestation did not pass.")
         except Exception as exc:
             removed = self._remove_created(created, plan["files"])
@@ -538,6 +547,8 @@ class CapabilityPromotionManager:
         approval_path: str | Path,
         approval_policy: OperatorApprovalTrustPolicy,
     ) -> dict[str, Any]:
+        if getattr(approval_policy, "purpose", None) != "PRODUCTION_ROLLBACK":
+            raise CapabilityPromotionError("A PRODUCTION_ROLLBACK approval policy is required.")
         plan, plan_sha = self._read_plan(plan_path)
         expected = self.rollback_approval_payload(plan_path)
         _, approval_raw = _protected_file(approval_path, project_root=self.root, maximum=1_000_000)
@@ -547,6 +558,8 @@ class CapabilityPromotionManager:
         except (UnicodeError, json.JSONDecodeError, OperatorApprovalError) as exc:
             raise CapabilityPromotionError("Capability rollback approval is invalid.") from exc
         used = self._promotion_keys(plan["plan_id"])
+        if not used:
+            raise CapabilityPromotionError("No successful promotion event exists for this rollback plan.")
         if info["approver_key_sha256"] in used:
             raise CapabilityPromotionError("Rollback requires a distinct operator key from promotion.")
         removed = self._remove_created(sorted(plan["files"]), plan["files"])
