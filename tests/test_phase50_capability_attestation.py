@@ -190,13 +190,13 @@ def test_attested_evaluator_rejects_unpinned_third_party_imports(tmp_path):
     project = tmp_path / "pika"
     (project / "tests").mkdir(parents=True)
     (project / "tests" / "test_feature.py").write_text(
-        "from feature import feature\\n\\ndef test_feature():\\n    assert feature() == 42\\n",
+        "from feature import feature\n\ndef test_feature():\n    assert feature() == 42\n",
         encoding="utf-8",
     )
     external = tmp_path / "external"
     external.mkdir()
     (external / "feature.py").write_text(
-        "import requests\\ndef feature():\\n    return 42\\n",
+        "import requests\ndef feature():\n    return 42\n",
         encoding="utf-8",
     )
     bundles = NativeCapabilityBundleEngine(external.parent / "knowledge", project_root=project)
