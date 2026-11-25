@@ -142,10 +142,10 @@ def test_evaluation_requires_acknowledgement_and_runs_only_hash_bound_bundle(tmp
 
     source = tmp_path / "external"
     source.mkdir()
-    (source / "feature.py").write_text("def feature():\\n    return 42\\n", encoding="utf-8")
+    (source / "feature.py").write_text("def feature():\n    return 42\n", encoding="utf-8")
     (source / "tests").mkdir()
     (source / "tests" / "test_feature.py").write_text(
-        "from feature import feature\\n\\ndef test_feature():\\n    assert feature() == 42\\n",
+        "from feature import feature\n\ndef test_feature():\n    assert feature() == 42\n",
         encoding="utf-8",
     )
     engine = NativeCapabilityBundleEngine(
@@ -194,9 +194,9 @@ def test_evaluation_requires_acknowledgement_and_runs_only_hash_bound_bundle(tmp
 def test_evaluation_rejects_tampered_staged_source(tmp_path):
     source = tmp_path / "external"
     source.mkdir()
-    (source / "feature.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    (source / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     (source / "tests").mkdir()
-    (source / "tests" / "test_feature.py").write_text("def test_feature():\\n    assert True\\n", encoding="utf-8")
+    (source / "tests" / "test_feature.py").write_text("def test_feature():\n    assert True\n", encoding="utf-8")
     engine = NativeCapabilityBundleEngine(tmp_path / "knowledge", project_root=tmp_path / "pika")
     staged = engine.stage_bundle(
         source,
