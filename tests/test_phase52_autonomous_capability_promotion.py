@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from core.native_capability_bundle import NativeCapabilityBundleEngine
 from core.phase36.result_attestation import CHALLENGE_SCHEMA, SANDBOX_POLICY_ID
 from core.evolution.capability_attestation import ResultAttestedCapabilityEvaluator
