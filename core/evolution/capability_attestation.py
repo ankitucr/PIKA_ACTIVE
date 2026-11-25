@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from core.phase36.result_attestation import SANDBOX_POLICY_ID
+from core.phase36.result_attestation import CHALLENGE_SCHEMA, SANDBOX_POLICY_ID
 from core.native_capability_bundle import (
     CapabilityBundleError,
     NativeCapabilityBundleEngine,
@@ -213,6 +213,15 @@ class ResultAttestedCapabilityEvaluator:
                     }
                     if (
                         not isinstance(challenge, dict)
+                        or challenge.get("schema") != CHALLENGE_SCHEMA
+                        or not isinstance(challenge.get("backend_id"), str)
+                        or not challenge.get("backend_id")
+                        or not isinstance(challenge.get("integration_type"), str)
+                        or not challenge.get("integration_type")
+                        or not isinstance(challenge.get("challenge_nonce"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", challenge.get("challenge_nonce", ""))
+                        or not isinstance(challenge.get("run_context_sha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", challenge.get("run_context_sha256", ""))
                         or challenge.get("argv") != argv
                         or challenge.get("timeout") != timeout
                         or challenge.get("source_hashes") != expected_source_hashes
