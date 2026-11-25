@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import fcntl
+from core.evolution.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+
 import hashlib
 import json
 import os
@@ -380,7 +381,7 @@ class ProductionPromotionManager:
         try:
             if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
                 raise ProductionPromotionError("Promotion lock must be a regular file.")
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             rows = []
             previous = "0" * 64
             if self.journal.exists():
@@ -419,7 +420,7 @@ class ProductionPromotionManager:
             return row
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
