@@ -11,7 +11,7 @@ This is not an implicit permission. An owner must create and sign a policy once,
 The policy must be owner-owned, owner-only, outside the project, signed and unexpired. The helper `sign_autonomous_capability_policy(...)` signs a caller-supplied policy payload using an owner-only external PEM key; `load_autonomous_capability_policy(...)` verifies it against the separately pinned public-key trust config. It cannot weaken these fixed safeguards:
 
 - Add-only Python files under an explicit subset of approved source roots.
-- Maximum 100 files and 5 MB per bundle.
+- Maximum 1,000 files and 25 MB per bundle (expanded in Phase 53).
 - Three or five independent result-attested repetitions.
 - Baseline must not pass every trusted test; candidate must pass every trusted test.
 - No overwriting existing files.
