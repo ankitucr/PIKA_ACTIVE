@@ -131,11 +131,11 @@ def prepare_fixture(tmp_path, monkeypatch):
         report_path=report["report_path"],
         result_attestor_config="external-trust-config.json",
     )
-    return project, manager, prepared, report["report_path"]
+    return project, manager, prepared, report["report_path"], staged["bundle_id"]
 
 
 def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatch):
-    project, manager, prepared, report_path = prepare_fixture(tmp_path, monkeypatch)
+    project, manager, prepared, report_path, bundle_id = prepare_fixture(tmp_path, monkeypatch)
     target = project / "core" / "pika_new_feature.py"
     assert not target.exists()
     assert prepared["success"] is True
@@ -177,7 +177,7 @@ def test_multi_file_prepare_refuses_existing_live_source(tmp_path, monkeypatch):
     target.write_text("def feature():\n    return 0\n", encoding="utf-8")
     with pytest.raises(CapabilityPromotionError):
         manager.prepare(
-            prepared["bundle_id"],
+            bundle_id,
             report_path=report_path,
             result_attestor_config="external-trust-config.json",
         )
