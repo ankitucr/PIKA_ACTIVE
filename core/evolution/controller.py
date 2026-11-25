@@ -291,6 +291,18 @@ class EvolutionController:
             result_runner=result_runner,
         )
 
+    def promote_capability_bundle_autonomously(
+        self, *, plan_path, policy_path, policy_trust_config,
+        result_attestor_config, result_runner, rollback_root,
+    ):
+        return self._capability_promotion_manager(rollback_root).promote_autonomously(
+            plan_path,
+            policy_path=policy_path,
+            policy_trust_config=policy_trust_config,
+            result_attestor_config=result_attestor_config,
+            result_runner=result_runner,
+        )
+
     def prepare_capability_rollback(self, *, plan_path, rollback_root):
         return self._capability_promotion_manager(rollback_root).rollback_approval_payload(plan_path)
 
