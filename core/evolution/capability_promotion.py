@@ -129,6 +129,18 @@ class CapabilityPromotionManager:
         self.journal = self.bundles.knowledge / "CAPABILITY_PROMOTION_LEDGER.jsonl"
         self.lock = self.journal.with_name(self.journal.name + ".lock")
 
+    def _attestor_key_hashes(self, result_attestor_config: str | Path) -> set[str]:
+        policy = load_result_attestation_trust_policy(
+            result_attestor_config,
+            project_root=self.root,
+        )
+        trusted = getattr(policy, "_trusted", {})
+        return {
+            hashlib.sha256(bytes.fromhex(item["public_key_hex"])).hexdigest()
+            for item in trusted.values()
+            if isinstance(item, dict) and isinstance(item.get("public_key_hex"), str)
+        }
+
     def _bundle_files(self, bundle_id: str) -> tuple[dict[str, Any], dict[str, bytes]]:
         if not isinstance(bundle_id, str) or not _BUNDLE_ID.fullmatch(bundle_id):
             raise CapabilityPromotionError("Invalid staged bundle ID.")
@@ -421,6 +433,8 @@ class CapabilityPromotionManager:
             approval_info = approval_policy.verify(approval, expected)
         except (UnicodeError, json.JSONDecodeError, OperatorApprovalError) as exc:
             raise CapabilityPromotionError("Capability promotion approval is invalid or not bound to this plan.") from exc
+        if approval_info["approver_key_sha256"] in self._attestor_key_hashes(result_attestor_config):
+            raise CapabilityPromotionError("Promotion approver must use a distinct key from the independent result attestor.")
         report, report_sha, files, manifest = self._load_attested_report(plan["report_path"], result_attestor_config)
         if report_sha != plan["report_sha256"] or manifest["manifest_sha256"] != plan["bundle_manifest_sha256"]:
             raise CapabilityPromotionError("Attested report or staged bundle changed after plan preparation.")
@@ -539,6 +553,8 @@ class CapabilityPromotionManager:
         except ValueError as exc:
             raise CapabilityPromotionError(f"Standing autonomous policy rejected: {exc}") from exc
         policy = authorization["policy"]
+        if authorization["signer_key_sha256"] in self._attestor_key_hashes(result_attestor_config):
+            raise CapabilityPromotionError("Standing-policy signer must use a distinct key from the independent result attestor.")
         plan, plan_sha = self._read_plan(plan_path)
         if plan.get("state") != "PREPARED_PENDING_OPERATOR_APPROVAL":
             raise CapabilityPromotionError("Capability plan is not pending promotion.")
