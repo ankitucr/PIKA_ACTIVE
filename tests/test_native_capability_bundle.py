@@ -135,3 +135,75 @@ def test_native_cognition_routes_capability_staging_and_reports_status(tmp_path)
     status = engine.status()
     assert status["staged_capability_bundles"] == 1
     assert "hash_bound_multi_file_capability_intake" in status["native_capabilities"]
+
+
+def test_evaluation_requires_acknowledgement_and_runs_only_hash_bound_bundle(tmp_path, monkeypatch):
+    from core.host.pc_body import PCBodyRuntime
+
+    source = tmp_path / "external"
+    source.mkdir()
+    (source / "feature.py").write_text("def feature():\\n    return 42\\n", encoding="utf-8")
+    (source / "tests").mkdir()
+    (source / "tests" / "test_feature.py").write_text(
+        "from feature import feature\\n\\ndef test_feature():\\n    assert feature() == 42\\n",
+        encoding="utf-8",
+    )
+    engine = NativeCapabilityBundleEngine(
+        tmp_path / "knowledge",
+        project_root=tmp_path / "pika",
+    )
+    staged = engine.stage_bundle(
+        source,
+        name="feature-eval",
+        include_paths=["feature.py", "tests/test_feature.py"],
+        test_paths=["tests/test_feature.py"],
+    )
+    with pytest.raises(CapabilityBundleError):
+        engine.evaluate_bundle(staged["bundle_id"], acknowledge_untrusted_sandbox=False)
+
+    calls = []
+    def fake_run(self, *, source_paths, test_paths, timeout, acknowledge_untrusted_sandbox):
+        calls.append((source_paths, test_paths, timeout, acknowledge_untrusted_sandbox))
+        assert all(path.startswith("workspace/pika_capability_eval_") for path in source_paths)
+        assert all(path in source_paths for path in test_paths)
+        return {
+            "success": True,
+            "execution_started": True,
+            "sandboxed": True,
+            "attested": False,
+            "trust": "UNVERIFIED_LOCAL",
+            "promotion_allowed": False,
+            "test_count": 1,
+        }
+
+    monkeypatch.setattr(PCBodyRuntime, "run_tests", fake_run)
+    result = engine.evaluate_bundle(
+        staged["bundle_id"],
+        acknowledge_untrusted_sandbox=True,
+    )
+    assert result["success"] is True
+    assert result["execution_performed"] is True
+    assert result["sandboxed"] is True
+    assert result["attested"] is False
+    assert result["trusted_learning_admission"] is False
+    assert result["production_promotion_allowed"] is False
+    assert len(calls) == 1
+    assert not list((tmp_path / "pika" / "workspace").glob("pika_capability_eval_*"))
+
+
+def test_evaluation_rejects_tampered_staged_source(tmp_path):
+    source = tmp_path / "external"
+    source.mkdir()
+    (source / "feature.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    (source / "tests").mkdir()
+    (source / "tests" / "test_feature.py").write_text("def test_feature():\\n    assert True\\n", encoding="utf-8")
+    engine = NativeCapabilityBundleEngine(tmp_path / "knowledge", project_root=tmp_path / "pika")
+    staged = engine.stage_bundle(
+        source,
+        name="tamper-check",
+        include_paths=["feature.py", "tests/test_feature.py"],
+        test_paths=["tests/test_feature.py"],
+    )
+    (Path(staged["bundle_path"]) / "feature.py").write_text("VALUE = 2\\n", encoding="utf-8")
+    with pytest.raises(CapabilityBundleError):
+        engine.evaluate_bundle(staged["bundle_id"], acknowledge_untrusted_sandbox=True)
