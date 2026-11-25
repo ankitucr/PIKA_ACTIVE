@@ -203,8 +203,31 @@ class ResultAttestedCapabilityEvaluator:
                         raise CapabilityAttestationError("Runner did not return independent OS result attestation.")
                     result = verified.get("result")
                     attestation = verified.get("result_attestation")
+                    challenge = verified.get("challenge")
                     if not isinstance(result, dict) or not isinstance(attestation, dict) or result != attestation.get("result"):
                         raise CapabilityAttestationError("Run result does not match its signed attestation.")
+                    expected_source_hashes = {
+                        relative: _sha((cwd / relative).read_bytes())
+                        for relative in sources
+                    }
+                    if (
+                        not isinstance(challenge, dict)
+                        or challenge.get("argv") != argv
+                        or challenge.get("timeout") != timeout
+                        or challenge.get("source_hashes") != expected_source_hashes
+                        or challenge.get("sandbox_policy_id") != SANDBOX_POLICY_ID
+                    ):
+                        raise CapabilityAttestationError("Signed run challenge does not bind the selected code, tests, timeout and sandbox policy.")
+                    if (
+                        not isinstance(attestation.get("verification_id"), str)
+                        or not attestation.get("verification_id")
+                        or attestation.get("challenge_nonce") != challenge.get("challenge_nonce")
+                        or not isinstance(attestation.get("result_sha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", attestation["result_sha256"])
+                        or not isinstance(attestation.get("measurement_sha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", attestation["measurement_sha256"])
+                    ):
+                        raise CapabilityAttestationError("Signed result attestation metadata is incomplete.")
                     outcome = result.get("outcome")
                     if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT"}:
                         raise CapabilityAttestationError("Attested runner returned an unsupported or empty-test outcome.")
