@@ -98,6 +98,8 @@ def test_native_self_analysis_persists_hypotheses_without_source_changes(tmp_pat
 
     assert result["success"] is True
     assert result["hypothesis_count"] == 1
+    assert result["mode"] == "native_static_self_analysis"
+    assert result["hypothesis_generation"] == "enabled"
     assert result["source_modified"] is False
     assert result["source_executed"] is False
     stored = json.loads((tmp_path / "data" / "pika_native_improvement_hypotheses.json").read_text())
