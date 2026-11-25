@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.evolution.autonomous_capability_policy import (
     POLICY_SCHEMA,
+    POLICY_SCHEMA_V2,
     TRUST_SCHEMA,
     AutonomousPolicyError,
     _canonical,
