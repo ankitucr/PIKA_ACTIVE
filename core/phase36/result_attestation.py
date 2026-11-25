@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import fcntl
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
 import hashlib
 import json
 import math
@@ -318,7 +318,7 @@ class RunAttestationReplayGuard:
                 raise ResultAttestationError('Symlinks are forbidden in the replay journal path.')
             current = current.parent
         parent_metadata = self.path.parent.stat()
-        if stat.S_IMODE(parent_metadata.st_mode) & 0o077:
+        if os.name == 'posix' and stat.S_IMODE(parent_metadata.st_mode) & 0o077:
             raise ResultAttestationError('Replay journal parent must be owner-only (0700).')
         get_uid = getattr(os, 'geteuid', None)
         if callable(get_uid) and parent_metadata.st_uid != get_uid():
@@ -331,7 +331,7 @@ class RunAttestationReplayGuard:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
         fd = os.open(self.lock_path, flags, 0o600)
         metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+        if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
             os.close(fd)
             raise ResultAttestationError('Replay lock must be a regular owner-only file.')
         get_uid = getattr(os, 'geteuid', None)
@@ -349,7 +349,7 @@ class RunAttestationReplayGuard:
         fd = os.open(self.path, flags)
         try:
             metadata = os.fstat(fd)
-            if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+            if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
                 raise ResultAttestationError('Replay journal must be a regular owner-only file.')
             get_uid = getattr(os, 'geteuid', None)
             if callable(get_uid) and metadata.st_uid != get_uid():
@@ -412,7 +412,7 @@ class RunAttestationReplayGuard:
             raise ResultAttestationError('Invalid attestation replay identity.')
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             rows = self._read_rows()
             if any(row['challenge_nonce'] == nonce or row['verification_id'] == verification_id for row in rows):
                 raise RunReplayError('Challenge nonce or verification ID has already been consumed.')
@@ -428,7 +428,7 @@ class RunAttestationReplayGuard:
             fd = os.open(self.path, flags, 0o600)
             try:
                 metadata = os.fstat(fd)
-                if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+                if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
                     raise ResultAttestationError('Replay journal append target must be a regular owner-only file.')
                 get_uid = getattr(os, 'geteuid', None)
                 if callable(get_uid) and metadata.st_uid != get_uid():
@@ -444,7 +444,7 @@ class RunAttestationReplayGuard:
                 os.close(fd)
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 

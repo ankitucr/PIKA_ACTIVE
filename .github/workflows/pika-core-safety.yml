@@ -105,6 +105,9 @@ jobs:
       - name: Run Phase 53 large capability bundle contract
         run: python -m pytest -q tests/test_phase53_large_capability_bundles.py
 
+      - name: Run Phase 55 Windows host portability contract
+        run: python -m pytest -q tests/test_phase55_windows_host_portability.py
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \

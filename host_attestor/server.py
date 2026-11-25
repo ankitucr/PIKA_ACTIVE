@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-import fcntl
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
 import hashlib
 import hmac
 import io
@@ -78,12 +78,12 @@ def _read_owner_file(path: Path, *, maximum: int = 65536) -> bytes:
     if path.is_symlink() or not path.is_file():
         raise HostAttestorError(f"Protected host file is missing or is a symlink: {path.name}")
     metadata = path.stat()
-    if stat.S_IMODE(metadata.st_mode) & 0o077:
+    if os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077:
         raise HostAttestorError(f"{path.name} must have owner-only permissions.")
     if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
         raise HostAttestorError(f"{path.name} must be owned by the attestor service user.")
     parent_meta = path.parent.stat()
-    if stat.S_IMODE(parent_meta.st_mode) & 0o077:
+    if os.name == 'posix' and stat.S_IMODE(parent_meta.st_mode) & 0o077:
         raise HostAttestorError(f"{path.parent.name} must have owner-only permissions.")
     if hasattr(os, "geteuid") and parent_meta.st_uid != os.geteuid():
         raise HostAttestorError(f"{path.parent.name} must be owned by the attestor service user.")
@@ -376,7 +376,7 @@ class HostAttestor:
         try:
             if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
                 raise HostAttestorError("Challenge nonce lock is not a regular file.")
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             previous = "0" * 64
             seen = set()
             if self.nonce_path.exists():
@@ -412,7 +412,7 @@ class HostAttestor:
                 os.close(out)
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
@@ -421,7 +421,7 @@ class HostAttestor:
         try:
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise HostAttestorError("Attestation audit lock is not a regular file.")
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            acquire_lock_fd(fd, exclusive=True)
             previous = "0" * 64
             if self.audit_path.exists():
                 if self.audit_path.is_symlink() or self.audit_path.stat().st_size > 100 * 1024 * 1024:
@@ -455,7 +455,7 @@ class HostAttestor:
                 os.close(out)
         finally:
             try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                release_lock_fd(fd)
             finally:
                 os.close(fd)
 
