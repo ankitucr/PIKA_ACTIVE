@@ -61,6 +61,18 @@ def _target(value: Any) -> PurePosixPath:
     return path
 
 
+def _trusted_test_path(value: Any) -> PurePosixPath:
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise CapabilityPromotionError("Invalid trusted test path.")
+    path = PurePosixPath(value)
+    if (path.is_absolute() or path.as_posix() != value
+            or len(path.parts) < 2 or path.parts[0] != "tests"
+            or path.suffix != ".py"
+            or any(part in {"", ".", ".."} or part.startswith(".") for part in path.parts)):
+        raise CapabilityPromotionError("Trusted test paths must be clean Python files under tests/.")
+    return path
+
+
 def _no_symlink(root: Path, relative: PurePosixPath, *, must_exist: bool) -> Path:
     current = root
     for part in relative.parts:
@@ -191,8 +203,8 @@ class CapabilityPromotionManager:
         if not isinstance(tests, dict) or not tests:
             raise CapabilityPromotionError("Attested report has no trusted test manifest.")
         for relative, digest in tests.items():
-            target = _target(relative)
-            if target.parts[0] != "tests" or not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+            target = _trusted_test_path(relative)
+            if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
                 raise CapabilityPromotionError("Trusted test manifest contains an invalid path or digest.")
             live_test = _no_symlink(self.root, target, must_exist=True)
             if _sha(live_test.read_bytes()) != digest:
