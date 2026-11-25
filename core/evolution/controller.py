@@ -15,6 +15,9 @@ from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
 from .verified_memory import VerifiedExperimentMemory
 from .attested_experiments import ResultAttestedCandidateExperimentEngine
+from .capability_promotion import CapabilityPromotionManager
+from .capability_attestation import ResultAttestedCapabilityEvaluator
+from core.native_capability_bundle import NativeCapabilityBundleEngine
 from core.phase36.result_learning import ResultAttestedLearningGate
 from core.phase36.learning_admission import TrustedLearningAdmission
 from core.phase36.production_promotion import ProductionPromotionManager
@@ -42,6 +45,7 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
+        self.capability_bundles = NativeCapabilityBundleEngine(self.knowledge, project_root=self.root)
         self.verified_memory = VerifiedExperimentMemory(self.knowledge)
         self.trusted_learning = TrustedLearningAdmission(self.root)
         self.discovery = CandidateDiscoveryQueue(
@@ -170,6 +174,33 @@ class EvolutionController:
         return result
 
 
+    def evaluate_capability_bundle_attested(
+        self,
+        bundle_id,
+        *,
+        trusted_test_paths,
+        result_runner,
+        timeout=120,
+        repetitions=3,
+        argv=None,
+    ):
+        """Compare baseline and staged capability using independent signed OS results.
+
+        Results are bound to the exact bundle and trusted test hashes. This method
+        does not admit learning or promote source; the separate Phase 36 gates
+        remain mandatory.
+        """
+        evaluator = ResultAttestedCapabilityEvaluator(
+            self.capability_bundles, result_runner
+        )
+        return evaluator.evaluate(
+            bundle_id,
+            trusted_test_paths=trusted_test_paths,
+            timeout=timeout,
+            repetitions=repetitions,
+            argv=argv,
+        )
+
     def evaluate_candidate_attested(
         self, candidate_id, *, result_runner, timeout=120,
         performance_threshold=0.10, repetitions=3, argv=None
@@ -215,6 +246,54 @@ class EvolutionController:
             result_attestor_config=result_attestor_config,
             operator_approval_path=operator_approval_file,
             operator_trust_policy=operator_policy,
+        )
+
+    def _capability_promotion_manager(self, rollback_root):
+        from core.native_capability_bundle import NativeCapabilityBundleEngine
+        bundles = NativeCapabilityBundleEngine(self.knowledge, project_root=self.root)
+        return CapabilityPromotionManager(bundles, rollback_root=rollback_root)
+
+    def prepare_capability_promotion(
+        self, bundle_id, *, report_path, result_attestor_config, rollback_root,
+    ):
+        return self._capability_promotion_manager(rollback_root).prepare(
+            bundle_id,
+            report_path=report_path,
+            result_attestor_config=result_attestor_config,
+        )
+
+    def promote_capability_bundle(
+        self, *, plan_path, approval_file, approval_trust_config,
+        result_attestor_config, result_runner, rollback_root,
+    ):
+        approval_policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_PROMOTION",
+        )
+        return self._capability_promotion_manager(rollback_root).promote(
+            plan_path,
+            approval_path=approval_file,
+            approval_policy=approval_policy,
+            result_attestor_config=result_attestor_config,
+            result_runner=result_runner,
+        )
+
+    def prepare_capability_rollback(self, *, plan_path, rollback_root):
+        return self._capability_promotion_manager(rollback_root).rollback_approval_payload(plan_path)
+
+    def rollback_capability_bundle(
+        self, *, plan_path, approval_file, approval_trust_config, rollback_root,
+    ):
+        approval_policy = load_operator_approval_trust_policy(
+            approval_trust_config,
+            project_root=self.root,
+            purpose="PRODUCTION_ROLLBACK",
+        )
+        return self._capability_promotion_manager(rollback_root).rollback(
+            plan_path,
+            approval_path=approval_file,
+            approval_policy=approval_policy,
         )
 
     def _production_promotion_manager(self, rollback_root):

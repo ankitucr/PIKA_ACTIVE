@@ -25,7 +25,7 @@ on:
       - ".github/workflows/pika-core-safety.yml"
       - ".github/workflows/pika-isolated-candidate-ci.yml"
   pull_request:
-    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust, phase42/native-code-impact-analysis, phase43/native-test-impact-planning, phase44/native-change-set-impact, phase45/source-graph-evolution-convergence]
+    branches: [main, phase37-3/result-bound-attestation, phase37-4/production-trust-gates, phase38/pc-body-on-phase37, phase39/native-reasoning-core, phase40/multilang-structural-learning, phase41/native-self-evolution-loop, phase42/consolidated-native-trust, phase42/native-code-impact-analysis, phase43/native-test-impact-planning, phase44/native-change-set-impact, phase45/source-graph-evolution-convergence, phase47/evidence-driven-hypothesis-engine]
     paths:
       - "core/**"
       - "PIKA_KNOWLEDGE/**"
@@ -83,6 +83,21 @@ jobs:
 
       - name: Prepare best-effort local diagnostic venv (not an OS sandbox)
         run: python -m core.evolution.local_runner setup
+
+      - name: Run Phase 46 experiment-quality contract
+        run: python -m pytest -q tests/test_phase46_experiment_quality.py
+
+      - name: Run Phase 47 improvement-hypothesis contract
+        run: python -m pytest -q tests/test_native_improvement_hypotheses.py
+
+      - name: Run Phase 48/49 capability intake and isolated evaluation contract
+        run: python -m pytest -q tests/test_native_capability_bundle.py
+
+      - name: Run Phase 50 attested capability-delta contract
+        run: python -m pytest -q tests/test_phase50_capability_attestation.py
+
+      - name: Run Phase 51 reversible capability promotion contract
+        run: python -m pytest -q tests/test_phase51_capability_promotion.py
 
       - name: Run focused safety and learning regressions
         run: |

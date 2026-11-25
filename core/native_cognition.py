@@ -23,6 +23,8 @@ from core.native_code_proof_queries import NativeCodeProofQuery
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
 from core.native_test_impact_planner import NativeTestImpactPlanner
 from core.native_change_set_analysis import NativeChangeSetAnalyzer
+from core.native_improvement_hypotheses import NativeImprovementHypothesisEngine
+from core.native_capability_bundle import NativeCapabilityBundleEngine, CapabilityBundleError
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -41,6 +43,8 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
+        self.improvement_hypotheses = NativeImprovementHypothesisEngine()
+        self.capability_bundles = NativeCapabilityBundleEngine(self.root / "PIKA_KNOWLEDGE", project_root=self.root)
         self.reasoning = NativeReasoningEngine()
         self.reasoner = NativeSymbolicReasoningEngine()
         self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
@@ -87,25 +91,113 @@ class NativeCognitionEngine:
         }
         queue_path = self.data / "pika_native_improvement_queue.json"
         NativeCodeAnalyzer.save(queue, queue_path)
+        hypotheses = self.improvement_hypotheses.generate(queue["items"])
+        hypothesis_path = self.data / "pika_native_improvement_hypotheses.json"
+        NativeCodeAnalyzer.save(hypotheses, hypothesis_path)
         self._append_event({
             "type": "self_code_analysis",
             "files": result.get("metrics", {}).get("python_files_analyzed", 0),
             "findings": len(queue["items"]),
+            "hypotheses": hypotheses.get("hypothesis_count", 0),
+            "rejected_findings": hypotheses.get("rejected_finding_count", 0),
             "source_modified": False,
+            "source_executed": False,
+            "trusted_learning_admission": False,
         })
         return {
             "success": True,
             "mode": "native_static_self_analysis",
+            "hypothesis_generation": "enabled",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
             "source_modified": False,
             "analysis_path": str(self_path),
             "improvement_queue_path": str(queue_path),
+            "hypothesis_path": str(hypothesis_path),
+            "hypothesis_count": hypotheses.get("hypothesis_count", 0),
+            "hypotheses": hypotheses.get("hypotheses", [])[:20],
             "metrics": result.get("metrics", {}),
             "findings": queue["items"][:30],
             "limits": result.get("limits", []),
         }
+
+    def stage_capability_bundle(
+        self,
+        source_root: str | Path,
+        *,
+        name: str,
+        include_paths: list[str],
+        test_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Stage a multi-file capability as hash-bound, untrusted source data."""
+        result = self.capability_bundles.stage_bundle(
+            source_root,
+            name=name,
+            include_paths=include_paths,
+            test_paths=test_paths,
+        )
+        self._append_event({
+            "type": "native_capability_bundle_staged",
+            "bundle_id": result.get("bundle_id"),
+            "bundle_name": result.get("bundle_name"),
+            "file_count": result.get("file_count", 0),
+            "manifest_sha256": result.get("manifest_sha256"),
+            "execution_performed": False,
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+        })
+        return result
+
+    def evaluate_capability_bundle(
+        self,
+        bundle_id: str,
+        *,
+        acknowledge_untrusted_sandbox: bool,
+        timeout: int = 120,
+    ) -> dict[str, Any]:
+        """Evaluate one staged bundle in disposable Docker isolation."""
+        result = self.capability_bundles.evaluate_bundle(
+            bundle_id,
+            acknowledge_untrusted_sandbox=acknowledge_untrusted_sandbox,
+            timeout=timeout,
+        )
+        self._append_event({
+            "type": "native_capability_bundle_evaluated",
+            "bundle_id": result.get("bundle_id"),
+            "bundle_manifest_sha256": result.get("bundle_manifest_sha256"),
+            "success": result.get("success") is True,
+            "execution_performed": result.get("execution_performed") is True,
+            "trust": result.get("trust"),
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+        })
+        return result
+
+    def evaluate_capability_bundle(
+        self,
+        bundle_id: str,
+        *,
+        acknowledge_untrusted_sandbox: bool,
+        timeout: int = 120,
+    ) -> dict[str, Any]:
+        """Evaluate one staged bundle in disposable Docker isolation."""
+        result = self.capability_bundles.evaluate_bundle(
+            bundle_id,
+            acknowledge_untrusted_sandbox=acknowledge_untrusted_sandbox,
+            timeout=timeout,
+        )
+        self._append_event({
+            "type": "native_capability_bundle_evaluated",
+            "bundle_id": result.get("bundle_id"),
+            "bundle_manifest_sha256": result.get("bundle_manifest_sha256"),
+            "success": result.get("success") is True,
+            "execution_performed": result.get("execution_performed") is True,
+            "trust": result.get("trust"),
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+        })
+        return result
 
     def learn_repositories(self, repositories: Iterable[str], *, max_files: int = 80) -> dict[str, Any]:
         """Fetch GitHub repositories through Git transport and analyze them as data."""
@@ -445,6 +537,8 @@ class NativeCognitionEngine:
             "github_python_files_analyzed": knowledge.get("metrics", {}).get("python_files_analyzed", 0),
             "self_python_files_analyzed": self_report.get("metrics", {}).get("python_files_analyzed", 0),
             "self_improvement_proposals": len(load(self.data / "pika_native_improvement_queue.json").get("items", [])),
+            "self_improvement_hypotheses": len(load(self.data / "pika_native_improvement_hypotheses.json").get("hypotheses", [])),
+            "staged_capability_bundles": sum(1 for item in self.capability_bundles.staging.iterdir() if item.is_dir() and not item.is_symlink()),
             "knowledge_index": str(self.data / "pika_learning_index.json"),
             "engineering_knowledge_repositories": len(eng_doc.get("repositories", {})),
             "engineering_knowledge_facts": sum(
@@ -483,6 +577,10 @@ class NativeCognitionEngine:
                 "cross_language_static_analysis",
                 "provenance_backed_github_knowledge",
                 "deterministic_self_evolution_staging",
+                "evidence_bound_improvement_hypothesis_generation",
+                "hash_bound_multi_file_capability_intake",
+                "static_dependency_and_risk_inventory",
+                "untrusted_capability_bundle_staging",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -842,6 +940,84 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        capability_evaluation_markers = (
+            "evaluate staged capability bundle",
+            "run isolated capability tests",
+            "test staged capability in docker",
+        )
+        if any(marker in lower for marker in capability_evaluation_markers):
+            try:
+                result = await asyncio.to_thread(
+                    self.evaluate_capability_bundle,
+                    context.get("bundle_id"),
+                    acknowledge_untrusted_sandbox=context.get("acknowledge_untrusted_sandbox") is True,
+                    timeout=context.get("timeout", 120),
+                )
+            except (CapabilityBundleError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_CAPABILITY_EVALUATION_REJECTED", str(exc)[:400])
+            return self._response(
+                result.get("success") is True,
+                json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        capability_evaluation_markers = (
+            "evaluate staged capability bundle",
+            "run isolated capability tests",
+            "test staged capability in docker",
+        )
+        if any(marker in lower for marker in capability_evaluation_markers):
+            try:
+                result = await asyncio.to_thread(
+                    self.evaluate_capability_bundle,
+                    context.get("bundle_id"),
+                    acknowledge_untrusted_sandbox=context.get("acknowledge_untrusted_sandbox") is True,
+                    timeout=context.get("timeout", 120),
+                )
+            except (CapabilityBundleError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_CAPABILITY_EVALUATION_REJECTED", str(exc)[:400])
+            return self._response(
+                result.get("success") is True,
+                json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False,
+                raw=result,
+            )
+
+        capability_markers = (
+            "stage capability bundle",
+            "stage multi-file capability",
+            "prepare capability for integration",
+            "intake external python capability",
+        )
+        if any(marker in lower for marker in capability_markers):
+            try:
+                result = await asyncio.to_thread(
+                    self.stage_capability_bundle,
+                    context.get("source_root"),
+                    name=context.get("bundle_name"),
+                    include_paths=context.get("include_paths"),
+                    test_paths=context.get("test_paths"),
+                )
+            except (CapabilityBundleError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_CAPABILITY_BUNDLE_REJECTED", str(exc)[:400])
+            report = [
+                "PIKA MULTI-FILE CAPABILITY BUNDLE STAGED",
+                f"Name: {result.get('bundle_name')}",
+                f"Files: {result.get('file_count')} | tests: {result.get('test_count')}",
+                f"Manifest SHA-256: {result.get('manifest_sha256')}",
+                f"Dependency gaps: {len(result.get('internal_dependency_gaps', []))}",
+                f"External dependencies: {len(result.get('external_dependencies', []))}",
+                f"Static risk flags: {result.get('risk_flag_count')}",
+                f"Review status: {result.get('review_status')}",
+                "Trust: UNTRUSTED_SOURCE_OBSERVATION.",
+                "Policy: no imports, execution, tests, installation, trusted learning, or live-source modification.",
+                f"Staging path: {result.get('bundle_path')}",
+            ]
+            return self._response(
+                True, "\n".join(report), knowledge_consumed=False, raw=result,
+            )
 
         evolution_markers = (
             "self-evolve",
@@ -1504,9 +1680,11 @@ class NativeCognitionEngine:
             f"Python files: {metrics.get('python_files_analyzed', 0)} | parsed: {metrics.get('parsed_files', 0)} | syntax errors: {metrics.get('syntax_error_files', 0)}",
             f"Classes: {metrics.get('classes', 0)} | functions: {metrics.get('functions', 0)} | structural patterns: {metrics.get('structural_patterns', 0)}",
             f"Static findings: {metrics.get('static_findings', 0)} | high severity: {metrics.get('high_severity_findings', 0)}",
-            f"Improvement proposals saved: {len(findings)}",
+            f"Static findings: {len(findings)}",
+            f"Falsifiable hypotheses generated: {result.get('hypothesis_count', 0)}",
             f"Report: {result.get('analysis_path')}",
             f"Queue: {result.get('improvement_queue_path')}",
+            f"Hypotheses: {result.get('hypothesis_path')}",
             "Policy: source was parsed as data; no project code was executed or modified.",
         ]
         for item in findings[:12]:
