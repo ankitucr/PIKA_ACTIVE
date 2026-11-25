@@ -30,6 +30,8 @@ class FakeAttestedRunner:
             "tests_passed": 1 if has_feature else 0,
             "tests_failed": 0 if has_feature else 1,
             "tests_errors": 0,
+            "tests_skipped": 0,
+            "test_count": 1,
             "exit_code": 0 if has_feature else 1,
         }
         self.calls.append({
@@ -48,6 +50,7 @@ class FakeAttestedRunner:
         }
         return {
             "verified": True,
+            "outcome": outcome,
             "evidence_class": "INDEPENDENT_OS_RESULT_ATTESTATION",
             "result": result,
             "result_attestation": attestation,
