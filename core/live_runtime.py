@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import threading
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -29,6 +31,13 @@ class PIKALiveRuntime:
         staging: CandidateStagingManager | None = None,
         diagnostics: LocalCandidateDiagnostics | None = None,
         attestor_policy: Any = None,
+        result_runner: Any = None,
+        result_attestor_config: str | Path | None = None,
+        trusted_test_paths: list[str] | None = None,
+        autonomous_policy_path: str | Path | None = None,
+        autonomous_policy_trust_config: str | Path | None = None,
+        capability_rollback_root: str | Path | None = None,
+        result_runner_error: str | None = None,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
@@ -42,6 +51,17 @@ class PIKALiveRuntime:
         self.evolution = evolution or EvolutionController(self.root)
         self.staging = staging or CandidateStagingManager(self.root)
         self.diagnostics = diagnostics or LocalCandidateDiagnostics(self.root)
+        self.result_runner = result_runner
+        self.result_attestor_config = str(result_attestor_config) if result_attestor_config else None
+        self.trusted_test_paths = list(trusted_test_paths or [])
+        self.autonomous_policy_path = str(autonomous_policy_path) if autonomous_policy_path else None
+        self.autonomous_policy_trust_config = (
+            str(autonomous_policy_trust_config) if autonomous_policy_trust_config else None
+        )
+        self.capability_rollback_root = str(capability_rollback_root) if capability_rollback_root else None
+        self.result_runner_error = result_runner_error
+        self._evolution_lock = threading.Lock()
+        self._native_cognition = None
 
     @classmethod
     def build(
@@ -49,18 +69,47 @@ class PIKALiveRuntime:
         root: str | Path | None = None,
         *,
         attestor_policy: Any = None,
+        result_attestor_config: str | Path | None = None,
+        result_attestor_url: str | None = None,
+        result_attestor_token_file: str | Path | None = None,
+        result_attestor_backend_id: str | None = None,
+        replay_journal: str | Path | None = None,
+        trusted_test_paths: list[str] | None = None,
+        autonomous_policy_path: str | Path | None = None,
+        autonomous_policy_trust_config: str | Path | None = None,
+        capability_rollback_root: str | Path | None = None,
     ) -> "PIKALiveRuntime":
         project_root = Path(root or Path(__file__).resolve().parents[1]).expanduser().resolve()
         os.environ.setdefault("PIKA_KNOWLEDGE_DIR", str(project_root / "PIKA_KNOWLEDGE"))
 
-        # Imports are deferred so this module's safe staging helpers can be tested
-        # without initializing provider clients or indexing the optional code corpus.
         from core.brain import PIKABrain
         from core.planner import Planner
         from core.runtime import create_runtime, create_tool_runtime
         from memory.manager import MemoryManager
         from evaluation.evaluator import Evaluator
         from learning.experience import ExperienceEngine
+
+        result_attestor_config = result_attestor_config or os.getenv("PIKA_RESULT_ATTESTOR_CONFIG")
+        result_attestor_url = result_attestor_url or os.getenv("PIKA_RESULT_ATTESTOR_URL")
+        result_attestor_token_file = result_attestor_token_file or os.getenv("PIKA_RESULT_ATTESTOR_TOKEN_FILE")
+        result_attestor_backend_id = result_attestor_backend_id or os.getenv("PIKA_RESULT_ATTESTOR_BACKEND_ID")
+        replay_journal = replay_journal or os.getenv("PIKA_RESULT_ATTESTATION_REPLAY_JOURNAL")
+        autonomous_policy_path = autonomous_policy_path or os.getenv("PIKA_AUTONOMOUS_CAPABILITY_POLICY")
+        autonomous_policy_trust_config = (
+            autonomous_policy_trust_config or os.getenv("PIKA_AUTONOMOUS_POLICY_TRUST_CONFIG")
+        )
+        capability_rollback_root = capability_rollback_root or os.getenv("PIKA_CAPABILITY_ROLLBACK_ROOT")
+
+        if trusted_test_paths is None:
+            raw_tests = os.getenv("PIKA_TRUSTED_TEST_PATHS", "")
+            if raw_tests:
+                try:
+                    decoded_tests = json.loads(raw_tests)
+                    trusted_test_paths = decoded_tests if isinstance(decoded_tests, list) else []
+                except json.JSONDecodeError:
+                    trusted_test_paths = [item.strip() for item in raw_tests.split(",") if item.strip()]
+            else:
+                trusted_test_paths = []
 
         memory = MemoryManager(project_root / "data" / "memory.json")
         brain = PIKABrain(
@@ -73,10 +122,246 @@ class PIKALiveRuntime:
             max_retries=2,
             attestor_policy=attestor_policy,
         )
+        evolution = EvolutionController(project_root)
+        result_runner = None
+        result_runner_error = None
+        runner_config = {
+            "result_attestor_config": result_attestor_config,
+            "attestor_url": result_attestor_url,
+            "attestor_token_file": result_attestor_token_file,
+            "attestor_backend_id": result_attestor_backend_id,
+            "replay_journal": replay_journal,
+        }
+        if any(runner_config.values()):
+            missing = sorted(key for key, value in runner_config.items() if not value)
+            if missing:
+                result_runner_error = "INCOMPLETE_RESULT_ATTESTOR_CONFIGURATION:" + ",".join(missing)
+            else:
+                try:
+                    result_runner = evolution.create_result_attested_runner(**runner_config)
+                except Exception as exc:
+                    result_runner_error = f"RESULT_ATTESTOR_CONFIGURATION_REJECTED:{type(exc).__name__}"
+
         return cls(
-            project_root, brain=brain, memory=memory,
-            attestor_policy=attestor_policy,
+            project_root, brain=brain, memory=memory, evolution=evolution,
+            attestor_policy=attestor_policy, result_runner=result_runner,
+            result_attestor_config=result_attestor_config,
+            trusted_test_paths=trusted_test_paths,
+            autonomous_policy_path=autonomous_policy_path,
+            autonomous_policy_trust_config=autonomous_policy_trust_config,
+            capability_rollback_root=capability_rollback_root,
+            result_runner_error=result_runner_error,
         )
+
+    def _read_knowledge_report(self, filename: str) -> dict[str, Any]:
+        path = self.root / "PIKA_KNOWLEDGE" / filename
+        if path.is_symlink() or not path.is_file():
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, RecursionError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def _run_verified_self_improvement(self) -> dict[str, Any]:
+        """Generate and re-check source-backed improvement hypotheses every cycle."""
+        try:
+            from core.native_cognition import NativeCognitionEngine
+            from core.verified_self_improvement import VerifiedSelfImprovement
+
+            if self._native_cognition is None:
+                self._native_cognition = NativeCognitionEngine(self.root)
+            analysis = self._native_cognition.analyze_self()
+            planner = VerifiedSelfImprovement(self.root)
+            plan = planner.build_plan()
+            proposal_count = len(plan.get("proposals", [])) if isinstance(plan, dict) else 0
+            verification = (
+                planner.verify_plan() if proposal_count else {
+                    "success": False,
+                    "valid": False,
+                    "state": "NO_ELIGIBLE_PROPOSALS",
+                    "errors": ["No source-backed proposal was eligible for verification."],
+                }
+            )
+            report = {
+                "schema": "pika.live.verified_self_improvement_cycle.v1",
+                "analysis_mode": analysis.get("mode"),
+                "python_files_analyzed": analysis.get("metrics", {}).get("python_files_analyzed", 0),
+                "static_findings": len(analysis.get("findings", [])),
+                "native_hypotheses": analysis.get("hypothesis_count", 0),
+                "plan_path": plan.get("plan_path"),
+                "proposal_count": proposal_count,
+                "plan_status": plan.get("plan_status"),
+                "verification": verification,
+                "live_source_modified": False,
+                "downloaded_source_executed": False,
+                "automatic_learning_admission": False,
+                "promotion": "BLOCKED_PENDING_INDEPENDENT_EVIDENCE_AND_OWNER_POLICY",
+            }
+        except Exception as exc:
+            report = {
+                "schema": "pika.live.verified_self_improvement_cycle.v1",
+                "success": False,
+                "error_type": type(exc).__name__,
+                "live_source_modified": False,
+                "downloaded_source_executed": False,
+                "promotion": "BLOCKED",
+            }
+        self._atomic_report(
+            self.root / "PIKA_KNOWLEDGE" / "VERIFIED_SELF_IMPROVEMENT_CYCLE.json",
+            report,
+        )
+        return report
+
+    def _has_attested_bundle_report(self, bundle_id: str, manifest_sha256: str) -> bool:
+        report_root = self.root / "PIKA_KNOWLEDGE" / "CAPABILITY_EVALUATIONS"
+        if report_root.is_symlink() or not report_root.is_dir():
+            return False
+        for path in report_root.glob("*.json"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                if path.stat().st_size > 2_000_000:
+                    continue
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, RecursionError):
+                continue
+            if (
+                isinstance(data, dict)
+                and data.get("schema") == "pika.phase50.capability-delta.v1"
+                and data.get("bundle_id") == bundle_id
+                and data.get("bundle_manifest_sha256") == manifest_sha256
+                and data.get("evidence_class") == "INDEPENDENT_OS_RESULT_ATTESTATION"
+            ):
+                return True
+        return False
+
+    def _run_capability_pipeline(self) -> dict[str, Any]:
+        """Verify staged bundles and evaluate at most one new bundle per live cycle."""
+        bundle_engine = getattr(self.evolution, "capability_bundles", None)
+        list_bundles = getattr(bundle_engine, "list_staged_bundles", None)
+        if not callable(list_bundles):
+            report = {
+                "schema": "pika.live.capability_pipeline.v1",
+                "state": "CAPABILITY_ENGINE_UNAVAILABLE",
+                "staged_bundle_count": 0,
+                "verified_bundle_count": 0,
+                "evaluations": [],
+                "live_source_modified": False,
+                "promotion": "BLOCKED",
+            }
+            self._atomic_report(
+                self.root / "PIKA_KNOWLEDGE" / "CAPABILITY_AUTONOMOUS_PIPELINE.json",
+                report,
+            )
+            return report
+        listing = list_bundles(limit=100)
+        items = listing.get("items", []) if isinstance(listing, dict) else []
+        report: dict[str, Any] = {
+            "schema": "pika.live.capability_pipeline.v1",
+            "staged_bundle_count": len(items),
+            "verified_bundle_count": sum(
+                item.get("verified") is True for item in items
+                if isinstance(item, dict)
+            ),
+            "evaluations": [],
+            "runner": (
+                self.result_runner.status()
+                if self.result_runner is not None and callable(getattr(self.result_runner, "status", None))
+                else {"available": False, "error": self.result_runner_error or "NOT_CONFIGURED"}
+            ),
+            "trusted_test_paths_configured": bool(self.trusted_test_paths),
+            "automatic_promotion_policy_configured": bool(
+                self.autonomous_policy_path and self.autonomous_policy_trust_config
+                and self.capability_rollback_root
+            ),
+            "live_source_modified": False,
+        }
+        if self.result_runner is None or not self.trusted_test_paths:
+            report["state"] = (
+                "WAITING_FOR_PINNED_RESULT_ATTESTOR"
+                if self.result_runner is None
+                else "WAITING_FOR_EXPLICIT_TRUSTED_TEST_PATHS"
+            )
+            self._atomic_report(
+                self.root / "PIKA_KNOWLEDGE" / "CAPABILITY_AUTONOMOUS_PIPELINE.json",
+                report,
+            )
+            return report
+
+        attempted = False
+        for item in items:
+            bundle_id = item.get("bundle_id")
+            if item.get("verified") is not True or not isinstance(bundle_id, str):
+                continue
+            if item.get("internal_dependency_gaps") or item.get("external_dependencies"):
+                report["evaluations"].append({
+                    "bundle_id": bundle_id,
+                    "state": "BLOCKED_UNRESOLVED_DEPENDENCIES",
+                })
+                continue
+            manifest_sha = item.get("manifest_sha256")
+            if not isinstance(manifest_sha, str) or self._has_attested_bundle_report(bundle_id, manifest_sha):
+                continue
+            if attempted:
+                break
+            attempted = True
+            try:
+                evaluation = self.evolution.evaluate_capability_bundle_attested(
+                    bundle_id,
+                    trusted_test_paths=self.trusted_test_paths,
+                    result_runner=self.result_runner,
+                    timeout=120,
+                    repetitions=3,
+                )
+                outcome: dict[str, Any] = {
+                    "bundle_id": bundle_id,
+                    "evaluation": evaluation,
+                    "state": evaluation.get("decision", "EVALUATION_COMPLETED"),
+                }
+                if (
+                    evaluation.get("success") is True
+                    and evaluation.get("decision") == "FUNCTIONAL_CAPABILITY_ADDITION_RESULT_ATTESTED"
+                ):
+                    if (
+                        self.autonomous_policy_path
+                        and self.autonomous_policy_trust_config
+                        and self.capability_rollback_root
+                        and self.result_attestor_config
+                    ):
+                        prepared = self.evolution.prepare_capability_promotion(
+                            bundle_id,
+                            report_path=evaluation["report_path"],
+                            result_attestor_config=self.result_attestor_config,
+                            rollback_root=self.capability_rollback_root,
+                        )
+                        promoted = self.evolution.promote_capability_bundle_autonomously(
+                            plan_path=prepared["plan_path"],
+                            policy_path=self.autonomous_policy_path,
+                            policy_trust_config=self.autonomous_policy_trust_config,
+                            result_attestor_config=self.result_attestor_config,
+                            result_runner=self.result_runner,
+                            rollback_root=self.capability_rollback_root,
+                        )
+                        outcome["promotion"] = promoted
+                        outcome["state"] = promoted.get("state", "PROMOTION_ATTEMPTED")
+                    else:
+                        outcome["promotion"] = (
+                            "PENDING_OWNER_SIGNED_STANDING_POLICY_AND_EXTERNAL_ROLLBACK_STORAGE"
+                        )
+                report["evaluations"].append(outcome)
+            except Exception as exc:
+                report["evaluations"].append({
+                    "bundle_id": bundle_id,
+                    "state": "EVALUATION_OR_PROMOTION_REJECTED",
+                    "error_type": type(exc).__name__,
+                })
+        report["state"] = "EVALUATION_ATTEMPTED" if attempted else "NO_NEW_VERIFIED_BUNDLE_READY"
+        self._atomic_report(
+            self.root / "PIKA_KNOWLEDGE" / "CAPABILITY_AUTONOMOUS_PIPELINE.json",
+            report,
+        )
+        return report
 
     def _live_observations(self) -> list[dict[str, Any]]:
         import json
@@ -103,7 +388,12 @@ class PIKALiveRuntime:
         temp.replace(path)
 
     def evolve(self) -> dict[str, Any]:
-        """Run observe/reflect/plan plus automatic read-only evidence analysis.
+        """Serialize heartbeat and manual evolution requests into one cycle."""
+        with self._evolution_lock:
+            return self._evolve_once()
+
+    def _evolve_once(self) -> dict[str, Any]:
+        """Run observe/reflect/plan plus evidence-backed improvement analysis.
 
         This closes the continuous cognition loop without claiming that analysis
         is source repair or that unverified observations are trusted knowledge.
@@ -201,6 +491,8 @@ class PIKALiveRuntime:
         }
         self._atomic_report(knowledge / "EVOLUTION_WORK_REPORT.json", work_report)
         result["live_analysis"] = work_report
+        result["verified_self_improvement"] = self._run_verified_self_improvement()
+        result["capability_pipeline"] = self._run_capability_pipeline()
         return result
 
     def attestor_status(self) -> dict[str, Any]:
@@ -243,6 +535,13 @@ class PIKALiveRuntime:
             "external_llm": False,
             "model_api": False,
             "attestor_trust": self.attestor_status(),
+            "verified_self_improvement": self._read_knowledge_report("VERIFIED_SELF_IMPROVEMENT_CYCLE.json"),
+            "capability_pipeline": self._read_knowledge_report("CAPABILITY_AUTONOMOUS_PIPELINE.json"),
+            "result_attested_runner": (
+                self.result_runner.status()
+                if self.result_runner is not None and callable(getattr(self.result_runner, "status", None))
+                else {"available": False, "error": self.result_runner_error or "NOT_CONFIGURED"}
+            ),
             "self_repair": {
                 "candidate_generation": "available_when_Brain_detects_supported_failure",
                 "candidate_staging": "enabled_without_live_source_writes",
