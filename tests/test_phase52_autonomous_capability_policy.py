@@ -13,6 +13,7 @@ from core.evolution.autonomous_capability_policy import (
     AutonomousPolicyError,
     _canonical,
     load_autonomous_capability_policy,
+    sign_autonomous_capability_policy,
 )
 
 
