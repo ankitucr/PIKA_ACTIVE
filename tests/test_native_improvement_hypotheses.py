@@ -84,7 +84,7 @@ class NativeImprovementHypothesisTests(unittest.TestCase):
 
 
 
-def test_native_self_analysis_persists_hypotheses_without_source_changes(self, tmp_path):
+def test_native_self_analysis_persists_hypotheses_without_source_changes(tmp_path):
     import json
     from core.native_cognition import NativeCognitionEngine
 
