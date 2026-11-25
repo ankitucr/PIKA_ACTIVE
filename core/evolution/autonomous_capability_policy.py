@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from core.phase36.operator_approval import _protected_file
 
 POLICY_SCHEMA = "pika.autonomous-capability-policy.v1"
+POLICY_SCHEMA_V2 = "pika.autonomous-capability-policy.v2"
 TRUST_SCHEMA = "pika.autonomous-capability-policy-trust.v1"
 ALLOWED_ROOTS = {"core", "agents", "tools", "memory", "learning", "evaluation", "workspace", "config"}
 MAX_POLICY_BYTES = 65536
@@ -51,7 +52,7 @@ def sign_autonomous_capability_policy(
     project_root: str | Path,
 ) -> dict[str, Any]:
     """Sign an explicit standing policy using an owner-only external Ed25519 key."""
-    required = {
+    base_fields = {
         "schema", "policy_id", "signer_id", "issued_at", "expires_at",
         "max_files", "max_total_bytes", "allowed_roots", "required_repetitions",
         "auto_promote", "auto_rollback", "allow_overwrite",
@@ -59,10 +60,22 @@ def sign_autonomous_capability_policy(
         "require_baseline_not_all_pass", "require_candidate_all_pass",
         "signature_algorithm",
     }
+    schema = payload.get("schema") if isinstance(payload, dict) else None
+    if schema == POLICY_SCHEMA:
+        required = base_fields
+    elif schema == POLICY_SCHEMA_V2:
+        required = base_fields | {"scale_profile", "large_package_acknowledged"}
+    else:
+        raise AutonomousPolicyError("Only supported autonomous policy schemas can be signed.")
     if not isinstance(payload, dict) or set(payload) != required:
         raise AutonomousPolicyError("Unsigned policy payload has an invalid schema.")
-    if payload.get("schema") != POLICY_SCHEMA or payload.get("signature_algorithm") != "ed25519":
-        raise AutonomousPolicyError("Only the supported Ed25519 autonomous policy schema can be signed.")
+    if payload.get("signature_algorithm") != "ed25519":
+        raise AutonomousPolicyError("Only Ed25519 autonomous policy signatures are accepted.")
+    if schema == POLICY_SCHEMA_V2 and (
+        payload.get("scale_profile") != "LARGE_PYTHON_PACKAGE"
+        or payload.get("large_package_acknowledged") is not True
+    ):
+        raise AutonomousPolicyError("Large-package policy requires explicit scale acknowledgement.")
     try:
         _, raw = _protected_file(private_key_file, project_root=project_root, maximum=16384)
         private_key = serialization.load_pem_private_key(raw, password=None)
@@ -98,7 +111,7 @@ def load_autonomous_capability_policy(
             or not isinstance(trust.get("signers"), dict)
             or not trust["signers"]):
         raise AutonomousPolicyError("Owner policy trust config schema is invalid.")
-    required = {
+    base_fields = {
         "schema", "policy_id", "signer_id", "issued_at", "expires_at",
         "max_files", "max_total_bytes", "allowed_roots", "required_repetitions",
         "auto_promote", "auto_rollback", "allow_overwrite",
@@ -106,8 +119,22 @@ def load_autonomous_capability_policy(
         "require_baseline_not_all_pass", "require_candidate_all_pass",
         "signature_algorithm", "signature_hex",
     }
-    if not isinstance(policy, dict) or set(policy) != required or policy.get("schema") != POLICY_SCHEMA:
+    schema = policy.get("schema") if isinstance(policy, dict) else None
+    if schema == POLICY_SCHEMA:
+        required = base_fields
+        max_files_limit, max_bytes_limit = 100, 5_000_000
+    elif schema == POLICY_SCHEMA_V2:
+        required = base_fields | {"scale_profile", "large_package_acknowledged"}
+        max_files_limit, max_bytes_limit = 1000, 25_000_000
+    else:
+        raise AutonomousPolicyError("Unsupported autonomous capability policy schema.")
+    if not isinstance(policy, dict) or set(policy) != required:
         raise AutonomousPolicyError("Autonomous capability policy schema is invalid.")
+    if schema == POLICY_SCHEMA_V2 and (
+        policy.get("scale_profile") != "LARGE_PYTHON_PACKAGE"
+        or policy.get("large_package_acknowledged") is not True
+    ):
+        raise AutonomousPolicyError("Large-package policy requires explicit scale acknowledgement.")
     signer = policy.get("signer_id")
     key_hex = trust["signers"].get(signer) if isinstance(signer, str) else None
     if not isinstance(key_hex, str) or len(key_hex) != 64:
@@ -138,10 +165,10 @@ def load_autonomous_capability_policy(
     except ValueError as exc:
         raise AutonomousPolicyError("Policy ID is not hexadecimal.") from exc
     max_files, max_bytes = policy.get("max_files"), policy.get("max_total_bytes")
-    if isinstance(max_files, bool) or not isinstance(max_files, int) or not 1 <= max_files <= 100:
-        raise AutonomousPolicyError("max_files must be between 1 and 100.")
-    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= 5_000_000:
-        raise AutonomousPolicyError("max_total_bytes must be between 1 and 5 MB.")
+    if isinstance(max_files, bool) or not isinstance(max_files, int) or not 1 <= max_files <= max_files_limit:
+        raise AutonomousPolicyError(f"max_files must be between 1 and {max_files_limit}.")
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= max_bytes_limit:
+        raise AutonomousPolicyError(f"max_total_bytes must be between 1 and {max_bytes_limit} bytes.")
     roots = policy.get("allowed_roots")
     if (not isinstance(roots, list) or not roots
             or any(not isinstance(item, str) or item not in ALLOWED_ROOTS for item in roots)

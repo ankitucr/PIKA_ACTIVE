@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.evolution.autonomous_capability_policy import (
     POLICY_SCHEMA,
+    POLICY_SCHEMA_V2,
     TRUST_SCHEMA,
     AutonomousPolicyError,
     _canonical,
@@ -186,3 +187,82 @@ def test_portable_lock_supports_windows_byte_range_backend(tmp_path, monkeypatch
         os.close(fd)
     assert path.read_bytes() == b"\0"
     assert [call[1] for call in fake.calls] == [fake.LK_LOCK, fake.LK_UNLCK]
+
+
+def write_signed_v2_policy(tmp_path, *, overrides=None):
+    project = tmp_path / "pika"
+    project.mkdir()
+    private = Ed25519PrivateKey.generate()
+    public = private.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    private_path = tmp_path / "owner-policy-key-v2.pem"
+    private_path.write_bytes(private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ))
+    private_path.chmod(0o600)
+    now = time.time()
+    payload = {
+        "schema": POLICY_SCHEMA_V2,
+        "policy_id": "c" * 32,
+        "signer_id": "owner-primary",
+        "issued_at": now,
+        "expires_at": now + 86400,
+        "max_files": 1000,
+        "max_total_bytes": 25_000_000,
+        "allowed_roots": ["core", "agents"],
+        "required_repetitions": 3,
+        "auto_promote": True,
+        "auto_rollback": True,
+        "allow_overwrite": False,
+        "allow_external_dependencies": False,
+        "require_independent_attestation": True,
+        "require_baseline_not_all_pass": True,
+        "require_candidate_all_pass": True,
+        "signature_algorithm": "ed25519",
+        "scale_profile": "LARGE_PYTHON_PACKAGE",
+        "large_package_acknowledged": True,
+    }
+    payload.update(overrides or {})
+    signed = sign_autonomous_capability_policy(payload, private_path, project_root=project)
+    policy_path = tmp_path / "autonomous-policy-v2.json"
+    policy_path.write_text(json.dumps(signed), encoding="utf-8")
+    policy_path.chmod(0o600)
+    trust_path = tmp_path / "autonomous-policy-v2-trust.json"
+    trust_path.write_text(json.dumps({
+        "schema": TRUST_SCHEMA,
+        "signers": {"owner-primary": public.hex()},
+    }), encoding="utf-8")
+    trust_path.chmod(0o600)
+    return project, policy_path, trust_path
+
+
+def test_v2_policy_explicitly_authorizes_large_python_packages(tmp_path):
+    project, policy_path, trust_path = write_signed_v2_policy(tmp_path)
+    result = load_autonomous_capability_policy(policy_path, trust_path, project_root=project)
+    assert result["verified"] is True
+    assert result["policy"]["schema"] == POLICY_SCHEMA_V2
+    assert result["policy"]["max_files"] == 1000
+    assert result["policy"]["max_total_bytes"] == 25_000_000
+
+
+@pytest.mark.parametrize("overrides", [
+    {"max_files": 1001},
+    {"max_total_bytes": 25_000_001},
+])
+def test_v2_policy_rejects_limits_outside_bounds(tmp_path, overrides):
+    project, policy_path, trust_path = write_signed_v2_policy(tmp_path, overrides=overrides)
+    with pytest.raises(AutonomousPolicyError):
+        load_autonomous_capability_policy(policy_path, trust_path, project_root=project)
+
+
+@pytest.mark.parametrize("overrides", [
+    {"large_package_acknowledged": False},
+    {"scale_profile": "UNBOUNDED"},
+])
+def test_v2_signer_refuses_missing_large_package_acknowledgement(tmp_path, overrides):
+    with pytest.raises(AutonomousPolicyError):
+        write_signed_v2_policy(tmp_path, overrides=overrides)
