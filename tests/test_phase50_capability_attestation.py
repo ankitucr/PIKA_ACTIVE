@@ -138,3 +138,31 @@ def test_attested_evaluator_never_overwrites_existing_pika_source(tmp_path):
     with pytest.raises(CapabilityAttestationError):
         evaluator.evaluate(staged["bundle_id"], trusted_test_paths=["tests/test_feature.py"])
     assert runner.calls == []
+
+
+def test_attested_evaluator_rejects_argv_that_skips_selected_tests(tmp_path):
+    _, bundles, staged = setup_bundle(tmp_path)
+    runner = FakeAttestedRunner()
+    evaluator = ResultAttestedCapabilityEvaluator(bundles, runner)
+    with pytest.raises(CapabilityAttestationError):
+        evaluator.evaluate(
+            staged["bundle_id"],
+            trusted_test_paths=["tests/test_feature.py"],
+            argv=["python", "-m", "pytest", "-q", "tests/other_test.py"],
+        )
+    assert runner.calls == []
+
+
+def test_attested_evaluator_rejects_result_attestation_mismatch(tmp_path):
+    _, bundles, staged = setup_bundle(tmp_path)
+
+    class MismatchedRunner(FakeAttestedRunner):
+        def run_test(self, argv, *, cwd, source_paths, timeout):
+            value = super().run_test(argv, cwd=cwd, source_paths=source_paths, timeout=timeout)
+            value["result_attestation"]["result"]["outcome"] = "PASSED"
+            return value
+
+    runner = MismatchedRunner()
+    evaluator = ResultAttestedCapabilityEvaluator(bundles, runner)
+    with pytest.raises(CapabilityAttestationError):
+        evaluator.evaluate(staged["bundle_id"], trusted_test_paths=["tests/test_feature.py"])
