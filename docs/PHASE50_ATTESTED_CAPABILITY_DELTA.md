@@ -18,6 +18,7 @@ The comparison uses an injected `ResultBoundSandboxRunner` connected to the inde
 - The same test hashes and argv are used for baseline and candidate.
 - Three to five repetitions run in alternating order.
 - Every run must carry verified `INDEPENDENT_OS_RESULT_ATTESTATION` evidence whose result matches the attested result.
+- Unresolved internal imports and unpinned third-party dependencies block attested evaluation; dependency installation is never inferred from source imports.
 - Baseline and candidate workspaces are temporary and removed after comparison.
 - Reports bind the bundle manifest, trusted tests, source hashes, run outcomes and attestations.
 
