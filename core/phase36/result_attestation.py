@@ -20,6 +20,8 @@ RESULT_ATTESTATION_SCHEMA = 'pika.os-run-result-attestation.v1'
 TRUST_CONFIG_SCHEMA = 'pika.result-attestor-trust.v1'
 MAX_ATTESTATION_AGE_SECONDS = 300
 MAX_SOURCE_FILES = 5000
+MAX_SOURCE_FILE_BYTES = 10_000_000
+MAX_SOURCE_TOTAL_BYTES = 48_000_000
 MAX_REPLAY_JOURNAL_BYTES = 20_000_000
 
 
@@ -467,27 +469,68 @@ class ResultBoundSandboxRunner:
                     and self.replay_guard is not None
                     and callable(getattr(self.replay_guard, 'consume', None)))
 
+    def status(self) -> dict[str, Any]:
+        backend_id = getattr(self.backend, 'backend_id', None)
+        trusted_ids = getattr(self.trust_policy, 'trusted_attestor_ids', ())
+        if not isinstance(trusted_ids, (list, tuple, set, frozenset)):
+            trusted_ids = ()
+        return {
+            'available': self.available,
+            'backend_configured': self.backend is not None,
+            'backend_id': backend_id if isinstance(backend_id, str) else None,
+            'pinned_trust_configured': bool(trusted_ids),
+            'trusted_attestor_ids': sorted(
+                value for value in trusted_ids
+                if isinstance(value, str) and value
+            ),
+            'replay_guard_configured': self.replay_guard is not None,
+            'policy': 'INDEPENDENT_RESULT_ATTESTATION_REQUIRED',
+            'local_execution_fallback': False,
+        }
+
     @staticmethod
     def _hash_sources(root: Path, source_paths: list[str]) -> dict[str, str]:
         if not isinstance(source_paths, list) or not source_paths or len(source_paths) > MAX_SOURCE_FILES:
             raise ResultAttestationError('A bounded non-empty source path list is required.')
         hashes = {}
+        seen_casefolded: set[str] = set()
+        total_bytes = 0
         for raw in source_paths:
             if not isinstance(raw, str) or not raw or chr(92) in raw or chr(0) in raw:
                 raise ResultAttestationError('Invalid source path.')
             relative = PurePosixPath(raw)
             if relative.is_absolute() or relative.as_posix() != raw or any(part in {'', '.', '..'} for part in relative.parts):
                 raise ResultAttestationError('Source paths must be clean relative POSIX paths.')
+            folded = raw.casefold()
+            if raw in hashes or folded in seen_casefolded:
+                raise ResultAttestationError('Duplicate or case-colliding source paths are rejected.')
+            seen_casefolded.add(folded)
             cursor = root
             for part in relative.parts:
                 cursor = cursor / part
                 if cursor.is_symlink():
                     raise ResultAttestationError(f'Symlink source path rejected: {raw}')
             resolved = cursor.resolve(strict=True)
-            resolved.relative_to(root)
-            if not resolved.is_file() or raw in hashes:
-                raise ResultAttestationError(f'Missing or duplicate source file: {raw}')
-            hashes[raw] = hashlib.sha256(resolved.read_bytes()).hexdigest()
+            try:
+                resolved.relative_to(root)
+            except ValueError as exc:
+                raise ResultAttestationError(f'Source path escaped its root: {raw}') from exc
+            flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+            try:
+                descriptor = os.open(resolved, flags)
+                with os.fdopen(descriptor, 'rb') as stream:
+                    metadata = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_SOURCE_FILE_BYTES:
+                        raise ResultAttestationError(f'Source file is not regular or exceeds the size limit: {raw}')
+                    data = stream.read(MAX_SOURCE_FILE_BYTES + 1)
+            except OSError as exc:
+                raise ResultAttestationError(f'Source file could not be opened safely: {raw}') from exc
+            if len(data) > MAX_SOURCE_FILE_BYTES or len(data) != metadata.st_size:
+                raise ResultAttestationError(f'Source file changed or exceeded the read limit: {raw}')
+            total_bytes += len(data)
+            if total_bytes > MAX_SOURCE_TOTAL_BYTES:
+                raise ResultAttestationError('Source manifest exceeds the total byte limit.')
+            hashes[raw] = hashlib.sha256(data).hexdigest()
         return dict(sorted(hashes.items()))
 
     def run_test(self, argv: list[str], *, cwd: str | Path, source_paths: list[str],
