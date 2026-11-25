@@ -112,10 +112,12 @@ def load_autonomous_capability_policy(
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= 5_000_000:
         raise AutonomousPolicyError("max_total_bytes must be between 1 and 5 MB.")
     roots = policy.get("allowed_roots")
-    if (not isinstance(roots, list) or not roots or len(set(roots)) != len(roots)
-            or any(not isinstance(item, str) or item not in ALLOWED_ROOTS for item in roots)):
+    if (not isinstance(roots, list) or not roots
+            or any(not isinstance(item, str) or item not in ALLOWED_ROOTS for item in roots)
+            or len(set(roots)) != len(roots)):
         raise AutonomousPolicyError("Policy allowed_roots must be a unique subset of the fixed source allowlist.")
-    if policy.get("required_repetitions") not in {3, 5}:
+    if (isinstance(policy.get("required_repetitions"), bool)
+            or policy.get("required_repetitions") not in {3, 5}):
         raise AutonomousPolicyError("Policy requires exactly 3 or 5 attested repetitions.")
     for flag in (
         "auto_promote", "auto_rollback", "allow_overwrite",
