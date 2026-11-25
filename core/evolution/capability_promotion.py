@@ -320,7 +320,7 @@ class CapabilityPromotionManager:
                 locked = True
             else:
                 if os.fstat(fd).st_size == 0:
-                    os.write(fd, b"\\0")
+                    os.write(fd, b"\0")
                     os.fsync(fd)
                 os.lseek(fd, 0, os.SEEK_SET)
                 msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
