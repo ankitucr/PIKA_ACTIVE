@@ -196,6 +196,13 @@ def write_signed_v2_policy(tmp_path, *, overrides=None):
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
+    private_path = tmp_path / "owner-policy-key-v2.pem"
+    private_path.write_bytes(private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ))
+    private_path.chmod(0o600)
     now = time.time()
     payload = {
         "schema": POLICY_SCHEMA_V2,
