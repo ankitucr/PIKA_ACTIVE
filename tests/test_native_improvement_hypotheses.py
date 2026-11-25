@@ -55,9 +55,11 @@ class NativeImprovementHypothesisTests(unittest.TestCase):
             finding(source_sha256="not-a-digest"),
             finding(path="../escape.py"),
             finding(line=True),
+            finding(rule=[]),
+            finding(severity=[]),
         ])
         self.assertEqual(result["hypothesis_count"], 0)
-        self.assertEqual(result["rejected_finding_count"], 4)
+        self.assertEqual(result["rejected_finding_count"], 6)
 
     def test_does_not_accept_unbounded_or_non_list_inputs(self):
         engine = NativeImprovementHypothesisEngine()
