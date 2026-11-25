@@ -97,15 +97,131 @@ def _source_flags(tree: ast.AST) -> list[str]:
 class NativeCapabilityBundleEngine:
     """Stage bounded multi-file Python capabilities as untrusted review artifacts."""
 
-    def __init__(self, knowledge_root: str | Path) -> None:
+    def __init__(self, knowledge_root: str | Path, *, project_root: str | Path | None = None) -> None:
         requested = Path(knowledge_root).expanduser()
         if requested.is_symlink():
             raise CapabilityBundleError("Knowledge root must not be a symlink.")
         self.knowledge = requested.resolve()
+        self.project_root = Path(project_root).expanduser().resolve() if project_root is not None else self.knowledge.parent
         self.staging = self.knowledge / "CAPABILITY_STAGING"
         self.staging.mkdir(parents=True, exist_ok=True)
         if self.staging.is_symlink():
             raise CapabilityBundleError("Capability staging root must not be a symlink.")
+
+    def evaluate_bundle(
+        self,
+        bundle_id: str,
+        *,
+        acknowledge_untrusted_sandbox: bool,
+        timeout: int = 120,
+    ) -> dict[str, Any]:
+        """Run an explicitly acknowledged bundle test set in the PC Docker sandbox."""
+        if not isinstance(bundle_id, str) or not re.fullmatch(r"[0-9a-f]{32}", bundle_id):
+            raise CapabilityBundleError("A valid staged bundle ID is required.")
+        if acknowledge_untrusted_sandbox is not True:
+            raise CapabilityBundleError("Explicit acknowledgement of untrusted local sandbox evidence is required.")
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 600:
+            raise CapabilityBundleError("Evaluation timeout must be between 1 and 600 seconds.")
+        bundle_root = self.staging / bundle_id
+        if bundle_root.is_symlink() or not bundle_root.is_dir():
+            raise CapabilityBundleError("Staged capability bundle was not found or is unsafe.")
+        manifest_path = bundle_root / "bundle.json"
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise CapabilityBundleError("Bundle manifest is missing or unsafe.")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CapabilityBundleError("Bundle manifest is unreadable.") from exc
+        if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA or manifest.get("bundle_id") != bundle_id:
+            raise CapabilityBundleError("Bundle manifest identity or schema mismatch.")
+        expected_manifest_sha = manifest.get("manifest_sha256")
+        canonical_payload = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
+        actual_manifest_sha = hashlib.sha256(
+            json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
+        if not isinstance(expected_manifest_sha, str) or expected_manifest_sha != actual_manifest_sha:
+            raise CapabilityBundleError("Bundle manifest digest mismatch.")
+        rows = manifest.get("files")
+        tests = manifest.get("test_paths")
+        if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_FILES:
+            raise CapabilityBundleError("Bundle file inventory is invalid.")
+        if not isinstance(tests, list) or not 1 <= len(tests) <= 20:
+            raise CapabilityBundleError("At least one explicitly included test file is required.")
+        paths: list[str] = []
+        source_hashes: dict[str, str] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                raise CapabilityBundleError("Bundle file inventory contains an invalid row.")
+            relative = _relative(row.get("path")).as_posix()
+            expected = row.get("sha256")
+            if relative in source_hashes or not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+                raise CapabilityBundleError("Bundle source hash inventory is invalid.")
+            current = bundle_root
+            for part in PurePosixPath(relative).parts:
+                current = current / part
+                if current.is_symlink():
+                    raise CapabilityBundleError(f"Staged bundle symlink rejected: {relative}")
+            source = current.resolve(strict=True)
+            try:
+                source.relative_to(bundle_root.resolve(strict=True))
+            except ValueError as exc:
+                raise CapabilityBundleError("Staged bundle source escaped its root.") from exc
+            raw = source.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != expected:
+                raise CapabilityBundleError(f"Staged bundle file digest mismatch: {relative}")
+            paths.append(relative)
+            source_hashes[relative] = expected
+        normalized_tests = [_relative(item).as_posix() for item in tests]
+        if len(set(normalized_tests)) != len(normalized_tests) or not set(normalized_tests).issubset(set(paths)):
+            raise CapabilityBundleError("Bundle tests are not a unique subset of its hash-bound files.")
+
+        workspace = self.project_root / "workspace"
+        if workspace.is_symlink():
+            raise CapabilityBundleError("Project workspace must not be a symlink.")
+        workspace.mkdir(parents=True, exist_ok=True)
+        evaluation_name = "pika_capability_eval_" + uuid.uuid4().hex
+        evaluation_root = workspace / evaluation_name
+        evaluation_root.mkdir(mode=0o700)
+        try:
+            for relative in paths:
+                pure = PurePosixPath(relative)
+                source = bundle_root.joinpath(*pure.parts)
+                target = evaluation_root.joinpath(*pure.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                raw = source.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != source_hashes[relative]:
+                    raise CapabilityBundleError(f"Staged bundle changed during evaluation preparation: {relative}")
+                with target.open("xb") as stream:
+                    stream.write(raw)
+            source_paths = [f"workspace/{evaluation_name}/{item}" for item in paths]
+            test_paths = [f"workspace/{evaluation_name}/{item}" for item in normalized_tests]
+            from core.host.pc_body import PCBodyRuntime
+            result = PCBodyRuntime(self.project_root).run_tests(
+                source_paths=source_paths,
+                test_paths=test_paths,
+                timeout=timeout,
+                acknowledge_untrusted_sandbox=True,
+            )
+        finally:
+            shutil.rmtree(evaluation_root, ignore_errors=True)
+
+        success = result.get("success") is True
+        return {
+            "success": success,
+            "schema": "pika.native_capability_evaluation.v1",
+            "bundle_id": bundle_id,
+            "bundle_manifest_sha256": expected_manifest_sha,
+            "file_count": len(paths),
+            "test_count": len(normalized_tests),
+            "sandbox_result": result,
+            "execution_performed": bool(result.get("execution_started", False)),
+            "sandboxed": result.get("sandboxed") is True,
+            "attested": False,
+            "trust": "UNVERIFIED_LOCAL",
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+            "next_required_step": "independent_result_attestation_and_capability_delta_review",
+        }
 
     def stage_bundle(
         self,
