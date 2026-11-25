@@ -49,7 +49,6 @@ def report():
         "candidate_environment_id": "python312-linux-pinned-image@sha256:example",
         "repetitions": 3,
         "performance_threshold": 0.10,
-        "attestation_verified": False,
         "baseline": {"runs": [run("baseline", i) for i in range(3)]},
         "candidate": {"runs": [run("candidate", i, duration=0.8) for i in range(3)]},
     }
@@ -64,12 +63,13 @@ class ExperimentQualityTests(unittest.TestCase):
         self.assertFalse(result["trusted_learning_eligible"])
         self.assertFalse(result["production_promotion_allowed"])
 
-    def test_attested_result_is_eligible_for_separate_trusted_learning_gate(self):
+    def test_caller_supplied_attestation_flag_never_grants_learning_trust(self):
         value = report()
         value["attestation_verified"] = True
         result = evaluate_experiment(value)
-        self.assertTrue(result["trusted_learning_eligible"])
-        self.assertEqual(result["trust"], "INDEPENDENTLY_ATTESTED_RESULT")
+        self.assertFalse(result["trusted_learning_eligible"])
+        self.assertEqual(result["trust"], "UNVERIFIED_OBSERVATION")
+        self.assertTrue(result["attestation_verification_required"])
         self.assertFalse(result["production_promotion_allowed"])
 
     def test_regression_wins_over_candidate_speed(self):
@@ -123,11 +123,13 @@ class ExperimentQualityTests(unittest.TestCase):
         result = evaluate_experiment(value)
         self.assertEqual(result["decision"], "NO_DEMONSTRATED_GAIN")
 
-    def test_attestation_flag_must_be_an_explicit_boolean(self):
+    def test_signal_termination_exit_code_is_preserved_as_failure(self):
         value = report()
-        value["attestation_verified"] = "yes"
-        with self.assertRaises(ExperimentQualityError):
-            evaluate_experiment(value)
+        value["candidate"]["runs"][0]["outcome"] = "FAILED"
+        value["candidate"]["runs"][0]["exit_code"] = -9
+        value["candidate"]["runs"][0]["tests_failed"] = 1
+        result = evaluate_experiment(value)
+        self.assertEqual(result["decision"], "REGRESSION")
 
 
 if __name__ == "__main__":
