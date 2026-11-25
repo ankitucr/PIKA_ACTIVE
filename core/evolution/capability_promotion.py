@@ -398,6 +398,37 @@ class CapabilityPromotionManager:
             raise CapabilityPromotionError("Promotion plan schema mismatch.")
         return plan, _sha(raw)
 
+    def _validate_plan_binding(
+        self,
+        plan: dict[str, Any],
+        report: dict[str, Any],
+        report_sha: str,
+        files: dict[str, bytes],
+        manifest: dict[str, Any],
+    ) -> None:
+        expected_files = {path: _sha(data) for path, data in files.items()}
+        expected_argv = ["python", "-m", "pytest", "-q", *report["trusted_test_hashes"].keys()]
+        rollback = plan.get("rollback")
+        if not isinstance(rollback, dict):
+            raise CapabilityPromotionError("Promotion plan rollback manifest is missing.")
+        if (
+            plan.get("project_root") != str(self.root)
+            or plan.get("bundle_id") != report.get("bundle_id")
+            or plan.get("bundle_manifest_sha256") != manifest.get("manifest_sha256")
+            or plan.get("report_sha256") != report_sha
+            or plan.get("files") != expected_files
+            or plan.get("trusted_test_hashes") != report.get("trusted_test_hashes")
+            or plan.get("argv") != expected_argv
+            or plan.get("timeout") != report.get("timeout")
+            or plan.get("decision") != report.get("decision")
+            or rollback.get("rollback_id") != plan.get("plan_id")
+            or rollback.get("mode") != "REMOVE_ONLY_IF_HASH_MATCHES"
+            or rollback.get("files") != expected_files
+            or rollback.get("state") != "ROLLBACK_READY_HASH_GUARDED_DELETE"
+            or plan.get("rollback_sha256") != _sha(_canonical(rollback))
+        ):
+            raise CapabilityPromotionError("Promotion plan is not bound to the verified report, bundle and rollback manifest.")
+
     def _approval_payload(self, plan: dict[str, Any], plan_sha: str, action: str) -> dict[str, Any]:
         return {
             "action": action,
@@ -436,10 +467,7 @@ class CapabilityPromotionManager:
         if approval_info["approver_key_sha256"] in self._attestor_key_hashes(result_attestor_config):
             raise CapabilityPromotionError("Promotion approver must use a distinct key from the independent result attestor.")
         report, report_sha, files, manifest = self._load_attested_report(plan["report_path"], result_attestor_config)
-        if report_sha != plan["report_sha256"] or manifest["manifest_sha256"] != plan["bundle_manifest_sha256"]:
-            raise CapabilityPromotionError("Attested report or staged bundle changed after plan preparation.")
-        if {path: _sha(data) for path, data in files.items()} != plan["files"]:
-            raise CapabilityPromotionError("Staged implementation files differ from the approved plan.")
+        self._validate_plan_binding(plan, report, report_sha, files, manifest)
 
         created: list[str] = []
         try:
@@ -562,10 +590,7 @@ class CapabilityPromotionManager:
             plan["report_path"],
             result_attestor_config,
         )
-        if (report_sha != plan["report_sha256"]
-                or manifest["manifest_sha256"] != plan["bundle_manifest_sha256"]
-                or report.get("bundle_id") != plan["bundle_id"]):
-            raise CapabilityPromotionError("Attested report or staged bundle changed after plan preparation.")
+        self._validate_plan_binding(plan, report, report_sha, files, manifest)
         if len(files) > policy["max_files"] or sum(len(data) for data in files.values()) > policy["max_total_bytes"]:
             raise CapabilityPromotionError("Capability bundle exceeds owner-authorized autonomous policy limits.")
         if any(_target(path).parts[0] not in policy["allowed_roots"] for path in files):
