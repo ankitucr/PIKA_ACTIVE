@@ -174,6 +174,31 @@ class NativeCognitionEngine:
         })
         return result
 
+    def evaluate_capability_bundle(
+        self,
+        bundle_id: str,
+        *,
+        acknowledge_untrusted_sandbox: bool,
+        timeout: int = 120,
+    ) -> dict[str, Any]:
+        """Evaluate one staged bundle in disposable Docker isolation."""
+        result = self.capability_bundles.evaluate_bundle(
+            bundle_id,
+            acknowledge_untrusted_sandbox=acknowledge_untrusted_sandbox,
+            timeout=timeout,
+        )
+        self._append_event({
+            "type": "native_capability_bundle_evaluated",
+            "bundle_id": result.get("bundle_id"),
+            "bundle_manifest_sha256": result.get("bundle_manifest_sha256"),
+            "success": result.get("success") is True,
+            "execution_performed": result.get("execution_performed") is True,
+            "trust": result.get("trust"),
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+        })
+        return result
+
     def learn_repositories(self, repositories: Iterable[str], *, max_files: int = 80) -> dict[str, Any]:
         """Fetch GitHub repositories through Git transport and analyze them as data."""
         repo_list = [str(x).strip() for x in repositories if str(x).strip()]
@@ -915,6 +940,28 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        capability_evaluation_markers = (
+            "evaluate staged capability bundle",
+            "run isolated capability tests",
+            "test staged capability in docker",
+        )
+        if any(marker in lower for marker in capability_evaluation_markers):
+            try:
+                result = await asyncio.to_thread(
+                    self.evaluate_capability_bundle,
+                    context.get("bundle_id"),
+                    acknowledge_untrusted_sandbox=context.get("acknowledge_untrusted_sandbox") is True,
+                    timeout=context.get("timeout", 120),
+                )
+            except (CapabilityBundleError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_CAPABILITY_EVALUATION_REJECTED", str(exc)[:400])
+            return self._response(
+                result.get("success") is True,
+                json.dumps(result, indent=2, ensure_ascii=False),
+                knowledge_consumed=False,
+                raw=result,
+            )
 
         capability_evaluation_markers = (
             "evaluate staged capability bundle",
