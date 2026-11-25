@@ -27,6 +27,7 @@ from core.phase36.operator_approval import (
 )
 from core.phase36.result_attestation import (
     ResultBoundSandboxRunner,
+    SANDBOX_POLICY_ID,
     load_result_attestation_trust_policy,
 )
 
@@ -189,6 +190,13 @@ class CapabilityPromotionManager:
         tests = report.get("trusted_test_hashes")
         if not isinstance(tests, dict) or not tests:
             raise CapabilityPromotionError("Attested report has no trusted test manifest.")
+        for relative, digest in tests.items():
+            target = _target(relative)
+            if target.parts[0] != "tests" or not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+                raise CapabilityPromotionError("Trusted test manifest contains an invalid path or digest.")
+            live_test = _no_symlink(self.root, target, must_exist=True)
+            if _sha(live_test.read_bytes()) != digest:
+                raise CapabilityPromotionError(f"Trusted test source changed after attested evaluation: {relative}")
         baseline = report.get("baseline")
         candidate = report.get("candidate")
         if not isinstance(baseline, dict) or not isinstance(candidate, dict):
@@ -200,8 +208,6 @@ class CapabilityPromotionManager:
                 or not isinstance(baseline_runs, list) or not isinstance(candidate_runs, list)
                 or len(baseline_runs) != repetitions or len(candidate_runs) != repetitions):
             raise CapabilityPromotionError("Attested comparison repetition records are inconsistent.")
-        if baseline.get("all_passed") is not False or candidate.get("all_passed") is not True:
-            raise CapabilityPromotionError("Baseline/candidate summaries do not prove a repeatable capability addition.")
         expected_candidate_hashes = {
             **tests,
             **{path: _sha(data) for path, data in files.items()},
@@ -209,11 +215,13 @@ class CapabilityPromotionManager:
         if report.get("baseline_source_hashes") != tests or report.get("candidate_source_hashes") != expected_candidate_hashes:
             raise CapabilityPromotionError("Report source manifests do not match trusted tests and staged implementation.")
         argv = ["python", "-m", "pytest", "-q", *tests.keys()]
-        if report.get("timeout") is None or not 1 <= report["timeout"] <= 600:
+        timeout = report.get("timeout")
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 600:
             raise CapabilityPromotionError("Report timeout is invalid.")
-        for label, runs, expected_hashes, expected_outcome in (
-            ("baseline", baseline_runs, tests, None),
-            ("candidate", candidate_runs, expected_candidate_hashes, "PASSED"),
+        outcomes: dict[str, list[str]] = {"baseline": [], "candidate": []}
+        for label, runs, expected_hashes in (
+            ("baseline", baseline_runs, tests),
+            ("candidate", candidate_runs, expected_candidate_hashes),
         ):
             for run in runs:
                 if not isinstance(run, dict):
@@ -224,13 +232,24 @@ class CapabilityPromotionManager:
                 if (not isinstance(challenge, dict) or not isinstance(attestation, dict)
                         or not isinstance(result, dict) or result != attestation.get("result")):
                     raise CapabilityPromotionError("Run evidence is incomplete or mismatched.")
-                if (challenge.get("argv") != argv or challenge.get("timeout") != report["timeout"]
-                        or challenge.get("source_hashes") != expected_hashes):
+                if (challenge.get("argv") != argv or challenge.get("timeout") != timeout
+                        or challenge.get("source_hashes") != expected_hashes
+                        or challenge.get("sandbox_policy_id") != SANDBOX_POLICY_ID):
                     raise CapabilityPromotionError("Signed run challenge does not match the approved sources/tests.")
                 if not policy.verify(attestation, challenge):
                     raise CapabilityPromotionError("Independent result attestation failed pinned trust verification.")
-                if expected_outcome and result.get("outcome") != expected_outcome:
-                    raise CapabilityPromotionError("Candidate attestation does not show a passing test run.")
+                outcome = result.get("outcome")
+                if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT"}:
+                    raise CapabilityPromotionError("Attested run has an unsupported or empty-test outcome.")
+                outcomes[label].append(outcome)
+                if label == "candidate" and outcome != "PASSED":
+                    raise CapabilityPromotionError("Every candidate attestation must pass.")
+        baseline_all_passed = all(item == "PASSED" for item in outcomes["baseline"])
+        candidate_all_passed = all(item == "PASSED" for item in outcomes["candidate"])
+        if (baseline.get("all_passed") is not baseline_all_passed
+                or candidate.get("all_passed") is not candidate_all_passed
+                or baseline_all_passed or not candidate_all_passed):
+            raise CapabilityPromotionError("Attested summaries do not prove a repeatable capability addition.")
         return report, _sha(raw), files, manifest
 
     def _write_plan(self, plan: dict[str, Any]) -> tuple[Path, str]:
