@@ -12,6 +12,7 @@ Close the gap between an independently attested capability gain and adding that 
 - Exact bundle manifest and implementation file SHA-256 matches.
 - Exact trusted test hashes still present under PIKA's `tests/` tree.
 - Candidate bundle files target only allowlisted Python source roots and do not overwrite existing PIKA files.
+- Internal dependency closure must be complete and third-party dependencies must be pinned by a future explicit dependency policy; unpinned imports are rejected.
 - A separate Ed25519 operator approval for `PRODUCTION_PROMOTION`.
 
 ## Apply and rollback
