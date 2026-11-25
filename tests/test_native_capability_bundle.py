@@ -13,7 +13,7 @@ def make_source(root: Path):
     (root / "tests").mkdir()
     (root / "core" / "__init__.py").write_text("", encoding="utf-8")
     (root / "core" / "engine.py").write_text(
-        "from core.helpers import normalize\n\ndef run(value):\n    return normalize(value)\n",
+        "import pathlib\nimport requests\nfrom core.helpers import normalize\n\ndef run(value):\n    return normalize(value)\n",
         encoding="utf-8",
     )
     (root / "core" / "helpers.py").write_text(
@@ -47,6 +47,10 @@ def test_stages_multi_file_capability_with_hash_bound_manifest(tmp_path):
     assert manifest["manifest_sha256"] == result["manifest_sha256"]
     assert len({row["sha256"] for row in manifest["files"]}) == 4
     assert manifest["internal_dependency_gaps"] == []
+    engine_row = next(row for row in manifest["files"] if row["path"] == "core/engine.py")
+    assert "pathlib" in engine_row["standard_library_imports"]
+    assert "requests" in engine_row["external_imports"]
+    assert "core.helpers" in engine_row["internal_imports"]
 
 
 def test_flags_risky_runtime_surfaces_without_executing_them(tmp_path):
