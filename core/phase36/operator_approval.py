@@ -64,6 +64,14 @@ def _protected_file(path: str | Path, *, project_root: str | Path | None = None,
             raise OperatorApprovalError("Operator key/config permissions must be owner-only (0600).")
         if stat.S_IMODE(resolved.parent.stat().st_mode) & 0o022:
             raise OperatorApprovalError("Operator key/config parent must not be group/world writable.")
+    elif os.name == "nt":
+        from core.windows_acl import is_owner_only_acl
+        if not is_owner_only_acl(resolved) or not is_owner_only_acl(resolved.parent):
+            raise OperatorApprovalError(
+                "Operator key/config and parent ACLs must be restricted to the current user, SYSTEM, and Administrators."
+            )
+    else:
+        raise OperatorApprovalError("Unsupported platform for operator approval ACL verification.")
     if metadata.st_size < 1 or metadata.st_size > maximum:
         raise OperatorApprovalError("Operator key/config file size is invalid.")
     return resolved, resolved.read_bytes()

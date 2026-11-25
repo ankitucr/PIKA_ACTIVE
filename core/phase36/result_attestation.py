@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+from core.file_lock import fcntl
+
 import hashlib
 import json
 import math
@@ -320,11 +322,20 @@ class RunAttestationReplayGuard:
                 raise ResultAttestationError('Symlinks are forbidden in the replay journal path.')
             current = current.parent
         parent_metadata = self.path.parent.stat()
-        if os.name == 'posix' and stat.S_IMODE(parent_metadata.st_mode) & 0o077:
-            raise ResultAttestationError('Replay journal parent must be owner-only (0700).')
-        get_uid = getattr(os, 'geteuid', None)
-        if callable(get_uid) and parent_metadata.st_uid != get_uid():
-            raise ResultAttestationError('Replay journal parent must be owned by the current user.')
+        if os.name == 'posix':
+            if stat.S_IMODE(parent_metadata.st_mode) & 0o077:
+                raise ResultAttestationError('Replay journal parent must be owner-only (0700).')
+            get_uid = getattr(os, 'geteuid', None)
+            if callable(get_uid) and parent_metadata.st_uid != get_uid():
+                raise ResultAttestationError('Replay journal parent must be owned by the current user.')
+        elif os.name == 'nt':
+            from core.windows_acl import is_owner_only_acl
+            if not is_owner_only_acl(self.path.parent):
+                raise ResultAttestationError(
+                    'Replay journal parent must have an owner-only ACL restricted to the current user, SYSTEM, and Administrators.'
+                )
+        else:
+            raise ResultAttestationError('Unsupported platform for replay journal ACL verification.')
         self.lock_path = self.path.with_name(self.path.name + '.lock')
 
     def _open_lock(self) -> int:
@@ -333,13 +344,25 @@ class RunAttestationReplayGuard:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
         fd = os.open(self.lock_path, flags, 0o600)
         metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
+        if not stat.S_ISREG(metadata.st_mode):
             os.close(fd)
-            raise ResultAttestationError('Replay lock must be a regular owner-only file.')
-        get_uid = getattr(os, 'geteuid', None)
-        if callable(get_uid) and metadata.st_uid != get_uid():
+            raise ResultAttestationError('Replay lock must be a regular file.')
+        if os.name == 'posix':
+            if stat.S_IMODE(metadata.st_mode) & 0o077:
+                os.close(fd)
+                raise ResultAttestationError('Replay lock must be owner-only (0600).')
+            get_uid = getattr(os, 'geteuid', None)
+            if callable(get_uid) and metadata.st_uid != get_uid():
+                os.close(fd)
+                raise ResultAttestationError('Replay lock must be owned by the current user.')
+        elif os.name == 'nt':
+            from core.windows_acl import is_owner_only_acl
+            if not is_owner_only_acl(self.lock_path):
+                os.close(fd)
+                raise ResultAttestationError('Replay lock ACL is not restricted.')
+        else:
             os.close(fd)
-            raise ResultAttestationError('Replay lock must be owned by the current user.')
+            raise ResultAttestationError('Unsupported platform for replay lock ACL verification.')
         return fd
 
     def _read_rows(self) -> list[dict[str, Any]]:
@@ -351,11 +374,20 @@ class RunAttestationReplayGuard:
         fd = os.open(self.path, flags)
         try:
             metadata = os.fstat(fd)
-            if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
-                raise ResultAttestationError('Replay journal must be a regular owner-only file.')
-            get_uid = getattr(os, 'geteuid', None)
-            if callable(get_uid) and metadata.st_uid != get_uid():
-                raise ResultAttestationError('Replay journal must be owned by the current user.')
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ResultAttestationError('Replay journal must be a regular file.')
+            if os.name == 'posix':
+                if stat.S_IMODE(metadata.st_mode) & 0o077:
+                    raise ResultAttestationError('Replay journal must be owner-only (0600).')
+                get_uid = getattr(os, 'geteuid', None)
+                if callable(get_uid) and metadata.st_uid != get_uid():
+                    raise ResultAttestationError('Replay journal must be owned by the current user.')
+            elif os.name == 'nt':
+                from core.windows_acl import is_owner_only_acl
+                if not is_owner_only_acl(self.path):
+                    raise ResultAttestationError('Replay journal ACL is not restricted.')
+            else:
+                raise ResultAttestationError('Unsupported platform for replay journal ACL verification.')
             chunks = []
             total = 0
             while True:
@@ -430,11 +462,20 @@ class RunAttestationReplayGuard:
             fd = os.open(self.path, flags, 0o600)
             try:
                 metadata = os.fstat(fd)
-                if not stat.S_ISREG(metadata.st_mode) or (os.name == 'posix' and stat.S_IMODE(metadata.st_mode) & 0o077):
-                    raise ResultAttestationError('Replay journal append target must be a regular owner-only file.')
-                get_uid = getattr(os, 'geteuid', None)
-                if callable(get_uid) and metadata.st_uid != get_uid():
-                    raise ResultAttestationError('Replay journal append target must be owned by the current user.')
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ResultAttestationError('Replay journal append target must be a regular file.')
+                if os.name == 'posix':
+                    if stat.S_IMODE(metadata.st_mode) & 0o077:
+                        raise ResultAttestationError('Replay journal append target must be owner-only (0600).')
+                    get_uid = getattr(os, 'geteuid', None)
+                    if callable(get_uid) and metadata.st_uid != get_uid():
+                        raise ResultAttestationError('Replay journal append target must be owned by the current user.')
+                elif os.name == 'nt':
+                    from core.windows_acl import is_owner_only_acl
+                    if not is_owner_only_acl(self.path):
+                        raise ResultAttestationError('Replay journal append target ACL is not restricted.')
+                else:
+                    raise ResultAttestationError('Unsupported platform for replay journal ACL verification.')
                 offset = 0
                 while offset < len(encoded):
                     written = os.write(fd, encoded[offset:])
@@ -636,6 +677,14 @@ def load_result_attestation_trust_policy(config_path: str | Path, *,
             raise ResultAttestorConfigError('Trust config permissions must be owner-only (0600).')
         if stat.S_IMODE(resolved.parent.stat().st_mode) & 0o022:
             raise ResultAttestorConfigError('Trust config parent must not be group/world writable.')
+    elif os.name == 'nt':
+        from core.windows_acl import is_owner_only_acl
+        if not is_owner_only_acl(resolved) or not is_owner_only_acl(resolved.parent):
+            raise ResultAttestorConfigError(
+                'Trust config and parent ACLs must be restricted to the current user, SYSTEM, and Administrators.'
+            )
+    else:
+        raise ResultAttestorConfigError('Unsupported platform for trust-config ACL verification.')
     try:
         data = json.loads(raw.decode('utf-8'), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
