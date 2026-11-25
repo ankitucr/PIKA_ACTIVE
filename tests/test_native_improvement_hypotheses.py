@@ -80,25 +80,27 @@ class NativeImprovementHypothesisTests(unittest.TestCase):
         self.assertTrue(all(item["status"] == "NEEDS_HUMAN_REVIEW" for item in result["hypotheses"]))
         self.assertFalse(result["policy"]["automatic_staging"])
 
-    def test_native_self_analysis_persists_hypotheses_without_source_changes(self, tmp_path):
-        import json
-        from core.native_cognition import NativeCognitionEngine
 
-        engine = NativeCognitionEngine(tmp_path)
-        engine.analyzer.analyze_project = lambda _root: {
-            "metrics": {"python_files_analyzed": 1, "static_findings": 1},
-            "improvement_findings": [finding()],
-            "limits": ["AST structure is not full semantic understanding."],
-        }
-        result = engine.analyze_self()
 
-        assert result["success"] is True
-        assert result["hypothesis_count"] == 1
-        assert result["source_modified"] is False
-        assert result["source_executed"] is False
-        stored = json.loads((tmp_path / "data" / "pika_native_improvement_hypotheses.json").read_text())
-        assert stored["hypotheses"][0]["hypothesis_id"] == result["hypotheses"][0]["hypothesis_id"]
-        assert stored["policy"]["human_review_required"] is True
+def test_native_self_analysis_persists_hypotheses_without_source_changes(self, tmp_path):
+    import json
+    from core.native_cognition import NativeCognitionEngine
+
+    engine = NativeCognitionEngine(tmp_path)
+    engine.analyzer.analyze_project = lambda _root: {
+        "metrics": {"python_files_analyzed": 1, "static_findings": 1},
+        "improvement_findings": [finding()],
+        "limits": ["AST structure is not full semantic understanding."],
+    }
+    result = engine.analyze_self()
+
+    assert result["success"] is True
+    assert result["hypothesis_count"] == 1
+    assert result["source_modified"] is False
+    assert result["source_executed"] is False
+    stored = json.loads((tmp_path / "data" / "pika_native_improvement_hypotheses.json").read_text())
+    assert stored["hypotheses"][0]["hypothesis_id"] == result["hypotheses"][0]["hypothesis_id"]
+    assert stored["policy"]["human_review_required"] is True
 
 
 if __name__ == "__main__":
