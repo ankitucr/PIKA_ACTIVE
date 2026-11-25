@@ -238,12 +238,32 @@ class PIKALiveRuntime:
 
     def _run_capability_pipeline(self) -> dict[str, Any]:
         """Verify staged bundles and evaluate at most one new bundle per live cycle."""
-        listing = self.evolution.capability_bundles.list_staged_bundles(limit=100)
+        bundle_engine = getattr(self.evolution, "capability_bundles", None)
+        list_bundles = getattr(bundle_engine, "list_staged_bundles", None)
+        if not callable(list_bundles):
+            report = {
+                "schema": "pika.live.capability_pipeline.v1",
+                "state": "CAPABILITY_ENGINE_UNAVAILABLE",
+                "staged_bundle_count": 0,
+                "verified_bundle_count": 0,
+                "evaluations": [],
+                "live_source_modified": False,
+                "promotion": "BLOCKED",
+            }
+            self._atomic_report(
+                self.root / "PIKA_KNOWLEDGE" / "CAPABILITY_AUTONOMOUS_PIPELINE.json",
+                report,
+            )
+            return report
+        listing = list_bundles(limit=100)
         items = listing.get("items", []) if isinstance(listing, dict) else []
         report: dict[str, Any] = {
             "schema": "pika.live.capability_pipeline.v1",
             "staged_bundle_count": len(items),
-            "verified_bundle_count": sum(item.get("verified") is True for item in items),
+            "verified_bundle_count": sum(
+                item.get("verified") is True for item in items
+                if isinstance(item, dict)
+            ),
             "evaluations": [],
             "runner": (
                 self.result_runner.status()
