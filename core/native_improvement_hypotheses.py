@@ -100,6 +100,7 @@ class NativeImprovementHypothesisEngine:
         hypotheses: list[dict[str, Any]] = []
         seen: set[str] = set()
         rejected = 0
+        duplicates = 0
         for raw in findings:
             if not isinstance(raw, dict):
                 rejected += 1
@@ -113,6 +114,7 @@ class NativeImprovementHypothesisEngine:
                 json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest()
             if fingerprint in seen:
+                duplicates += 1
                 continue
             seen.add(fingerprint)
             rule = _RULES[identity["rule"]]
@@ -132,16 +134,16 @@ class NativeImprovementHypothesisEngine:
                 "trusted_learning_admission": False,
                 "production_promotion_allowed": False,
             })
-            if len(hypotheses) >= MAX_HYPOTHESES:
-                break
-
         hypotheses.sort(key=lambda item: item["hypothesis_id"])
+        truncated = max(0, len(hypotheses) - MAX_HYPOTHESES)
+        hypotheses = hypotheses[:MAX_HYPOTHESES]
         return {
             "schema": SCHEMA,
             "hypothesis_count": len(hypotheses),
             "input_finding_count": len(findings),
             "rejected_finding_count": rejected,
-            "deduplicated_finding_count": len(seen) - len(hypotheses) if len(seen) > len(hypotheses) else 0,
+            "deduplicated_finding_count": duplicates,
+            "truncated_hypothesis_count": truncated,
             "hypotheses": hypotheses,
             "policy": {
                 "mode": "deterministic_hypothesis_generation_only",
