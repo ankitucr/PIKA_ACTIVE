@@ -117,6 +117,7 @@ def load_autonomous_capability_policy(
             or len(set(roots)) != len(roots)):
         raise AutonomousPolicyError("Policy allowed_roots must be a unique subset of the fixed source allowlist.")
     if (isinstance(policy.get("required_repetitions"), bool)
+            or not isinstance(policy.get("required_repetitions"), int)
             or policy.get("required_repetitions") not in {3, 5}):
         raise AutonomousPolicyError("Policy requires exactly 3 or 5 attested repetitions.")
     for flag in (
