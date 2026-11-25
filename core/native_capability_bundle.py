@@ -223,11 +223,25 @@ class NativeCapabilityBundleEngine:
         try:
             for row in rows:
                 relative = PurePosixPath(row["path"])
-                source = root.joinpath(*relative.parts)
+                source = root
+                for part in relative.parts:
+                    source = source / part
+                    if source.is_symlink():
+                        raise CapabilityBundleError(f"Symlink source appeared during staging: {row['path']}")
+                source = source.resolve(strict=True)
+                try:
+                    source.relative_to(root)
+                except ValueError as exc:
+                    raise CapabilityBundleError("Source path escaped its root during staging.") from exc
                 target = temp.joinpath(*relative.parts)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 raw = source.read_bytes()
-                if hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                rechecked = root
+                for part in relative.parts:
+                    rechecked = rechecked / part
+                    if rechecked.is_symlink():
+                        raise CapabilityBundleError(f"Symlink source appeared during staging: {row['path']}")
+                if rechecked.resolve(strict=True) != source or hashlib.sha256(raw).hexdigest() != row["sha256"]:
                     raise CapabilityBundleError(f"Source changed during staging: {row['path']}")
                 with target.open("xb") as stream:
                     stream.write(raw)
