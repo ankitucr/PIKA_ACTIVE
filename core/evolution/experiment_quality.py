@@ -1,6 +1,7 @@
 from __future__ import annotations
  
 import math
+import re
 import statistics
 from dataclasses import dataclass
 from typing import Any
@@ -41,10 +42,10 @@ class RunOutcome:
             raise ExperimentQualityError("Run side does not match its experiment group.")
         if not isinstance(run_id, str) or not run_id.strip() or len(run_id) > 128:
             raise ExperimentQualityError("Run ID must be a non-empty bounded string.")
-        if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT", "NO_TESTS", "INCOMPLETE"}:
+        if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT", "NO_TESTS"}:
             raise ExperimentQualityError("Unsupported or unknown run outcome.")
 
-        exit_code = _integer(value.get("exit_code"), "exit_code")
+        exit_code = _integer(value.get("exit_code"), "exit_code", minimum=-255)
         test_count = _integer(value.get("test_count"), "test_count", minimum=0)
         tests_passed = _integer(value.get("tests_passed"), "tests_passed", minimum=0)
         tests_failed = _integer(value.get("tests_failed"), "tests_failed", minimum=0)
@@ -93,8 +94,6 @@ def _integer(value: Any, field: str, *, minimum: int = 0) -> int:
 
 
 def _digest(value: Any, field: str) -> str:
-    import re
-
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise ExperimentQualityError(f"{field} must be a lowercase SHA-256 digest.")
     return value
@@ -147,8 +146,9 @@ def _group(value: Any, side: str, repetitions: int) -> dict[str, Any]:
 def evaluate_experiment(report: Any) -> dict[str, Any]:
     """Validate raw experiment evidence and derive a conservative comparison.
 
-    The function does not verify host signatures or grant trust. It accepts only
-    a caller-supplied attestation-verification result and labels output accordingly.
+    The function measures supplied run evidence only. It never accepts an
+    attestation flag or grants trusted-learning eligibility. A separate trust
+    service must verify signed evidence before any learning-admission decision.
     """
     if not isinstance(report, dict) or report.get("schema") != SCHEMA:
         raise ExperimentQualityError("Unsupported experiment schema.")
@@ -184,11 +184,6 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
     if report.get("baseline_environment_id") != report.get("environment_id") or report.get("candidate_environment_id") != report.get("environment_id"):
         raise ExperimentQualityError("Baseline and candidate must use the same pinned environment.")
 
-    # A verifier is expected to check an external Ed25519 attestation. This
-    # layer refuses trust elevation unless the result is explicitly true.
-    attestation_verified = report.get("attestation_verified") is True
-    if not isinstance(report.get("attestation_verified"), bool):
-        raise ExperimentQualityError("attestation_verified must be an explicit Boolean.")
     if candidate["outcomes"].get("INCOMPLETE", 0) or baseline["outcomes"].get("INCOMPLETE", 0):
         decision = "INCOMPLETE_EVIDENCE"
     elif candidate["all_passed"] and not baseline["all_passed"]:
@@ -211,10 +206,6 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
     else:
         decision = "NO_VERIFIED_GAIN"
 
-    trusted_decision = (
-        decision in {"FUNCTIONAL_GAIN_UNVERIFIED", "PERFORMANCE_GAIN_UNVERIFIED"}
-        and attestation_verified
-    )
     return {
         "schema": "pika.phase46.experiment_quality_result.v1",
         "experiment_id": experiment_id,
@@ -229,10 +220,11 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
             "repetitions": repetitions,
             "baseline": baseline,
             "candidate": candidate,
-            "attestation_verified": attestation_verified,
+            "attestation_verification": "NOT_PERFORMED_BY_QUALITY_EVALUATOR",
         },
-        "trust": "INDEPENDENTLY_ATTESTED_RESULT" if attestation_verified else "UNVERIFIED_OBSERVATION",
-        "trusted_learning_eligible": trusted_decision,
+        "trust": "UNVERIFIED_OBSERVATION",
+        "trusted_learning_eligible": False,
+        "attestation_verification_required": True,
         "production_promotion_allowed": False,
         "operator_approval_required": True,
         "automatic_source_write": False,
