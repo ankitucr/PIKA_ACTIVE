@@ -26,12 +26,12 @@ Each staged bundle records per-file SHA-256, byte size, AST node count, module i
 - Source is parsed as AST data only.
 - No imports, execution, tests, dependency installation, trusted-memory admission, or production promotion.
 - Risk flags are static indicators, not proof of exploitability or safety.
-- Staging is not integration. A later phase must run candidate tests in a disposable, network-isolated environment and obtain independently verified result evidence before any trusted admission decision.
+- Staging is not integration. Phase 49 adds a disposable, network-isolated Docker evaluation route. Its local result remains untrusted; independent result attestation and a separate admission decision are still required.
 
-## Next required work
+## Follow-on work
 
-1. Add a dependency-closure and public-interface compatibility review.
-2. Evaluate the complete bundle and its supplied tests in the disposable candidate runner.
+1. Phase 49 evaluates the complete bundle and supplied tests in the disposable Docker candidate runner.
+2. Add dependency-closure and public-interface compatibility review.
 3. Compare baseline and candidate capability probes, not only test counts.
 4. Bind successful experiment evidence to the exact bundle manifest.
 5. Route any future integration through a separate attested admission and reversible promotion gate.
