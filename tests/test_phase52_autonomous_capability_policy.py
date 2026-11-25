@@ -4,6 +4,7 @@ import json
 import time
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.evolution.autonomous_capability_policy import (
@@ -19,7 +20,7 @@ def write_signed_policy(tmp_path, *, overrides=None, tamper=False):
     project = tmp_path / "pika"
     project.mkdir()
     private = Ed25519PrivateKey.generate()
-    public = private.public_key().public_bytes_raw()
+    public = private.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     now = time.time()
     payload = {
         "schema": POLICY_SCHEMA,
