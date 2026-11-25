@@ -43,4 +43,4 @@ def test_replay_guard_uses_portable_windows_lock_backend(tmp_path, monkeypatch):
     assert journal.is_file()
     assert len(journal.read_text(encoding="utf-8").splitlines()) == 1
     assert [item[1] for item in fake.calls] == [fake.LK_LOCK, fake.LK_UNLCK]
-    assert guard.rows()[0]["challenge_nonce"] == "a" * 64
+    assert guard._read_rows()[0]["challenge_nonce"] == "a" * 64
