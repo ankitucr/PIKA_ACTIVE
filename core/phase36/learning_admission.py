@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import fcntl
+from core.evolution.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+
 import hashlib
 import json
 import math
@@ -162,7 +163,7 @@ class TrustedLearningAdmission:
             metadata = os.fstat(lock_fd)
             if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
                 raise LearningAdmissionError("Trusted-learning projection lock must be owner-only.")
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
 
             memory_rows = []
             if self.memory_path.is_symlink():
@@ -241,7 +242,7 @@ class TrustedLearningAdmission:
             return {"valid": True, "experience_memory": True, "evolution_ledger": True}
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
@@ -313,7 +314,7 @@ class TrustedLearningAdmission:
     def verify(self) -> dict[str, Any]:
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_SH)
+            acquire_lock_fd(lock_fd, exclusive=False)
             rows = self._read_rows()
             projection = self._verify_projections([
                 (row["record"], row["entry_hash"]) for row in rows
@@ -329,7 +330,7 @@ class TrustedLearningAdmission:
             return {"valid": False, "entries": 0, "error": type(exc).__name__}
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
@@ -439,7 +440,7 @@ class TrustedLearningAdmission:
         }
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             rows = self._read_rows()
             for row in rows:
                 old = row["record"]
@@ -476,7 +477,7 @@ class TrustedLearningAdmission:
                 os.close(fd)
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
         projection = self._project_admission(record, row["entry_hash"])
@@ -498,7 +499,7 @@ class TrustedLearningAdmission:
     def find_report(self, report_sha256: str) -> dict[str, Any] | None:
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_SH)
+            acquire_lock_fd(lock_fd, exclusive=False)
             rows = self._read_rows()
             projection = self._verify_projections([
                 (row["record"], row["entry_hash"]) for row in rows
@@ -512,6 +513,6 @@ class TrustedLearningAdmission:
             return None
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
