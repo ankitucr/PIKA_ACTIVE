@@ -11,10 +11,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-try:
-    except ImportError:  # pragma: no cover - Termux/Linux provides fcntl
-    fcntl = None
-
 
 class EvolutionLedger:
     """Append-only hash-chained log with schema checks and durable writes.
@@ -109,13 +105,11 @@ class EvolutionLedger:
 
     @staticmethod
     def _lock(stream, exclusive: bool) -> None:
-        if fcntl is not None:
-            acquire_lock_fd(stream.fileno(), exclusive=exclusive)
+        acquire_lock_fd(stream.fileno(), exclusive=exclusive)
 
     @staticmethod
     def _unlock(stream) -> None:
-        if fcntl is not None:
-            release_lock_fd(stream.fileno())
+        release_lock_fd(stream.fileno())
 
     def _open_fd(self, flags: int) -> int:
         if self.path.is_symlink():
