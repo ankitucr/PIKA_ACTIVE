@@ -65,7 +65,7 @@ class TrustedLearningAdmission:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(self.lock_path, flags, 0o600)
         meta = os.fstat(fd)
-        if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+        if not stat.S_ISREG(meta.st_mode) or (os.name == "posix" and stat.S_IMODE(meta.st_mode) & 0o077):
             os.close(fd)
             raise LearningAdmissionError("Admission lock must be regular and owner-only.")
         return fd
@@ -79,7 +79,7 @@ class TrustedLearningAdmission:
         fd = os.open(self.journal, flags)
         try:
             meta = os.fstat(fd)
-            if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+            if not stat.S_ISREG(meta.st_mode) or (os.name == "posix" and stat.S_IMODE(meta.st_mode) & 0o077):
                 raise LearningAdmissionError("Admission journal must be regular and owner-only.")
             chunks, total = [], 0
             while True:
@@ -161,7 +161,7 @@ class TrustedLearningAdmission:
         )
         try:
             metadata = os.fstat(lock_fd)
-            if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) & 0o077:
+            if not stat.S_ISREG(metadata.st_mode) or (os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077):
                 raise LearningAdmissionError("Trusted-learning projection lock must be owner-only.")
             acquire_lock_fd(lock_fd, exclusive=True)
 
@@ -170,7 +170,7 @@ class TrustedLearningAdmission:
                 raise LearningAdmissionError("Experience Memory symlink rejected.")
             if self.memory_path.exists():
                 meta = self.memory_path.stat()
-                if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                if not stat.S_ISREG(meta.st_mode) or (os.name == "posix" and stat.S_IMODE(meta.st_mode) & 0o077):
                     raise LearningAdmissionError("Experience Memory must be a regular owner-only file.")
                 for number, line in enumerate(self.memory_path.read_text(encoding="utf-8").splitlines(), 1):
                     if not line.strip():
@@ -210,7 +210,7 @@ class TrustedLearningAdmission:
                 fd = os.open(self.memory_path, flags, 0o600)
                 try:
                     meta = os.fstat(fd)
-                    if not stat.S_ISREG(meta.st_mode) or stat.S_IMODE(meta.st_mode) & 0o077:
+                    if not stat.S_ISREG(meta.st_mode) or (os.name == "posix" and stat.S_IMODE(meta.st_mode) & 0o077):
                         raise LearningAdmissionError("Experience Memory append target must be regular and owner-only.")
                     offset = 0
                     while offset < len(encoded):
@@ -341,7 +341,7 @@ class TrustedLearningAdmission:
             raise LearningAdmissionError("Attested report must be a regular non-symlink file.")
         source = source.resolve(strict=True)
         metadata = source.stat()
-        if metadata.st_size > MAX_REPORT_BYTES or stat.S_IMODE(metadata.st_mode) & 0o022:
+        if metadata.st_size > MAX_REPORT_BYTES or (os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o022):
             raise LearningAdmissionError("Attested report is oversized or group/world writable.")
         raw = source.read_bytes()
         try:
