@@ -96,6 +96,9 @@ jobs:
       - name: Run Phase 50 attested capability-delta contract
         run: python -m pytest -q tests/test_phase50_capability_attestation.py
 
+      - name: Run Phase 51 reversible capability promotion contract
+        run: python -m pytest -q tests/test_phase51_capability_promotion.py
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \
