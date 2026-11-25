@@ -172,7 +172,7 @@ def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatc
 
 
 def test_multi_file_prepare_refuses_existing_live_source(tmp_path, monkeypatch):
-    project, manager, prepared = prepare_fixture(tmp_path, monkeypatch)
+    project, manager, prepared, report_path = prepare_fixture(tmp_path, monkeypatch)
     target = project / "core" / "pika_new_feature.py"
     target.write_text("def feature():\n    return 0\n", encoding="utf-8")
     with pytest.raises(CapabilityPromotionError):
