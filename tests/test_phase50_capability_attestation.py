@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
+from core.phase36.result_attestation import SANDBOX_POLICY_ID
 from core.evolution.capability_attestation import (
     CapabilityAttestationError,
     ResultAttestedCapabilityEvaluator,
@@ -41,11 +43,22 @@ class FakeAttestedRunner:
             "timeout": timeout,
             "outcome": outcome,
         })
+        challenge_nonce = f"nonce-{len(self.calls)}"
+        challenge = {
+            "argv": list(argv),
+            "timeout": timeout,
+            "source_hashes": {
+                relative: hashlib.sha256((cwd / relative).read_bytes()).hexdigest()
+                for relative in source_paths
+            },
+            "sandbox_policy_id": SANDBOX_POLICY_ID,
+            "challenge_nonce": challenge_nonce,
+        }
         attestation = {
             "result": result,
             "verification_id": f"verification-{len(self.calls)}",
             "result_sha256": "a" * 64,
-            "challenge_nonce": f"nonce-{len(self.calls)}",
+            "challenge_nonce": challenge_nonce,
             "measurement_sha256": "b" * 64,
         }
         return {
@@ -54,7 +67,7 @@ class FakeAttestedRunner:
             "evidence_class": "INDEPENDENT_OS_RESULT_ATTESTATION",
             "result": result,
             "result_attestation": attestation,
-            "challenge": {"nonce": attestation["challenge_nonce"]},
+            "challenge": challenge,
         }
 
 
