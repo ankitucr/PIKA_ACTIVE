@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
+from core.phase36.result_attestation import SANDBOX_POLICY_ID
 from core.evolution.capability_attestation import ResultAttestedCapabilityEvaluator
 from core.evolution.capability_promotion import (
     CapabilityPromotionError,
@@ -49,7 +50,7 @@ class FakeAttestedRunner:
                 path: __import__("hashlib").sha256((cwd / path).read_bytes()).hexdigest()
                 for path in source_paths
             },
-            "sandbox_policy_id": "pika.os.no-network.read-only.v1",
+            "sandbox_policy_id": SANDBOX_POLICY_ID,
         }
         attestation = {
             "result": result,
@@ -130,11 +131,11 @@ def prepare_fixture(tmp_path, monkeypatch):
         report_path=report["report_path"],
         result_attestor_config="external-trust-config.json",
     )
-    return project, manager, prepared
+    return project, manager, prepared, report["report_path"]
 
 
 def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatch):
-    project, manager, prepared = prepare_fixture(tmp_path, monkeypatch)
+    project, manager, prepared, report_path = prepare_fixture(tmp_path, monkeypatch)
     target = project / "core" / "pika_new_feature.py"
     assert not target.exists()
     assert prepared["success"] is True
@@ -177,6 +178,6 @@ def test_multi_file_prepare_refuses_existing_live_source(tmp_path, monkeypatch):
     with pytest.raises(CapabilityPromotionError):
         manager.prepare(
             prepared["bundle_id"],
-            report_path=prepared["plan_path"],
+            report_path=report_path,
             result_attestor_config="external-trust-config.json",
         )
