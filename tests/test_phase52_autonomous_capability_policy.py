@@ -107,3 +107,53 @@ def test_rejects_policy_files_inside_project_root(tmp_path):
     inside.chmod(0o600)
     with pytest.raises(AutonomousPolicyError):
         load_autonomous_capability_policy(inside, trust_path, project_root=project)
+
+
+def test_owner_can_sign_policy_with_protected_external_private_key(tmp_path):
+    project = tmp_path / "pika"
+    project.mkdir()
+    private = Ed25519PrivateKey.generate()
+    private_path = tmp_path / "owner-policy-key.pem"
+    private_path.write_bytes(private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ))
+    private_path.chmod(0o600)
+    public = private.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    now = time.time()
+    payload = {
+        "schema": POLICY_SCHEMA,
+        "policy_id": "b" * 32,
+        "signer_id": "owner-primary",
+        "issued_at": now,
+        "expires_at": now + 86400,
+        "max_files": 10,
+        "max_total_bytes": 1_000_000,
+        "allowed_roots": ["core"],
+        "required_repetitions": 3,
+        "auto_promote": True,
+        "auto_rollback": True,
+        "allow_overwrite": False,
+        "allow_external_dependencies": False,
+        "require_independent_attestation": True,
+        "require_baseline_not_all_pass": True,
+        "require_candidate_all_pass": True,
+        "signature_algorithm": "ed25519",
+    }
+    signed = sign_autonomous_capability_policy(payload, private_path, project_root=project)
+    policy_path = tmp_path / "signed-policy.json"
+    policy_path.write_text(json.dumps(signed), encoding="utf-8")
+    policy_path.chmod(0o600)
+    trust_path = tmp_path / "signed-policy-trust.json"
+    trust_path.write_text(json.dumps({
+        "schema": TRUST_SCHEMA,
+        "signers": {"owner-primary": public.hex()},
+    }), encoding="utf-8")
+    trust_path.chmod(0o600)
+    verified = load_autonomous_capability_policy(policy_path, trust_path, project_root=project)
+    assert verified["verified"] is True
+    assert verified["policy"]["policy_id"] == payload["policy_id"]
