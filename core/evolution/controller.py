@@ -15,6 +15,8 @@ from .discovery import CandidateDiscoveryQueue
 from .diagnostic_analysis import analyze_file
 from .verified_memory import VerifiedExperimentMemory
 from .attested_experiments import ResultAttestedCandidateExperimentEngine
+from .capability_attestation import ResultAttestedCapabilityEvaluator
+from core.native_capability_bundle import NativeCapabilityBundleEngine
 from core.phase36.result_learning import ResultAttestedLearningGate
 from core.phase36.learning_admission import TrustedLearningAdmission
 from core.phase36.production_promotion import ProductionPromotionManager
@@ -42,6 +44,7 @@ class EvolutionController:
         self.factory = ToolFactory(self.knowledge)
         self.repairs = RepairCoordinator(self.knowledge)
         self.experiments = CandidateExperimentEngine(self.knowledge)
+        self.capability_bundles = NativeCapabilityBundleEngine(self.knowledge, project_root=self.root)
         self.verified_memory = VerifiedExperimentMemory(self.knowledge)
         self.trusted_learning = TrustedLearningAdmission(self.root)
         self.discovery = CandidateDiscoveryQueue(
@@ -169,6 +172,33 @@ class EvolutionController:
                 }
         return result
 
+
+    def evaluate_capability_bundle_attested(
+        self,
+        bundle_id,
+        *,
+        trusted_test_paths,
+        result_runner,
+        timeout=120,
+        repetitions=3,
+        argv=None,
+    ):
+        """Compare baseline and staged capability using independent signed OS results.
+
+        Results are bound to the exact bundle and trusted test hashes. This method
+        does not admit learning or promote source; the separate Phase 36 gates
+        remain mandatory.
+        """
+        evaluator = ResultAttestedCapabilityEvaluator(
+            self.capability_bundles, result_runner
+        )
+        return evaluator.evaluate(
+            bundle_id,
+            trusted_test_paths=trusted_test_paths,
+            timeout=timeout,
+            repetitions=repetitions,
+            argv=argv,
+        )
 
     def evaluate_candidate_attested(
         self, candidate_id, *, result_runner, timeout=120,
