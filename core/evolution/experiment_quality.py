@@ -184,6 +184,10 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
     if report.get("baseline_environment_id") != report.get("environment_id") or report.get("candidate_environment_id") != report.get("environment_id"):
         raise ExperimentQualityError("Baseline and candidate must use the same pinned environment.")
 
+    threshold = report.get("performance_threshold")
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(float(threshold)) or not 0.01 <= threshold <= 0.50:
+        raise ExperimentQualityError("performance_threshold must be between 1% and 50%.")
+
     if candidate["outcomes"].get("INCOMPLETE", 0) or baseline["outcomes"].get("INCOMPLETE", 0):
         decision = "INCOMPLETE_EVIDENCE"
     elif candidate["all_passed"] and not baseline["all_passed"]:
@@ -195,9 +199,6 @@ def evaluate_experiment(report: Any) -> dict[str, Any]:
             baseline["test_count_stable"] and candidate["test_count_stable"]
             and baseline["median_test_count"] == candidate["median_test_count"]
         )
-        threshold = report.get("performance_threshold")
-        if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(float(threshold)) or not 0.01 <= threshold <= 0.50:
-            raise ExperimentQualityError("performance_threshold must be between 1% and 50%.")
         faster = candidate["median_duration_s"] <= baseline["median_duration_s"] * (1 - threshold)
         if comparable and faster:
             decision = "PERFORMANCE_GAIN_UNVERIFIED"
