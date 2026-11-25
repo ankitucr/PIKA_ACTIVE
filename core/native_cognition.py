@@ -24,6 +24,7 @@ from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
 from core.native_test_impact_planner import NativeTestImpactPlanner
 from core.native_change_set_analysis import NativeChangeSetAnalyzer
 from core.native_improvement_hypotheses import NativeImprovementHypothesisEngine
+from core.native_capability_bundle import NativeCapabilityBundleEngine, CapabilityBundleError
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -43,6 +44,7 @@ class NativeCognitionEngine:
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
         self.improvement_hypotheses = NativeImprovementHypothesisEngine()
+        self.capability_bundles = NativeCapabilityBundleEngine(self.root / "PIKA_KNOWLEDGE")
         self.reasoning = NativeReasoningEngine()
         self.reasoner = NativeSymbolicReasoningEngine()
         self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
@@ -119,6 +121,33 @@ class NativeCognitionEngine:
             "findings": queue["items"][:30],
             "limits": result.get("limits", []),
         }
+
+    def stage_capability_bundle(
+        self,
+        source_root: str | Path,
+        *,
+        name: str,
+        include_paths: list[str],
+        test_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Stage a multi-file capability as hash-bound, untrusted source data."""
+        result = self.capability_bundles.stage_bundle(
+            source_root,
+            name=name,
+            include_paths=include_paths,
+            test_paths=test_paths,
+        )
+        self._append_event({
+            "type": "native_capability_bundle_staged",
+            "bundle_id": result.get("bundle_id"),
+            "bundle_name": result.get("bundle_name"),
+            "file_count": result.get("file_count", 0),
+            "manifest_sha256": result.get("manifest_sha256"),
+            "execution_performed": False,
+            "trusted_learning_admission": False,
+            "production_promotion_allowed": False,
+        })
+        return result
 
     def learn_repositories(self, repositories: Iterable[str], *, max_files: int = 80) -> dict[str, Any]:
         """Fetch GitHub repositories through Git transport and analyze them as data."""
@@ -459,6 +488,7 @@ class NativeCognitionEngine:
             "self_python_files_analyzed": self_report.get("metrics", {}).get("python_files_analyzed", 0),
             "self_improvement_proposals": len(load(self.data / "pika_native_improvement_queue.json").get("items", [])),
             "self_improvement_hypotheses": len(load(self.data / "pika_native_improvement_hypotheses.json").get("hypotheses", [])),
+            "staged_capability_bundles": sum(1 for item in self.capability_bundles.staging.iterdir() if item.is_dir() and not item.is_symlink()),
             "knowledge_index": str(self.data / "pika_learning_index.json"),
             "engineering_knowledge_repositories": len(eng_doc.get("repositories", {})),
             "engineering_knowledge_facts": sum(
@@ -498,6 +528,9 @@ class NativeCognitionEngine:
                 "provenance_backed_github_knowledge",
                 "deterministic_self_evolution_staging",
                 "evidence_bound_improvement_hypothesis_generation",
+                "hash_bound_multi_file_capability_intake",
+                "static_dependency_and_risk_inventory",
+                "untrusted_capability_bundle_staging",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -857,6 +890,40 @@ class NativeCognitionEngine:
 
         if not text:
             return self._failure("EMPTY_TASK", "A task is required.")
+
+        capability_markers = (
+            "stage capability bundle",
+            "stage multi-file capability",
+            "prepare capability for integration",
+            "intake external python capability",
+        )
+        if any(marker in lower for marker in capability_markers):
+            try:
+                result = await asyncio.to_thread(
+                    self.stage_capability_bundle,
+                    context.get("source_root"),
+                    name=context.get("bundle_name"),
+                    include_paths=context.get("include_paths"),
+                    test_paths=context.get("test_paths"),
+                )
+            except (CapabilityBundleError, TypeError, ValueError, OSError) as exc:
+                return self._failure("NATIVE_CAPABILITY_BUNDLE_REJECTED", str(exc)[:400])
+            report = [
+                "PIKA MULTI-FILE CAPABILITY BUNDLE STAGED",
+                f"Name: {result.get('bundle_name')}",
+                f"Files: {result.get('file_count')} | tests: {result.get('test_count')}",
+                f"Manifest SHA-256: {result.get('manifest_sha256')}",
+                f"Dependency gaps: {len(result.get('internal_dependency_gaps', []))}",
+                f"External dependencies: {len(result.get('external_dependencies', []))}",
+                f"Static risk flags: {result.get('risk_flag_count')}",
+                f"Review status: {result.get('review_status')}",
+                "Trust: UNTRUSTED_SOURCE_OBSERVATION.",
+                "Policy: no imports, execution, tests, installation, trusted learning, or live-source modification.",
+                f"Staging path: {result.get('bundle_path')}",
+            ]
+            return self._response(
+                True, "\n".join(report), knowledge_consumed=False, raw=result,
+            )
 
         evolution_markers = (
             "self-evolve",
