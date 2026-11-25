@@ -104,7 +104,8 @@ class NativeCognitionEngine:
         })
         return {
             "success": True,
-            "mode": "native_static_self_analysis_with_hypothesis_generation",
+            "mode": "native_static_self_analysis",
+            "hypothesis_generation": "enabled",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
