@@ -591,8 +591,15 @@ class CapabilityPromotionManager:
             result_attestor_config,
         )
         self._validate_plan_binding(plan, report, report_sha, files, manifest)
-        if len(files) > policy["max_files"] or sum(len(data) for data in files.values()) > policy["max_total_bytes"]:
-            raise CapabilityPromotionError("Capability bundle exceeds owner-authorized autonomous policy limits.")
+        trusted_test_bytes = sum(
+            (self.root / path).stat().st_size
+            for path in report["trusted_test_hashes"]
+        )
+        total_authorized_files = len(files) + len(report["trusted_test_hashes"])
+        total_authorized_bytes = sum(len(data) for data in files.values()) + trusted_test_bytes
+        if (total_authorized_files > policy["max_files"]
+                or total_authorized_bytes > policy["max_total_bytes"]):
+            raise CapabilityPromotionError("Capability bundle and trusted tests exceed owner-authorized autonomous policy limits.")
         if any(_target(path).parts[0] not in policy["allowed_roots"] for path in files):
             raise CapabilityPromotionError("Capability target root is outside owner-authorized autonomous policy.")
         if report.get("repetitions") != policy["required_repetitions"]:
