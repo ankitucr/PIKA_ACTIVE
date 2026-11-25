@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import uuid
 from pathlib import Path, PurePosixPath
@@ -54,14 +55,12 @@ def _module_name(path: PurePosixPath) -> str:
     return ".".join(parts)
 
 
-def _imports(tree: ast.AST, current_module: str) -> tuple[list[str], list[str]]:
-    internal: set[str] = set()
-    external: set[str] = set()
+def _imports(tree: ast.AST, current_module: str) -> list[str]:
+    imports: set[str] = set()
     package = current_module.split(".")[:-1]
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                (internal if alias.name.split(".")[0] == "core" else external).add(alias.name)
+            imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 keep = max(0, len(package) - node.level + 1)
@@ -72,8 +71,8 @@ def _imports(tree: ast.AST, current_module: str) -> tuple[list[str], list[str]]:
             else:
                 name = node.module or ""
             if name:
-                (internal if name.split(".")[0] == "core" else external).add(name)
-    return sorted(internal), sorted(external)
+                imports.add(name)
+    return sorted(imports)
 
 
 def _source_flags(tree: ast.AST) -> list[str]:
@@ -174,25 +173,45 @@ class NativeCapabilityBundleEngine:
             if module in modules:
                 raise CapabilityBundleError(f"Duplicate Python module identity: {module}")
             modules[module] = relative
-            internal, external = _imports(tree, module)
+            imports = _imports(tree, module)
             rows.append({
                 "path": relative,
                 "module": module,
                 "sha256": hashlib.sha256(raw).hexdigest(),
                 "size_bytes": len(raw),
                 "ast_node_count": node_count,
-                "internal_imports": internal,
-                "external_imports": external,
+                "imports": imports,
                 "static_risk_flags": _source_flags(tree),
                 "is_test": relative in tests,
             })
 
         module_names = set(modules)
+        stdlib_names = set(sys.stdlib_module_names)
+        for row in rows:
+            internal: set[str] = set()
+            standard_library: set[str] = set()
+            external: set[str] = set()
+            for dependency in row.pop("imports"):
+                top_level = dependency.split(".")[0]
+                is_internal = (
+                    dependency in module_names
+                    or any(candidate.startswith(dependency + ".") for candidate in module_names)
+                    or any(dependency.startswith(candidate + ".") for candidate in module_names)
+                )
+                if is_internal:
+                    internal.add(dependency)
+                elif top_level in stdlib_names:
+                    standard_library.add(dependency)
+                else:
+                    external.add(dependency)
+            row["internal_imports"] = sorted(internal)
+            row["standard_library_imports"] = sorted(standard_library)
+            row["external_imports"] = sorted(external)
         unresolved_internal = sorted({
             dependency
             for row in rows
             for dependency in row["internal_imports"]
-            if dependency.startswith("core.") and dependency not in module_names
+            if dependency not in module_names
             and not any(candidate.startswith(dependency + ".") for candidate in module_names)
         })
         manifest_core = {
