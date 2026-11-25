@@ -141,6 +141,12 @@ class CapabilityPromotionManager:
             raise CapabilityPromotionError("Bundle manifest is invalid.") from exc
         if not isinstance(manifest, dict) or manifest.get("schema") != "pika.native_capability_bundle.v1" or manifest.get("bundle_id") != bundle_id:
             raise CapabilityPromotionError("Bundle manifest identity/schema mismatch.")
+        gaps = manifest.get("internal_dependency_gaps")
+        external_dependencies = manifest.get("external_dependencies")
+        if not isinstance(gaps, list) or gaps:
+            raise CapabilityPromotionError("Unresolved internal imports block capability promotion.")
+        if not isinstance(external_dependencies, list) or external_dependencies:
+            raise CapabilityPromotionError("Unpinned third-party dependencies block capability promotion.")
         expected_manifest = manifest.get("manifest_sha256")
         payload = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
         actual_manifest = _sha(_canonical(payload))
