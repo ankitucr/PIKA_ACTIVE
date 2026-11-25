@@ -15,7 +15,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from core.phase36.operator_approval import _protected_file
 
@@ -41,6 +42,36 @@ def _duplicate_keys(pairs):
             raise AutonomousPolicyError(f"Duplicate JSON key: {key}")
         result[key] = value
     return result
+
+
+def sign_autonomous_capability_policy(
+    payload: dict[str, Any],
+    private_key_file: str | Path,
+    *,
+    project_root: str | Path,
+) -> dict[str, Any]:
+    """Sign an explicit standing policy using an owner-only external Ed25519 key."""
+    required = {
+        "schema", "policy_id", "signer_id", "issued_at", "expires_at",
+        "max_files", "max_total_bytes", "allowed_roots", "required_repetitions",
+        "auto_promote", "auto_rollback", "allow_overwrite",
+        "allow_external_dependencies", "require_independent_attestation",
+        "require_baseline_not_all_pass", "require_candidate_all_pass",
+        "signature_algorithm",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise AutonomousPolicyError("Unsigned policy payload has an invalid schema.")
+    if payload.get("schema") != POLICY_SCHEMA or payload.get("signature_algorithm") != "ed25519":
+        raise AutonomousPolicyError("Only the supported Ed25519 autonomous policy schema can be signed.")
+    try:
+        _, raw = _protected_file(private_key_file, project_root=project_root, maximum=16384)
+        private_key = serialization.load_pem_private_key(raw, password=None)
+    except Exception as exc:
+        raise AutonomousPolicyError(f"Owner private key failed protected-file validation: {type(exc).__name__}") from exc
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise AutonomousPolicyError("Owner policy signing key must be Ed25519.")
+    signature = private_key.sign(_canonical(payload)).hex()
+    return {**payload, "signature_hex": signature}
 
 
 def load_autonomous_capability_policy(
