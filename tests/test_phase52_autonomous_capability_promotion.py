@@ -123,6 +123,7 @@ def test_owner_signed_standing_policy_can_promote_without_per_bundle_approval(tm
             "policy": policy,
             "policy_sha256": "d" * 64,
             "signer_id": "owner-primary",
+            "signer_key_sha256": "f" * 64,
             "verified": True,
             "auto_promote_authorized": True,
         },
