@@ -66,6 +66,9 @@ def _print_status(runtime: PIKALiveRuntime) -> None:
     print("Attestor trust:", data.get("attestor_trust"))
     print("Self-repair:", data.get("self_repair"))
     print("Safety:", data.get("safety"))
+    print("Verified self-improvement:", data.get("verified_self_improvement"))
+    print("Result-attested runner:", data.get("result_attested_runner"))
+    print("Capability pipeline:", data.get("capability_pipeline"))
 
 
 def _print_goals(runtime: PIKALiveRuntime) -> None:
@@ -103,14 +106,18 @@ PIKA LIVE COMMANDS
   /inspect                       Run read-only static architecture inspection
   /candidates                    List staged repair candidates
   /candidate <id>                Inspect candidate integrity and diff
+  /bundles                       Verify and list staged capability bundles
+  /bundle-stage <root> <name> --files a.py,b.py [--tests tests/x.py]
+                                 Intake multiple Python files as untrusted data
   /diagnose <id> <tests/file.py> --i-understand-not-os-sandboxed
                                  Run a focused test in a temporary copy.
                                  WARNING: code runs as this Termux user; not an OS sandbox.
   /quit                          Exit PIKA Live
 
 Enter any other text to send a task to PIKA Brain.
-Workspace edits, code execution and promotion remain blocked until the
-independently audited OS isolation gate is available.
+Capability intake is inert. Attested evaluation requires explicit trusted tests
+and a pinned external host attestor. Automatic promotion additionally requires
+a separately signed owner policy and external rollback storage.
 """.strip())
 
 
@@ -127,7 +134,14 @@ async def _heartbeat(runtime: PIKALiveRuntime, stop: asyncio.Event,
             try:
                 result = await asyncio.to_thread(runtime.evolve)
                 goals = result.get("plan", {}).get("goals", [])
-                print(f"\n[PIKA HEARTBEAT] cycle complete | goals={len(goals)} | observation/reflection/planning only")
+                improvement = result.get("verified_self_improvement", {})
+                capability = result.get("capability_pipeline", {})
+                print(
+                    f"\n[PIKA HEARTBEAT] cycle complete | goals={len(goals)}"
+                    f" | hypotheses={improvement.get('native_hypotheses', 0)}"
+                    f" | bundles={capability.get('staged_bundle_count', 0)}"
+                    f" | capability={capability.get('state', 'NOT_REPORTED')}"
+                )
             except Exception as exc:
                 print(f"\n[PIKA HEARTBEAT] cycle error: {type(exc).__name__}: {exc}")
 
@@ -153,7 +167,13 @@ async def _handle_command(runtime: PIKALiveRuntime, line: str) -> bool:
         print("[PIKA] Running evolution cycle...")
         result = await asyncio.to_thread(runtime.evolve)
         print("[PIKA] Observation, reflection and planning completed.")
-        _dump({"inventory": result.get("inventory"), "reflection": result.get("reflection"), "plan": result.get("plan")}, limit=10000)
+        _dump({
+            "inventory": result.get("inventory"),
+            "reflection": result.get("reflection"),
+            "plan": result.get("plan"),
+            "verified_self_improvement": result.get("verified_self_improvement"),
+            "capability_pipeline": result.get("capability_pipeline"),
+        }, limit=16000)
     # PIKA_VERIFIED_SELF_IMPROVEMENT_V1
     elif command == "/self-improve":
         from core.verified_self_improvement import VerifiedSelfImprovement
@@ -168,6 +188,37 @@ async def _handle_command(runtime: PIKALiveRuntime, line: str) -> bool:
         else:
             result = {"success": False, "error": "Usage: /self-improve [build|verify|status]"}
         _dump(result, limit=18000)
+    elif command == "/bundles":
+        _dump(runtime.evolution.capability_bundles.list_staged_bundles(limit=100), limit=16000)
+    elif command == "/bundle-stage":
+        if len(parts) < 5 or "--files" not in parts:
+            print("Usage: /bundle-stage <source_root> <name> --files path1.py,path2.py [--tests tests/test_x.py]")
+        else:
+            from core.native_cognition import NativeCognitionEngine
+            source_root, bundle_name = parts[1], parts[2]
+            files_index = parts.index("--files")
+            include_paths = [
+                value.strip() for value in parts[files_index + 1].split(",")
+                if value.strip()
+            ] if files_index + 1 < len(parts) and not parts[files_index + 1].startswith("--") else []
+            test_paths = []
+            if "--tests" in parts:
+                tests_index = parts.index("--tests")
+                test_paths = [
+                    value.strip() for value in parts[tests_index + 1].split(",")
+                    if value.strip()
+                ] if tests_index + 1 < len(parts) and not parts[tests_index + 1].startswith("--") else []
+            if not include_paths:
+                print("Blocked: provide at least one comma-separated Python source path.")
+            else:
+                result = await asyncio.to_thread(
+                    NativeCognitionEngine(runtime.root).stage_capability_bundle,
+                    source_root,
+                    name=bundle_name,
+                    include_paths=include_paths,
+                    test_paths=test_paths,
+                )
+                _dump(result, limit=12000)
     elif command == "/self-analyze":
         from core.native_cognition import NativeCognitionEngine
         result = await asyncio.to_thread(NativeCognitionEngine(runtime.root).analyze_self)
