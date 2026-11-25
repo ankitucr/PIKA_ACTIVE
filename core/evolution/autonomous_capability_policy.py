@@ -138,10 +138,10 @@ def load_autonomous_capability_policy(
     except ValueError as exc:
         raise AutonomousPolicyError("Policy ID is not hexadecimal.") from exc
     max_files, max_bytes = policy.get("max_files"), policy.get("max_total_bytes")
-    if isinstance(max_files, bool) or not isinstance(max_files, int) or not 1 <= max_files <= 1000:
-        raise AutonomousPolicyError("max_files must be between 1 and 1000.")
-    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= 25_000_000:
-        raise AutonomousPolicyError("max_total_bytes must be between 1 and 25 MB.")
+    if isinstance(max_files, bool) or not isinstance(max_files, int) or not 1 <= max_files <= 100:
+        raise AutonomousPolicyError("max_files must be between 1 and 100.")
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= 5_000_000:
+        raise AutonomousPolicyError("max_total_bytes must be between 1 and 5 MB.")
     roots = policy.get("allowed_roots")
     if (not isinstance(roots, list) or not roots
             or any(not isinstance(item, str) or item not in ALLOWED_ROOTS for item in roots)
