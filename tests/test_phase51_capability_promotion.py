@@ -75,8 +75,9 @@ class FakeTrustPolicy:
 
 
 class FakeApprovalPolicy:
-    def __init__(self, key_hash):
+    def __init__(self, key_hash, purpose):
         self.key_hash = key_hash
+        self.purpose = purpose
 
     def verify(self, approval, expected):
         assert approval["payload"] == expected
@@ -146,7 +147,7 @@ def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatc
     promotion = manager.promote(
         prepared["plan_path"],
         approval_path=approval_file,
-        approval_policy=FakeApprovalPolicy("1" * 64),
+        approval_policy=FakeApprovalPolicy("1" * 64, "PRODUCTION_PROMOTION"),
         result_attestor_config="external-trust-config.json",
         result_runner=type("PostRunner", (), {
             "run_test": lambda self, argv, *, cwd, source_paths, timeout: {
@@ -165,7 +166,7 @@ def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatc
     rollback = manager.rollback(
         prepared["plan_path"],
         approval_path=rollback_file,
-        approval_policy=FakeApprovalPolicy("2" * 64),
+        approval_policy=FakeApprovalPolicy("2" * 64, "PRODUCTION_ROLLBACK"),
     )
     assert rollback["success"] is True
     assert not target.exists()
