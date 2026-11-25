@@ -20,10 +20,10 @@ from typing import Any
 
 
 SCHEMA = "pika.native_capability_bundle.v1"
-MAX_FILES = 200
-MAX_FILE_BYTES = 500_000
-MAX_TOTAL_BYTES = 5_000_000
-MAX_AST_NODES_PER_FILE = 100_000
+MAX_FILES = 1000
+MAX_FILE_BYTES = 2_000_000
+MAX_TOTAL_BYTES = 25_000_000
+MAX_AST_NODES_PER_FILE = 500_000
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}")
 _IGNORED_PARTS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_cache"}
 _FORBIDDEN_NAMES = {".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"}

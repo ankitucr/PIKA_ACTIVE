@@ -102,6 +102,9 @@ jobs:
       - name: Run Phase 52 owner-authorized autonomous promotion contract
         run: python -m pytest -q tests/test_phase52_autonomous_capability_policy.py tests/test_phase52_autonomous_capability_promotion.py
 
+      - name: Run Phase 53 large capability bundle contract
+        run: python -m pytest -q tests/test_phase53_large_capability_bundles.py
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \
