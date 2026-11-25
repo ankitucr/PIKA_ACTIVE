@@ -128,7 +128,7 @@ class ProductionPromotionManager:
         self.rollback_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.rollback_root.chmod(0o700)
         metadata = self.rollback_root.stat()
-        if stat.S_IMODE(metadata.st_mode) & 0o077:
+        if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
             raise ProductionPromotionError("Rollback root must be owner-only (0700).")
         if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
             raise ProductionPromotionError("Rollback root must be owned by the current operator.")
@@ -184,7 +184,7 @@ class ProductionPromotionManager:
             raise ProductionPromotionError("Attested report must be a regular non-symlink file.")
         path = path.resolve(strict=True)
         report_metadata = path.stat()
-        if report_metadata.st_size > MAX_PLAN_BYTES or stat.S_IMODE(report_metadata.st_mode) & 0o022:
+        if report_metadata.st_size > MAX_PLAN_BYTES or (os.name == "posix" and stat.S_IMODE(report_metadata.st_mode) & 0o022):
             raise ProductionPromotionError("Attested report is oversized or group/world writable.")
         raw = path.read_bytes()
         try:
