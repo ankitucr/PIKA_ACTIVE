@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
-from core.phase36.result_attestation import SANDBOX_POLICY_ID
+from core.phase36.result_attestation import CHALLENGE_SCHEMA, SANDBOX_POLICY_ID
 from core.evolution.capability_attestation import (
     CapabilityAttestationError,
     ResultAttestedCapabilityEvaluator,
@@ -43,8 +43,13 @@ class FakeAttestedRunner:
             "timeout": timeout,
             "outcome": outcome,
         })
-        challenge_nonce = f"nonce-{len(self.calls)}"
+        challenge_nonce = f"{len(self.calls):064x}"
         challenge = {
+            "schema": CHALLENGE_SCHEMA,
+            "backend_id": "test-backend",
+            "integration_type": "trusted-test-fixture",
+            "challenge_nonce": challenge_nonce,
+            "run_context_sha256": "c" * 64,
             "argv": list(argv),
             "timeout": timeout,
             "source_hashes": {
