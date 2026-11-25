@@ -184,3 +184,25 @@ def test_attested_evaluator_rejects_result_attestation_mismatch(tmp_path):
     evaluator = ResultAttestedCapabilityEvaluator(bundles, runner)
     with pytest.raises(CapabilityAttestationError):
         evaluator.evaluate(staged["bundle_id"], trusted_test_paths=["tests/test_feature.py"])
+
+
+def test_attested_evaluator_rejects_unpinned_third_party_imports(tmp_path):
+    project = tmp_path / "pika"
+    (project / "tests").mkdir(parents=True)
+    (project / "tests" / "test_feature.py").write_text(
+        "from feature import feature\\n\\ndef test_feature():\\n    assert feature() == 42\\n",
+        encoding="utf-8",
+    )
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "feature.py").write_text(
+        "import requests\\ndef feature():\\n    return 42\\n",
+        encoding="utf-8",
+    )
+    bundles = NativeCapabilityBundleEngine(external.parent / "knowledge", project_root=project)
+    staged = bundles.stage_bundle(external, name="unpinned-dependency", include_paths=["feature.py"])
+    runner = FakeAttestedRunner()
+    evaluator = ResultAttestedCapabilityEvaluator(bundles, runner)
+    with pytest.raises(CapabilityAttestationError):
+        evaluator.evaluate(staged["bundle_id"], trusted_test_paths=["tests/test_feature.py"])
+    assert runner.calls == []
