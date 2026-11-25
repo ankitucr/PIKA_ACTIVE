@@ -14,7 +14,7 @@ Expand the verified capability pipeline from small proof-of-concept modules to l
 
 ## Autonomous policy limits
 
-The owner-signed Phase 52 policy can now authorize up to 1,000 files and 25 MB, but it may set lower limits. The fixed source-root allowlist, add-only writes, 3-or-5 independent attested repetitions, dependency-closure requirement, owner authorization, post-promotion attestation and automatic rollback remain mandatory.
+The Phase 52 standing autonomous policy intentionally remains capped at 100 files / 5 MB to preserve its already-merged trust contract. Larger staged bundles can use the Phase 51 per-bundle operator-approval path, which still requires independent attestation, add-only writes and post-promotion verification. Expanding the standing-policy ceiling requires a separate trusted-base test update before it can be enabled.
 
 ## Test coverage
 
