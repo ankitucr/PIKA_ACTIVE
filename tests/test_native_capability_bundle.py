@@ -106,3 +106,28 @@ def test_source_mutation_during_copy_is_detected(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "read_bytes", racing_read)
     with pytest.raises(CapabilityBundleError):
         engine.stage_bundle(source, name="racing", include_paths=["module.py"])
+
+
+def test_native_cognition_routes_capability_staging_and_reports_status(tmp_path):
+    import asyncio
+    from core.native_cognition import NativeCognitionEngine
+
+    source = tmp_path / "external"
+    source.mkdir()
+    (source / "feature.py").write_text("def feature():\\n    return 42\\n", encoding="utf-8")
+    engine = NativeCognitionEngine(tmp_path / "pika")
+    result = asyncio.run(engine.execute(
+        "stage capability bundle",
+        context={
+            "source_root": str(source),
+            "bundle_name": "external-feature",
+            "include_paths": ["feature.py"],
+            "test_paths": [],
+        },
+    ))
+    assert result["success"] is True
+    assert result["raw"]["file_count"] == 1
+    assert result["raw"]["live_source_modified"] is False
+    status = engine.status()
+    assert status["staged_capability_bundles"] == 1
+    assert "hash_bound_multi_file_capability_intake" in status["native_capabilities"]
