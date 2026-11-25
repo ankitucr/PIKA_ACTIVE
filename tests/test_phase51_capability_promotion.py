@@ -150,8 +150,10 @@ def test_multi_file_capability_prepare_promote_and_rollback(tmp_path, monkeypatc
         approval_policy=FakeApprovalPolicy("1" * 64, "PRODUCTION_PROMOTION"),
         result_attestor_config="external-trust-config.json",
         result_runner=type("PostRunner", (), {
+            "available": True,
             "run_test": lambda self, argv, *, cwd, source_paths, timeout: {
                 "verified": True,
+                "evidence_class": "INDEPENDENT_OS_RESULT_ATTESTATION",
                 "outcome": "PASSED",
                 "result_attestation": {"result_sha256": "d" * 64},
             }
