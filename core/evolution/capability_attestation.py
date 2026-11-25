@@ -18,6 +18,7 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from core.phase36.result_attestation import SANDBOX_POLICY_ID
 from core.native_capability_bundle import (
     CapabilityBundleError,
     NativeCapabilityBundleEngine,
