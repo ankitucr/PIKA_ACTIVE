@@ -35,12 +35,21 @@ def _read_secret(path: str | Path) -> str:
         raise RemoteAttestorClientError("Bearer token must be a regular file.")
     metadata = source.stat()
     parent = source.parent.stat()
-    if stat.S_IMODE(metadata.st_mode) & 0o077:
-        raise RemoteAttestorClientError("Bearer token permissions must be owner-only (0600).")
-    if stat.S_IMODE(parent.st_mode) & 0o077:
-        raise RemoteAttestorClientError("Bearer token directory must be owner-only (0700).")
-    if hasattr(os, "geteuid") and (metadata.st_uid != os.geteuid() or parent.st_uid != os.geteuid()):
-        raise RemoteAttestorClientError("Bearer token and directory must be owned by the current user.")
+    if os.name == "posix":
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise RemoteAttestorClientError("Bearer token permissions must be owner-only (0600).")
+        if stat.S_IMODE(parent.st_mode) & 0o077:
+            raise RemoteAttestorClientError("Bearer token directory must be owner-only (0700).")
+        if hasattr(os, "geteuid") and (metadata.st_uid != os.geteuid() or parent.st_uid != os.geteuid()):
+            raise RemoteAttestorClientError("Bearer token and directory must be owned by the current user.")
+    elif os.name == "nt":
+        from core.windows_acl import is_owner_only_acl
+        if not is_owner_only_acl(source) or not is_owner_only_acl(source.parent):
+            raise RemoteAttestorClientError(
+                "Bearer token and directory ACLs must be restricted to the current user, SYSTEM, and Administrators."
+            )
+    else:
+        raise RemoteAttestorClientError("Unsupported platform for bearer-token ACL verification.")
     token = source.read_text(encoding="utf-8").strip()
     if len(token) < 32 or len(token) > 4096 or any(ch.isspace() for ch in token):
         raise RemoteAttestorClientError("Bearer token must contain 32-4096 non-whitespace characters.")

@@ -40,7 +40,12 @@ def _sha(data: bytes) -> str:
 
 def _write_private(path: Path, raw: bytes):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.parent.chmod(0o700)
+    if os.name == "nt":
+        from core.windows_acl import set_owner_only_acl
+        if not set_owner_only_acl(path.parent):
+            raise RuntimeError("Could not secure private test directory ACL.")
+    else:
+        path.parent.chmod(0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.write(fd, raw)
@@ -191,6 +196,12 @@ def _attestor_config(tmp_path: Path, backend: SignedBackend, project: Path) -> t
 def _candidate(root: Path):
     knowledge = root / "PIKA_KNOWLEDGE"
     engine = CandidateExperimentEngine(knowledge)
+    if os.name == "nt":
+        # CandidateExperimentEngine creates this test knowledge directory
+        # before TrustedLearningAdmission verifies its protected ACL.
+        from core.windows_acl import set_owner_only_acl
+        if not set_owner_only_acl(knowledge):
+            raise RuntimeError("Could not secure PIKA_KNOWLEDGE test directory ACL.")
     candidate_file = root.parent / "candidate.py"
     candidate_file.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     candidate_id = engine.stage_candidate(
@@ -203,7 +214,12 @@ def _candidate(root: Path):
 def _host_guard(tmp_path: Path, project: Path, name: str):
     external = tmp_path / "external-runner"
     external.mkdir(mode=0o700, exist_ok=True)
-    external.chmod(0o700)
+    if os.name == "nt":
+        from core.windows_acl import set_owner_only_acl
+        if not set_owner_only_acl(external):
+            raise RuntimeError("Could not secure external-runner test directory ACL.")
+    else:
+        external.chmod(0o700)
     return RunAttestationReplayGuard(external / name, project_root=project)
 
 

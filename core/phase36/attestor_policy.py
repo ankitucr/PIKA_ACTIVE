@@ -213,6 +213,14 @@ def load_attestor_trust_policy(
         parent_mode = stat.S_IMODE(resolved.parent.stat().st_mode)
         if parent_mode & 0o022:
             raise AttestorConfigError("Attestor config directory must not be group/world writable.")
+    elif os.name == "nt":
+        from core.windows_acl import is_owner_only_acl
+        if not is_owner_only_acl(resolved) or not is_owner_only_acl(resolved.parent):
+            raise AttestorConfigError(
+                "Attestor config and parent ACLs must be restricted to the current user, SYSTEM, and Administrators."
+            )
+    else:
+        raise AttestorConfigError("Unsupported platform for attestor ACL verification.")
 
     try:
         raw = raw_bytes.decode("utf-8")
