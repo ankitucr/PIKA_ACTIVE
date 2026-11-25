@@ -174,6 +174,40 @@ class EvolutionController:
         return result
 
 
+    def create_result_attested_runner(
+        self,
+        *,
+        result_attestor_config,
+        attestor_url,
+        attestor_token_file,
+        attestor_backend_id,
+        replay_journal,
+    ):
+        """Build a fail-closed runner from separately managed host credentials."""
+        required = {
+            "result_attestor_config": result_attestor_config,
+            "attestor_url": attestor_url,
+            "attestor_token_file": attestor_token_file,
+            "attestor_backend_id": attestor_backend_id,
+            "replay_journal": replay_journal,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError("Incomplete independent attestor configuration: " + ", ".join(missing))
+        result_policy = load_result_attestation_trust_policy(
+            result_attestor_config, project_root=self.root
+        )
+        replay = RunAttestationReplayGuard(
+            replay_journal, project_root=self.root
+        )
+        backend = HttpResultAttestationBackend(
+            attestor_url, attestor_token_file, backend_id=attestor_backend_id
+        )
+        runner = ResultBoundSandboxRunner(backend, result_policy, replay)
+        if not runner.available:
+            raise ValueError("Independent result-attested runner failed its availability contract.")
+        return runner
+
     def evaluate_capability_bundle_attested(
         self,
         bundle_id,
@@ -275,18 +309,6 @@ class EvolutionController:
             plan_path,
             approval_path=approval_file,
             approval_policy=approval_policy,
-            result_attestor_config=result_attestor_config,
-            result_runner=result_runner,
-        )
-
-    def promote_capability_bundle_autonomously(
-        self, *, plan_path, policy_path, policy_trust_config,
-        result_attestor_config, result_runner, rollback_root,
-    ):
-        return self._capability_promotion_manager(rollback_root).promote_autonomously(
-            plan_path,
-            policy_path=policy_path,
-            policy_trust_config=policy_trust_config,
             result_attestor_config=result_attestor_config,
             result_runner=result_runner,
         )
