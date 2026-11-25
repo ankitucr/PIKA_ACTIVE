@@ -90,16 +90,15 @@ class ResultAttestedCapabilityEvaluator:
             raise CapabilityAttestationError("A valid staged capability bundle ID is required.")
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 600:
             raise CapabilityAttestationError("Timeout must be between 1 and 600 seconds.")
-        if isinstance(repetitions, bool) or not isinstance(repetitions, int) or not 3 <= repetitions <= 5:
-            raise CapabilityAttestationError("Attested capability comparison requires 3 to 5 repetitions.")
+        if isinstance(repetitions, bool) or repetitions not in {3, 5}:
+            raise CapabilityAttestationError("Attested capability comparison requires exactly 3 or 5 repetitions.")
         if not isinstance(trusted_test_paths, list) or not trusted_test_paths or len(trusted_test_paths) > 20:
             raise CapabilityAttestationError("Select 1 to 20 trusted project test paths.")
-        if argv is None:
-            argv = ["python", "-m", "pytest", "-q", *trusted_test_paths]
-        if (not isinstance(argv, list) or len(argv) < 4
-                or argv[:3] != ["python", "-m", "pytest"]
-                or any(not isinstance(item, str) or not item for item in argv)):
-            raise CapabilityAttestationError("Only explicit pytest argv is accepted.")
+        if argv is not None and (
+            not isinstance(argv, list)
+            or any(not isinstance(item, str) or not item for item in argv)
+        ):
+            raise CapabilityAttestationError("pytest argv must be a list of non-empty strings.")
 
         bundle_root = self.bundles.staging / bundle_id
         manifest_path = bundle_root / "bundle.json"
@@ -127,6 +126,11 @@ class ResultAttestedCapabilityEvaluator:
             if relative in selected_tests:
                 raise CapabilityAttestationError("Duplicate trusted test path.")
             selected_tests[relative] = (path, digest)
+        expected_argv = ["python", "-m", "pytest", "-q", *selected_tests.keys()]
+        if argv is None:
+            argv = expected_argv
+        elif argv != expected_argv:
+            raise CapabilityAttestationError("Attested evaluation must run exactly the selected hash-pinned trusted tests.")
 
         capability_files: dict[str, tuple[Path, str]] = {}
         for row in rows:
@@ -202,8 +206,17 @@ class ResultAttestedCapabilityEvaluator:
                     if not isinstance(result, dict) or not isinstance(attestation, dict) or result != attestation.get("result"):
                         raise CapabilityAttestationError("Run result does not match its signed attestation.")
                     outcome = result.get("outcome")
-                    if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT", "NO_TESTS"}:
-                        raise CapabilityAttestationError("Attested runner returned an unsupported outcome.")
+                    if outcome not in {"PASSED", "FAILED", "ERROR", "TIMED_OUT"}:
+                        raise CapabilityAttestationError("Attested runner returned an unsupported or empty-test outcome.")
+                    if verified.get("outcome") != outcome:
+                        raise CapabilityAttestationError("Top-level runner outcome contradicts its signed result.")
+                    counts = [result.get(key) for key in ("test_count", "tests_passed", "tests_failed", "tests_errors", "tests_skipped")]
+                    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in counts):
+                        raise CapabilityAttestationError("Attested test counts are malformed.")
+                    if counts[0] == 0 or counts[0] != sum(counts[1:]):
+                        raise CapabilityAttestationError("Attested run did not execute the selected test set.")
+                    if outcome == "PASSED" and (result.get("exit_code") != 0 or counts[2] or counts[3]):
+                        raise CapabilityAttestationError("Passing outcome contradicts signed process/test counts.")
                     start_at, finish_at = result.get("started_at"), result.get("finished_at")
                     if (isinstance(start_at, bool) or not isinstance(start_at, (int, float))
                             or isinstance(finish_at, bool) or not isinstance(finish_at, (int, float))
