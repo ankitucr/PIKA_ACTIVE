@@ -7,7 +7,14 @@ the promoted hashes. No automatic admission or promotion is performed.
 """
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows host
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # POSIX host
+    msvcrt = None
 import hashlib
 import json
 import os
@@ -121,8 +128,13 @@ class CapabilityPromotionManager:
         self.rollback_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.rollback_root.chmod(0o700)
         meta = self.rollback_root.stat()
-        if stat.S_IMODE(meta.st_mode) & 0o077 or (hasattr(os, "geteuid") and meta.st_uid != os.geteuid()):
+        if os.name == "posix" and (
+            stat.S_IMODE(meta.st_mode) & 0o077
+            or (hasattr(os, "geteuid") and meta.st_uid != os.geteuid())
+        ):
             raise CapabilityPromotionError("Rollback storage must be owner-only and owned by the current operator.")
+        if fcntl is None and msvcrt is None:
+            raise CapabilityPromotionError("No supported inter-process lock backend is available.")
         self.plans = self.bundles.knowledge / "CAPABILITY_PROMOTIONS" / "plans"
         self.plans.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.plans.chmod(0o700)
@@ -301,8 +313,18 @@ class CapabilityPromotionManager:
             raise CapabilityPromotionError("Promotion ledger/lock symlink rejected.")
         self.journal.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(self.lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        locked = False
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                locked = True
+            else:
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b"\\0")
+                    os.fsync(fd)
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                locked = True
             previous = "0" * 64
             if self.journal.exists():
                 if self.journal.stat().st_size > 20_000_000:
@@ -325,6 +347,12 @@ class CapabilityPromotionManager:
                 os.close(out)
             return row
         finally:
+            if locked:
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                else:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
             os.close(fd)
 
     def prepare(
