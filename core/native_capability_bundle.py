@@ -157,7 +157,7 @@ class NativeCapabilityBundleEngine:
             if not path.is_file():
                 raise CapabilityBundleError(f"Source path is not a regular file: {relative}")
             raw = path.read_bytes()
-            if not raw or len(raw) > MAX_FILE_BYTES or b"\x00" in raw:
+            if len(raw) > MAX_FILE_BYTES or b"\x00" in raw:
                 raise CapabilityBundleError(f"Empty, oversized, or binary source rejected: {relative}")
             total_bytes += len(raw)
             if total_bytes > MAX_TOTAL_BYTES:
