@@ -128,6 +128,7 @@ class ExperimentQualityTests(unittest.TestCase):
         value["candidate"]["runs"][0]["outcome"] = "FAILED"
         value["candidate"]["runs"][0]["exit_code"] = -9
         value["candidate"]["runs"][0]["tests_failed"] = 1
+        value["candidate"]["runs"][0]["tests_passed"] = 9
         result = evaluate_experiment(value)
         self.assertEqual(result["decision"], "REGRESSION")
 
