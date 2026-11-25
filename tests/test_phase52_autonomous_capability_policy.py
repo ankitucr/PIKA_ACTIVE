@@ -158,3 +158,30 @@ def test_owner_can_sign_policy_with_protected_external_private_key(tmp_path):
     verified = load_autonomous_capability_policy(policy_path, trust_path, project_root=project)
     assert verified["verified"] is True
     assert verified["policy"]["policy_id"] == payload["policy_id"]
+
+
+def test_portable_lock_supports_windows_byte_range_backend(tmp_path, monkeypatch):
+    import core.portable_lock as portable_lock
+
+    class FakeMsvcrt:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        def __init__(self):
+            self.calls = []
+
+        def locking(self, fd, mode, count):
+            self.calls.append((fd, mode, count))
+
+    fake = FakeMsvcrt()
+    monkeypatch.setattr(portable_lock, "fcntl", None)
+    monkeypatch.setattr(portable_lock, "msvcrt", fake)
+    path = tmp_path / "portable.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        portable_lock.lock_fd(fd, exclusive=True)
+        portable_lock.unlock_fd(fd)
+    finally:
+        os.close(fd)
+    assert path.read_bytes() == b"\\0"
+    assert [call[1] for call in fake.calls] == [fake.LK_LOCK, fake.LK_UNLCK]
