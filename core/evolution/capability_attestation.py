@@ -111,6 +111,12 @@ class ResultAttestedCapabilityEvaluator:
             raise CapabilityAttestationError("Capability bundle manifest is unreadable.") from exc
         if not isinstance(manifest, dict) or manifest.get("schema") != "pika.native_capability_bundle.v1" or manifest.get("bundle_id") != bundle_id:
             raise CapabilityAttestationError("Capability bundle identity/schema mismatch.")
+        gaps = manifest.get("internal_dependency_gaps")
+        external_dependencies = manifest.get("external_dependencies")
+        if not isinstance(gaps, list) or gaps:
+            raise CapabilityAttestationError("Unresolved internal imports must be closed before attested evaluation.")
+        if not isinstance(external_dependencies, list) or external_dependencies:
+            raise CapabilityAttestationError("Third-party imports require a separately pinned dependency policy before attested evaluation.")
         manifest_sha = manifest.get("manifest_sha256")
         canonical = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
         actual_manifest_sha = _sha(json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
