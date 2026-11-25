@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
 from core.phase36.result_attestation import CHALLENGE_SCHEMA, SANDBOX_POLICY_ID
 from core.evolution.capability_attestation import ResultAttestedCapabilityEvaluator
-from core.evolution.capability_promotion import CapabilityPromotionManager
+from core.evolution.capability_promotion import CapabilityPromotionError, CapabilityPromotionManager
 
 
 class FakeAttestedRunner:
@@ -136,6 +137,22 @@ def test_owner_signed_standing_policy_can_promote_without_per_bundle_approval(tm
     )
     target = project / "core" / "pika_new_feature.py"
     assert not target.exists()
+
+    plan_file = Path(prepared["plan_path"])
+    original_plan = plan_file.read_bytes()
+    tampered_plan = json.loads(original_plan)
+    tampered_plan["argv"] = ["python", "-m", "pytest", "-q", "tests/untrusted.py"]
+    plan_file.write_text(json.dumps(tampered_plan), encoding="utf-8")
+    with pytest.raises(CapabilityPromotionError):
+        manager.promote_autonomously(
+            prepared["plan_path"],
+            policy_path="owner-policy.json",
+            policy_trust_config="owner-policy-trust.json",
+            result_attestor_config="external-trust-config.json",
+            result_runner=runner,
+        )
+    assert not target.exists()
+    plan_file.write_bytes(original_plan)
 
     promoted = manager.promote_autonomously(
         prepared["plan_path"],
