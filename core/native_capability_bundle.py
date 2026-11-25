@@ -223,6 +223,137 @@ class NativeCapabilityBundleEngine:
             "next_required_step": "independent_result_attestation_and_capability_delta_review",
         }
 
+    def verify_staged_bundle(self, bundle_id: str) -> dict[str, Any]:
+        """Re-hash a staged multi-file bundle before it can enter evaluation."""
+        if not isinstance(bundle_id, str) or re.fullmatch(r"[0-9a-f]{32}", bundle_id) is None:
+            return {"success": False, "verified": False, "error": "INVALID_BUNDLE_ID"}
+        bundle_root = self.staging / bundle_id
+        manifest_path = bundle_root / "bundle.json"
+        try:
+            if bundle_root.is_symlink() or not bundle_root.is_dir():
+                raise CapabilityBundleError("Bundle directory is missing or unsafe.")
+            if manifest_path.is_symlink() or not manifest_path.is_file():
+                raise CapabilityBundleError("Bundle manifest is missing or unsafe.")
+            if manifest_path.stat().st_size > 2_000_000:
+                raise CapabilityBundleError("Bundle manifest exceeds the verification limit.")
+
+            def reject_duplicates(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise CapabilityBundleError("Duplicate manifest key.")
+                    result[key] = value
+                return result
+
+            manifest = json.loads(
+                manifest_path.read_text(encoding="utf-8"),
+                object_pairs_hook=reject_duplicates,
+            )
+            if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA or manifest.get("bundle_id") != bundle_id:
+                raise CapabilityBundleError("Bundle manifest identity or schema mismatch.")
+            expected_manifest_sha = manifest.get("manifest_sha256")
+            canonical_payload = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
+            actual_manifest_sha = hashlib.sha256(
+                json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            ).hexdigest()
+            if expected_manifest_sha != actual_manifest_sha:
+                raise CapabilityBundleError("Bundle manifest digest mismatch.")
+
+            rows = manifest.get("files")
+            if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_FILES:
+                raise CapabilityBundleError("Bundle file inventory is invalid.")
+            seen: set[str] = set()
+            total_bytes = 0
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise CapabilityBundleError("Bundle inventory contains an invalid row.")
+                relative = _relative(row.get("path")).as_posix()
+                digest = row.get("sha256")
+                if relative in seen or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                    raise CapabilityBundleError("Bundle path or digest inventory is invalid.")
+                seen.add(relative)
+                current = bundle_root
+                for part in PurePosixPath(relative).parts:
+                    current = current / part
+                    if current.is_symlink():
+                        raise CapabilityBundleError(f"Staged bundle symlink rejected: {relative}")
+                resolved = current.resolve(strict=True)
+                resolved.relative_to(bundle_root.resolve(strict=True))
+                if not resolved.is_file() or resolved.stat().st_size > MAX_FILE_BYTES:
+                    raise CapabilityBundleError(f"Staged bundle entry is not regular or exceeds the size limit: {relative}")
+                raw = resolved.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != digest:
+                    raise CapabilityBundleError(f"Staged bundle file digest mismatch: {relative}")
+                if row.get("size_bytes") != len(raw):
+                    raise CapabilityBundleError(f"Staged bundle file size metadata mismatch: {relative}")
+                try:
+                    ast.parse(raw.decode("utf-8"), filename=relative)
+                except (UnicodeError, SyntaxError) as exc:
+                    raise CapabilityBundleError(f"Staged bundle Python source no longer parses: {relative}") from exc
+                total_bytes += len(raw)
+                if total_bytes > MAX_TOTAL_BYTES:
+                    raise CapabilityBundleError("Staged bundle exceeds the total source-byte limit.")
+
+            tests = manifest.get("test_paths")
+            if (
+                not isinstance(tests, list)
+                or len(tests) > MAX_FILES
+                or len(set(tests)) != len(tests)
+                or any(_relative(item).as_posix() not in seen for item in tests)
+            ):
+                raise CapabilityBundleError("Bundle test path inventory is invalid.")
+            internal_gaps = manifest.get("internal_dependency_gaps")
+            external = manifest.get("external_dependencies")
+            if not isinstance(internal_gaps, list) or not isinstance(external, list):
+                raise CapabilityBundleError("Bundle dependency inventory is malformed.")
+            return {
+                "success": True,
+                "verified": True,
+                "bundle_id": bundle_id,
+                "manifest_sha256": actual_manifest_sha,
+                "file_count": len(rows),
+                "total_bytes": total_bytes,
+                "test_paths": list(tests),
+                "internal_dependency_gaps": list(internal_gaps),
+                "external_dependencies": list(external),
+                "risk_flag_count": sum(
+                    len(row.get("static_risk_flags", []))
+                    for row in rows if isinstance(row, dict)
+                    and isinstance(row.get("static_risk_flags", []), list)
+                ),
+                "source_executed": False,
+                "trusted_learning_admission": False,
+                "production_promotion_allowed": False,
+            }
+        except (OSError, ValueError, TypeError, RecursionError) as exc:
+            return {
+                "success": False,
+                "verified": False,
+                "bundle_id": bundle_id,
+                "error": f"BUNDLE_INTEGRITY_REJECTED:{type(exc).__name__}",
+            }
+
+    def list_staged_bundles(self, *, limit: int = 50) -> dict[str, Any]:
+        """Return a bounded, hash-verified inventory without executing source."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise CapabilityBundleError("Bundle listing limit must be between 1 and 200.")
+        if self.staging.is_symlink() or not self.staging.is_dir():
+            raise CapabilityBundleError("Capability staging directory is missing or unsafe.")
+        directories = [
+            item for item in self.staging.iterdir()
+            if item.is_dir() and not item.is_symlink()
+            and re.fullmatch(r"[0-9a-f]{32}", item.name)
+        ]
+        directories.sort(key=lambda item: item.stat().st_mtime_ns, reverse=True)
+        items = [self.verify_staged_bundle(item.name) for item in directories[:limit]]
+        return {
+            "success": True,
+            "schema": "pika.native_capability_bundle_inventory.v1",
+            "item_count": len(items),
+            "verified_count": sum(item.get("verified") is True for item in items),
+            "items": items,
+        }
+
     def stage_bundle(
         self,
         source_root: str | Path,
