@@ -57,7 +57,7 @@ def _bounded_text(value: Any, field: str, limit: int) -> str:
 
 def _finding_identity(item: dict[str, Any]) -> dict[str, Any]:
     rule = item.get("rule")
-    if rule not in _RULES:
+    if not isinstance(rule, str) or rule not in _RULES:
         raise HypothesisGenerationError("Finding rule is not in the reviewed hypothesis catalog.")
     path = _bounded_text(item.get("path"), "path", 512)
     if path.startswith("/") or "\\" in path or any(part in {"", ".", ".."} for part in path.split("/")):
@@ -69,7 +69,7 @@ def _finding_identity(item: dict[str, Any]) -> dict[str, Any]:
     if isinstance(line, bool) or not isinstance(line, int) or line < 1:
         raise HypothesisGenerationError("Finding line must be a positive integer.")
     severity = item.get("severity")
-    if severity not in {"low", "medium", "high"}:
+    if not isinstance(severity, str) or severity not in {"low", "medium", "high"}:
         raise HypothesisGenerationError("Finding severity is unsupported.")
     symbol = item.get("symbol", "")
     if not isinstance(symbol, str) or len(symbol) > 300:
