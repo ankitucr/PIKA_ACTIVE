@@ -114,7 +114,7 @@ def test_native_cognition_routes_capability_staging_and_reports_status(tmp_path)
 
     source = tmp_path / "external"
     source.mkdir()
-    (source / "feature.py").write_text("def feature():\\n    return 42\\n", encoding="utf-8")
+    (source / "feature.py").write_text("def feature():\n    return 42\n", encoding="utf-8")
     engine = NativeCognitionEngine(tmp_path / "pika")
     result = asyncio.run(engine.execute(
         "stage capability bundle",
