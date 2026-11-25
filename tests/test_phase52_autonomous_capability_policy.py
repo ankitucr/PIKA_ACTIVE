@@ -183,5 +183,5 @@ def test_portable_lock_supports_windows_byte_range_backend(tmp_path, monkeypatch
         portable_lock.unlock_fd(fd)
     finally:
         os.close(fd)
-    assert path.read_bytes() == b"\\0"
+    assert path.read_bytes() == b"\0"
     assert [call[1] for call in fake.calls] == [fake.LK_LOCK, fake.LK_UNLCK]
