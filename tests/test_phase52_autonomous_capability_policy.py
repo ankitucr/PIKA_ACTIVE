@@ -251,10 +251,17 @@ def test_v2_policy_explicitly_authorizes_large_python_packages(tmp_path):
 @pytest.mark.parametrize("overrides", [
     {"max_files": 1001},
     {"max_total_bytes": 25_000_001},
-    {"large_package_acknowledged": False},
-    {"scale_profile": "UNBOUNDED"},
 ])
-def test_v2_policy_rejects_limits_or_scale_acknowledgement_outside_bounds(tmp_path, overrides):
+def test_v2_policy_rejects_limits_outside_bounds(tmp_path, overrides):
     project, policy_path, trust_path = write_signed_v2_policy(tmp_path, overrides=overrides)
     with pytest.raises(AutonomousPolicyError):
         load_autonomous_capability_policy(policy_path, trust_path, project_root=project)
+
+
+@pytest.mark.parametrize("overrides", [
+    {"large_package_acknowledged": False},
+    {"scale_profile": "UNBOUNDED"},
+])
+def test_v2_signer_refuses_missing_large_package_acknowledgement(tmp_path, overrides):
+    with pytest.raises(AutonomousPolicyError):
+        write_signed_v2_policy(tmp_path, overrides=overrides)
