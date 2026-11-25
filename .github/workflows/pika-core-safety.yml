@@ -87,6 +87,9 @@ jobs:
       - name: Run Phase 46 experiment-quality contract
         run: python -m pytest -q tests/test_phase46_experiment_quality.py
 
+      - name: Run Phase 47 improvement-hypothesis contract
+        run: python -m pytest -q tests/test_native_improvement_hypotheses.py
+
       - name: Run focused safety and learning regressions
         run: |
           python -m pytest -q \
