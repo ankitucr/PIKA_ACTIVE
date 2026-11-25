@@ -24,7 +24,7 @@ def lock_fd(fd: int, *, exclusive: bool = True) -> None:
     if msvcrt is not None:
         if os.fstat(fd).st_size == 0:
             try:
-                os.write(fd, b"\\0")
+                os.write(fd, b"\0")
                 os.fsync(fd)
             except OSError:
                 # Read-only data ledgers can still lock byte zero beyond EOF.
