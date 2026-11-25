@@ -324,7 +324,7 @@ class CapabilityPromotionManager:
             "rollback_id": plan_id,
             "mode": "REMOVE_ONLY_IF_HASH_MATCHES",
             "files": {path: _sha(data) for path, data in files.items()},
-            "state": "REHEARSAL_READY_FOR_NEW_FILES",
+            "state": "ROLLBACK_READY_HASH_GUARDED_DELETE",
         }
         rollback_sha = _sha(_canonical(rollback))
         plan = {
@@ -424,7 +424,11 @@ class CapabilityPromotionManager:
                 if path.exists() or path.is_symlink():
                     raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
                 path.parent.mkdir(parents=True, exist_ok=True)
+                path = _no_symlink(self.root, target, must_exist=False)
+                if path.exists() or path.is_symlink():
+                    raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
                 fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+                identity = os.fstat(fd)
                 try:
                     offset = 0
                     while offset < len(data):
@@ -433,11 +437,19 @@ class CapabilityPromotionManager:
                             raise OSError("Short capability promotion write.")
                         offset += count
                     os.fsync(fd)
+                except Exception:
+                    try:
+                        current = path.lstat()
+                        if current.st_dev == identity.st_dev and current.st_ino == identity.st_ino and stat.S_ISREG(current.st_mode):
+                            path.unlink()
+                    except OSError:
+                        pass
+                    raise
                 finally:
                     os.close(fd)
+                created.append(relative)
                 if _sha(path.read_bytes()) != plan["files"][relative]:
                     raise CapabilityPromotionError(f"Promoted file hash mismatch: {relative}")
-                created.append(relative)
 
             source_paths = sorted(plan["files"] | plan["trusted_test_hashes"])
             post = result_runner.run_test(
