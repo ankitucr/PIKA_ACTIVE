@@ -23,6 +23,7 @@ from core.native_code_proof_queries import NativeCodeProofQuery
 from core.native_code_impact_analysis import NativeCodeImpactAnalyzer
 from core.native_test_impact_planner import NativeTestImpactPlanner
 from core.native_change_set_analysis import NativeChangeSetAnalyzer
+from core.native_improvement_hypotheses import NativeImprovementHypothesisEngine
 
 
 _REPO_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#\s]|$)", re.I)
@@ -41,6 +42,7 @@ class NativeCognitionEngine:
         self.data = self.root / "data"
         self.data.mkdir(parents=True, exist_ok=True)
         self.analyzer = NativeCodeAnalyzer()
+        self.improvement_hypotheses = NativeImprovementHypothesisEngine()
         self.reasoning = NativeReasoningEngine()
         self.reasoner = NativeSymbolicReasoningEngine()
         self.code_graph = NativeKnowledgeGraphAdapter(self.root, reasoning_engine=self.reasoning)
@@ -87,21 +89,31 @@ class NativeCognitionEngine:
         }
         queue_path = self.data / "pika_native_improvement_queue.json"
         NativeCodeAnalyzer.save(queue, queue_path)
+        hypotheses = self.improvement_hypotheses.generate(queue["items"])
+        hypothesis_path = self.data / "pika_native_improvement_hypotheses.json"
+        NativeCodeAnalyzer.save(hypotheses, hypothesis_path)
         self._append_event({
             "type": "self_code_analysis",
             "files": result.get("metrics", {}).get("python_files_analyzed", 0),
             "findings": len(queue["items"]),
+            "hypotheses": hypotheses.get("hypothesis_count", 0),
+            "rejected_findings": hypotheses.get("rejected_finding_count", 0),
             "source_modified": False,
+            "source_executed": False,
+            "trusted_learning_admission": False,
         })
         return {
             "success": True,
-            "mode": "native_static_self_analysis",
+            "mode": "native_static_self_analysis_with_hypothesis_generation",
             "llm_used": False,
             "model_api_used": False,
             "source_executed": False,
             "source_modified": False,
             "analysis_path": str(self_path),
             "improvement_queue_path": str(queue_path),
+            "hypothesis_path": str(hypothesis_path),
+            "hypothesis_count": hypotheses.get("hypothesis_count", 0),
+            "hypotheses": hypotheses.get("hypotheses", [])[:20],
             "metrics": result.get("metrics", {}),
             "findings": queue["items"][:30],
             "limits": result.get("limits", []),
@@ -445,6 +457,7 @@ class NativeCognitionEngine:
             "github_python_files_analyzed": knowledge.get("metrics", {}).get("python_files_analyzed", 0),
             "self_python_files_analyzed": self_report.get("metrics", {}).get("python_files_analyzed", 0),
             "self_improvement_proposals": len(load(self.data / "pika_native_improvement_queue.json").get("items", [])),
+            "self_improvement_hypotheses": len(load(self.data / "pika_native_improvement_hypotheses.json").get("hypotheses", [])),
             "knowledge_index": str(self.data / "pika_learning_index.json"),
             "engineering_knowledge_repositories": len(eng_doc.get("repositories", {})),
             "engineering_knowledge_facts": sum(
@@ -483,6 +496,7 @@ class NativeCognitionEngine:
                 "cross_language_static_analysis",
                 "provenance_backed_github_knowledge",
                 "deterministic_self_evolution_staging",
+                "evidence_bound_improvement_hypothesis_generation",
             ],
             "arbitrary_workspace_code_generation": "UNSUPPORTED",
             "source_execution_during_static_analysis": False,
@@ -1504,9 +1518,11 @@ class NativeCognitionEngine:
             f"Python files: {metrics.get('python_files_analyzed', 0)} | parsed: {metrics.get('parsed_files', 0)} | syntax errors: {metrics.get('syntax_error_files', 0)}",
             f"Classes: {metrics.get('classes', 0)} | functions: {metrics.get('functions', 0)} | structural patterns: {metrics.get('structural_patterns', 0)}",
             f"Static findings: {metrics.get('static_findings', 0)} | high severity: {metrics.get('high_severity_findings', 0)}",
-            f"Improvement proposals saved: {len(findings)}",
+            f"Static findings: {len(findings)}",
+            f"Falsifiable hypotheses generated: {result.get('hypothesis_count', 0)}",
             f"Report: {result.get('analysis_path')}",
             f"Queue: {result.get('improvement_queue_path')}",
+            f"Hypotheses: {result.get('hypothesis_path')}",
             "Policy: source was parsed as data; no project code was executed or modified.",
         ]
         for item in findings[:12]:
