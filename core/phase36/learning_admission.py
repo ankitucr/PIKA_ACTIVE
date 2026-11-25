@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.evolution.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
 
 import hashlib
 import json
