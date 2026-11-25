@@ -184,3 +184,34 @@ def test_multi_file_prepare_refuses_existing_live_source(tmp_path, monkeypatch):
             report_path=report_path,
             result_attestor_config="external-trust-config.json",
         )
+
+
+def test_promotion_rejects_wrong_approval_purpose_before_live_write(tmp_path, monkeypatch):
+    project, manager, prepared, report_path, _bundle_id = prepare_fixture(tmp_path, monkeypatch)
+    approval_file = tmp_path / "wrong-purpose.json"
+    approval_file.write_text(json.dumps({"approver_id": "wrong", "payload": prepared["approval_payload"]}))
+    runner = type("UnavailablePostRunner", (), {"available": False})()
+    with pytest.raises(CapabilityPromotionError):
+        manager.promote(
+            prepared["plan_path"],
+            approval_path=approval_file,
+            approval_policy=FakeApprovalPolicy("1" * 64, "TRUSTED_LEARNING_ADMISSION"),
+            result_attestor_config="external-trust-config.json",
+            result_runner=runner,
+        )
+    assert not (project / "core" / "pika_new_feature.py").exists()
+
+
+def test_promotion_denies_when_independent_post_runner_is_unavailable(tmp_path, monkeypatch):
+    project, manager, prepared, report_path, _bundle_id = prepare_fixture(tmp_path, monkeypatch)
+    approval_file = tmp_path / "approval.json"
+    approval_file.write_text(json.dumps({"approver_id": "promoter", "payload": prepared["approval_payload"]}))
+    with pytest.raises(CapabilityPromotionError):
+        manager.promote(
+            prepared["plan_path"],
+            approval_path=approval_file,
+            approval_policy=FakeApprovalPolicy("1" * 64, "PRODUCTION_PROMOTION"),
+            result_attestor_config="external-trust-config.json",
+            result_runner=type("UnavailablePostRunner", (), {"available": False})(),
+        )
+    assert not (project / "core" / "pika_new_feature.py").exists()
