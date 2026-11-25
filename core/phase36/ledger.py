@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+
 import hashlib
 import json
 import math
@@ -8,11 +10,6 @@ import re
 import time
 from pathlib import Path
 from typing import Any
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Termux/Linux provides fcntl
-    fcntl = None
 
 
 class EvolutionLedger:
@@ -108,13 +105,11 @@ class EvolutionLedger:
 
     @staticmethod
     def _lock(stream, exclusive: bool) -> None:
-        if fcntl is not None:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        acquire_lock_fd(stream.fileno(), exclusive=exclusive)
 
     @staticmethod
     def _unlock(stream) -> None:
-        if fcntl is not None:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        release_lock_fd(stream.fileno())
 
     def _open_fd(self, flags: int) -> int:
         if self.path.is_symlink():

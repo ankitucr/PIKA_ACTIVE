@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import fcntl
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+
 import hashlib
 import json
 import os
@@ -94,32 +95,32 @@ class Ledger:
     def rows(self) -> list[dict[str, Any]]:
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_SH)
+            acquire_lock_fd(lock_fd, exclusive=False)
             return self._read_rows_unlocked()
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
     def verify(self) -> dict[str, Any]:
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_SH)
+            acquire_lock_fd(lock_fd, exclusive=False)
             try:
                 return self._verify_rows(self._read_rows_unlocked())
             except (OSError, UnicodeError, ValueError):
                 return {"valid": False, "entries": 0, "error": "ledger_read_error"}
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 
     def append(self, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
         lock_fd = self._open_lock()
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             verification = self._verify_rows(self._read_rows_unlocked())
             if not verification['valid']:
                 raise ValueError("Ledger integrity failure")
@@ -148,6 +149,6 @@ class Ledger:
             return row
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import fcntl
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
+
 import hashlib
 import json
 import os
@@ -127,7 +128,7 @@ class ProductionPromotionManager:
         self.rollback_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.rollback_root.chmod(0o700)
         metadata = self.rollback_root.stat()
-        if stat.S_IMODE(metadata.st_mode) & 0o077:
+        if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
             raise ProductionPromotionError("Rollback root must be owner-only (0700).")
         if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
             raise ProductionPromotionError("Rollback root must be owned by the current operator.")
@@ -183,7 +184,7 @@ class ProductionPromotionManager:
             raise ProductionPromotionError("Attested report must be a regular non-symlink file.")
         path = path.resolve(strict=True)
         report_metadata = path.stat()
-        if report_metadata.st_size > MAX_PLAN_BYTES or stat.S_IMODE(report_metadata.st_mode) & 0o022:
+        if report_metadata.st_size > MAX_PLAN_BYTES or (os.name == "posix" and stat.S_IMODE(report_metadata.st_mode) & 0o022):
             raise ProductionPromotionError("Attested report is oversized or group/world writable.")
         raw = path.read_bytes()
         try:
@@ -380,7 +381,7 @@ class ProductionPromotionManager:
         try:
             if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
                 raise ProductionPromotionError("Promotion lock must be a regular file.")
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            acquire_lock_fd(lock_fd, exclusive=True)
             rows = []
             previous = "0" * 64
             if self.journal.exists():
@@ -419,7 +420,7 @@ class ProductionPromotionManager:
             return row
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_lock_fd(lock_fd)
             finally:
                 os.close(lock_fd)
 

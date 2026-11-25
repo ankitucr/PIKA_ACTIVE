@@ -7,7 +7,7 @@ the promoted hashes. No automatic admission or promotion is performed.
 """
 from __future__ import annotations
 
-import fcntl
+from core.portable_lock import lock_fd as acquire_lock_fd, unlock_fd as release_lock_fd
 import hashlib
 import json
 import os
@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
+from .autonomous_capability_policy import load_autonomous_capability_policy
 from core.phase36.operator_approval import (
     OperatorApprovalError,
     OperatorApprovalTrustPolicy,
@@ -120,13 +121,28 @@ class CapabilityPromotionManager:
         self.rollback_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.rollback_root.chmod(0o700)
         meta = self.rollback_root.stat()
-        if stat.S_IMODE(meta.st_mode) & 0o077 or (hasattr(os, "geteuid") and meta.st_uid != os.geteuid()):
+        if os.name == "posix" and (
+            stat.S_IMODE(meta.st_mode) & 0o077
+            or (hasattr(os, "geteuid") and meta.st_uid != os.geteuid())
+        ):
             raise CapabilityPromotionError("Rollback storage must be owner-only and owned by the current operator.")
         self.plans = self.bundles.knowledge / "CAPABILITY_PROMOTIONS" / "plans"
         self.plans.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.plans.chmod(0o700)
         self.journal = self.bundles.knowledge / "CAPABILITY_PROMOTION_LEDGER.jsonl"
         self.lock = self.journal.with_name(self.journal.name + ".lock")
+
+    def _attestor_key_hashes(self, result_attestor_config: str | Path) -> set[str]:
+        policy = load_result_attestation_trust_policy(
+            result_attestor_config,
+            project_root=self.root,
+        )
+        trusted = getattr(policy, "_trusted", {})
+        return {
+            hashlib.sha256(bytes.fromhex(item["public_key_hex"])).hexdigest()
+            for item in trusted.values()
+            if isinstance(item, dict) and isinstance(item.get("public_key_hex"), str)
+        }
 
     def _bundle_files(self, bundle_id: str) -> tuple[dict[str, Any], dict[str, bytes]]:
         if not isinstance(bundle_id, str) or not _BUNDLE_ID.fullmatch(bundle_id):
@@ -288,8 +304,10 @@ class CapabilityPromotionManager:
             raise CapabilityPromotionError("Promotion ledger/lock symlink rejected.")
         self.journal.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(self.lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        locked = False
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            acquire_lock_fd(fd, exclusive=True)
+            locked = True
             previous = "0" * 64
             if self.journal.exists():
                 if self.journal.stat().st_size > 20_000_000:
@@ -312,6 +330,8 @@ class CapabilityPromotionManager:
                 os.close(out)
             return row
         finally:
+            if locked:
+                release_lock_fd(fd)
             os.close(fd)
 
     def prepare(
@@ -385,6 +405,37 @@ class CapabilityPromotionManager:
             raise CapabilityPromotionError("Promotion plan schema mismatch.")
         return plan, _sha(raw)
 
+    def _validate_plan_binding(
+        self,
+        plan: dict[str, Any],
+        report: dict[str, Any],
+        report_sha: str,
+        files: dict[str, bytes],
+        manifest: dict[str, Any],
+    ) -> None:
+        expected_files = {path: _sha(data) for path, data in files.items()}
+        expected_argv = ["python", "-m", "pytest", "-q", *report["trusted_test_hashes"].keys()]
+        rollback = plan.get("rollback")
+        if not isinstance(rollback, dict):
+            raise CapabilityPromotionError("Promotion plan rollback manifest is missing.")
+        if (
+            plan.get("project_root") != str(self.root)
+            or plan.get("bundle_id") != report.get("bundle_id")
+            or plan.get("bundle_manifest_sha256") != manifest.get("manifest_sha256")
+            or plan.get("report_sha256") != report_sha
+            or plan.get("files") != expected_files
+            or plan.get("trusted_test_hashes") != report.get("trusted_test_hashes")
+            or plan.get("argv") != expected_argv
+            or plan.get("timeout") != report.get("timeout")
+            or plan.get("decision") != report.get("decision")
+            or rollback.get("rollback_id") != plan.get("plan_id")
+            or rollback.get("mode") != "REMOVE_ONLY_IF_HASH_MATCHES"
+            or rollback.get("files") != expected_files
+            or rollback.get("state") != "ROLLBACK_READY_HASH_GUARDED_DELETE"
+            or plan.get("rollback_sha256") != _sha(_canonical(rollback))
+        ):
+            raise CapabilityPromotionError("Promotion plan is not bound to the verified report, bundle and rollback manifest.")
+
     def _approval_payload(self, plan: dict[str, Any], plan_sha: str, action: str) -> dict[str, Any]:
         return {
             "action": action,
@@ -420,11 +471,10 @@ class CapabilityPromotionManager:
             approval_info = approval_policy.verify(approval, expected)
         except (UnicodeError, json.JSONDecodeError, OperatorApprovalError) as exc:
             raise CapabilityPromotionError("Capability promotion approval is invalid or not bound to this plan.") from exc
+        if approval_info["approver_key_sha256"] in self._attestor_key_hashes(result_attestor_config):
+            raise CapabilityPromotionError("Promotion approver must use a distinct key from the independent result attestor.")
         report, report_sha, files, manifest = self._load_attested_report(plan["report_path"], result_attestor_config)
-        if report_sha != plan["report_sha256"] or manifest["manifest_sha256"] != plan["bundle_manifest_sha256"]:
-            raise CapabilityPromotionError("Attested report or staged bundle changed after plan preparation.")
-        if {path: _sha(data) for path, data in files.items()} != plan["files"]:
-            raise CapabilityPromotionError("Staged implementation files differ from the approved plan.")
+        self._validate_plan_binding(plan, report, report_sha, files, manifest)
 
         created: list[str] = []
         try:
@@ -515,6 +565,151 @@ class CapabilityPromotionManager:
             "promotion_approver": approval_info["approver_id"],
             "live_source_modified": True,
             "promotion": "PROMOTED_WITH_OPERATOR_APPROVAL_AND_ATTESTED_POSTCHECK",
+        }
+
+    def promote_autonomously(
+        self,
+        plan_path: str | Path,
+        *,
+        policy_path: str | Path,
+        policy_trust_config: str | Path,
+        result_attestor_config: str | Path,
+        result_runner: ResultBoundSandboxRunner,
+    ) -> dict[str, Any]:
+        """Apply a pre-authorized capability only under a valid owner-signed standing policy."""
+        if getattr(result_runner, "available", False) is not True:
+            raise CapabilityPromotionError("Independent post-promotion result runner is unavailable; live writes denied.")
+        try:
+            authorization = load_autonomous_capability_policy(
+                policy_path,
+                policy_trust_config,
+                project_root=self.root,
+            )
+        except ValueError as exc:
+            raise CapabilityPromotionError(f"Standing autonomous policy rejected: {exc}") from exc
+        policy = authorization["policy"]
+        if authorization["signer_key_sha256"] in self._attestor_key_hashes(result_attestor_config):
+            raise CapabilityPromotionError("Standing-policy signer must use a distinct key from the independent result attestor.")
+        plan, plan_sha = self._read_plan(plan_path)
+        if plan.get("state") != "PREPARED_PENDING_OPERATOR_APPROVAL":
+            raise CapabilityPromotionError("Capability plan is not pending promotion.")
+        report, report_sha, files, manifest = self._load_attested_report(
+            plan["report_path"],
+            result_attestor_config,
+        )
+        self._validate_plan_binding(plan, report, report_sha, files, manifest)
+        trusted_test_bytes = sum(
+            (self.root / path).stat().st_size
+            for path in report["trusted_test_hashes"]
+        )
+        total_authorized_files = len(files) + len(report["trusted_test_hashes"])
+        total_authorized_bytes = sum(len(data) for data in files.values()) + trusted_test_bytes
+        if (total_authorized_files > policy["max_files"]
+                or total_authorized_bytes > policy["max_total_bytes"]):
+            raise CapabilityPromotionError("Capability bundle and trusted tests exceed owner-authorized autonomous policy limits.")
+        if any(_target(path).parts[0] not in policy["allowed_roots"] for path in files):
+            raise CapabilityPromotionError("Capability target root is outside owner-authorized autonomous policy.")
+        if report.get("repetitions") != policy["required_repetitions"]:
+            raise CapabilityPromotionError("Attested repetition count does not meet owner policy.")
+        if (report.get("decision") != "FUNCTIONAL_CAPABILITY_ADDITION_RESULT_ATTESTED"
+                or report.get("baseline", {}).get("all_passed") is not False
+                or report.get("candidate", {}).get("all_passed") is not True):
+            raise CapabilityPromotionError("Capability delta does not satisfy owner policy.")
+        if {path: _sha(data) for path, data in files.items()} != plan.get("files"):
+            raise CapabilityPromotionError("Staged implementation differs from the prepared plan.")
+        created: list[str] = []
+        try:
+            for relative, data in sorted(files.items()):
+                target = _target(relative)
+                path = _no_symlink(self.root, target, must_exist=False)
+                if path.exists() or path.is_symlink():
+                    raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path = _no_symlink(self.root, target, must_exist=False)
+                if path.exists() or path.is_symlink():
+                    raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+                identity = os.fstat(fd)
+                try:
+                    offset = 0
+                    while offset < len(data):
+                        count = os.write(fd, data[offset:])
+                        if count <= 0:
+                            raise OSError("Short autonomous capability write.")
+                        offset += count
+                    os.fsync(fd)
+                except Exception:
+                    try:
+                        current = path.lstat()
+                        if current.st_dev == identity.st_dev and current.st_ino == identity.st_ino and stat.S_ISREG(current.st_mode):
+                            path.unlink()
+                    except OSError:
+                        pass
+                    raise
+                finally:
+                    os.close(fd)
+                created.append(relative)
+                if _sha(path.read_bytes()) != plan["files"][relative]:
+                    raise CapabilityPromotionError(f"Autonomous capability hash mismatch: {relative}")
+
+            source_paths = sorted(set(plan["files"]) | set(plan["trusted_test_hashes"]))
+            post = result_runner.run_test(
+                list(plan["argv"]),
+                cwd=self.root,
+                source_paths=source_paths,
+                timeout=plan["timeout"],
+            )
+            if (post.get("verified") is not True
+                    or post.get("evidence_class") != "INDEPENDENT_OS_RESULT_ATTESTATION"
+                    or post.get("outcome") != "PASSED"
+                    or not isinstance(post.get("result_attestation"), dict)
+                    or not isinstance(post["result_attestation"].get("result_sha256"), str)
+                    or not _DIGEST.fullmatch(post["result_attestation"]["result_sha256"])):
+                raise CapabilityPromotionError("Autonomous post-promotion attestation did not pass.")
+        except Exception as exc:
+            removed = self._remove_created(created, plan["files"])
+            self._append("autonomous_promotion_rolled_back", {
+                "plan_id": plan["plan_id"],
+                "bundle_id": plan["bundle_id"],
+                "error_type": type(exc).__name__,
+                "removed_files": removed,
+                "policy_id": policy["policy_id"],
+                "policy_sha256": authorization["policy_sha256"],
+                "state": "ROLLED_BACK",
+            })
+            return {
+                "success": False,
+                "state": "ROLLED_BACK",
+                "bundle_id": plan["bundle_id"],
+                "removed_files": removed,
+                "policy_id": policy["policy_id"],
+                "live_source_modified": False,
+                "promotion": "AUTONOMOUS_ATTEMPT_REJECTED_AND_RESTORED",
+            }
+
+        event = self._append("capability_bundle_autonomously_promoted", {
+            "plan_id": plan["plan_id"],
+            "bundle_id": plan["bundle_id"],
+            "bundle_manifest_sha256": plan["bundle_manifest_sha256"],
+            "report_sha256": plan["report_sha256"],
+            "files": plan["files"],
+            "policy_id": policy["policy_id"],
+            "policy_sha256": authorization["policy_sha256"],
+            "policy_signer_id": authorization["signer_id"],
+            "post_promotion_result_sha256": post["result_attestation"]["result_sha256"],
+            "state": "PROMOTED_UNDER_OWNER_SIGNED_POLICY",
+        })
+        return {
+            "success": True,
+            "state": "PROMOTED",
+            "bundle_id": plan["bundle_id"],
+            "files": sorted(plan["files"]),
+            "policy_id": policy["policy_id"],
+            "policy_signer_id": authorization["signer_id"],
+            "promotion_event_hash": event["entry_hash"],
+            "post_promotion_attestation": post["result_attestation"]["result_sha256"],
+            "live_source_modified": True,
+            "promotion": "AUTONOMOUSLY_PROMOTED_UNDER_OWNER_SIGNED_POLICY",
         }
 
     def _remove_created(self, paths: list[str], expected_hashes: dict[str, str]) -> list[str]:
