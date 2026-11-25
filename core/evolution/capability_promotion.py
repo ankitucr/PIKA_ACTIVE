@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from core.native_capability_bundle import NativeCapabilityBundleEngine
+from .autonomous_capability_policy import load_autonomous_capability_policy
 from core.phase36.operator_approval import (
     OperatorApprovalError,
     OperatorApprovalTrustPolicy,
@@ -515,6 +516,145 @@ class CapabilityPromotionManager:
             "promotion_approver": approval_info["approver_id"],
             "live_source_modified": True,
             "promotion": "PROMOTED_WITH_OPERATOR_APPROVAL_AND_ATTESTED_POSTCHECK",
+        }
+
+    def promote_autonomously(
+        self,
+        plan_path: str | Path,
+        *,
+        policy_path: str | Path,
+        policy_trust_config: str | Path,
+        result_attestor_config: str | Path,
+        result_runner: ResultBoundSandboxRunner,
+    ) -> dict[str, Any]:
+        """Apply a pre-authorized capability only under a valid owner-signed standing policy."""
+        if getattr(result_runner, "available", False) is not True:
+            raise CapabilityPromotionError("Independent post-promotion result runner is unavailable; live writes denied.")
+        try:
+            authorization = load_autonomous_capability_policy(
+                policy_path,
+                policy_trust_config,
+                project_root=self.root,
+            )
+        except ValueError as exc:
+            raise CapabilityPromotionError(f"Standing autonomous policy rejected: {exc}") from exc
+        policy = authorization["policy"]
+        plan, plan_sha = self._read_plan(plan_path)
+        if plan.get("state") != "PREPARED_PENDING_OPERATOR_APPROVAL":
+            raise CapabilityPromotionError("Capability plan is not pending promotion.")
+        report, report_sha, files, manifest = self._load_attested_report(
+            plan["report_path"],
+            result_attestor_config,
+        )
+        if (report_sha != plan["report_sha256"]
+                or manifest["manifest_sha256"] != plan["bundle_manifest_sha256"]
+                or report.get("bundle_id") != plan["bundle_id"]):
+            raise CapabilityPromotionError("Attested report or staged bundle changed after plan preparation.")
+        if len(files) > policy["max_files"] or sum(len(data) for data in files.values()) > policy["max_total_bytes"]:
+            raise CapabilityPromotionError("Capability bundle exceeds owner-authorized autonomous policy limits.")
+        if any(_target(path).parts[0] not in policy["allowed_roots"] for path in files):
+            raise CapabilityPromotionError("Capability target root is outside owner-authorized autonomous policy.")
+        if report.get("repetitions") != policy["required_repetitions"]:
+            raise CapabilityPromotionError("Attested repetition count does not meet owner policy.")
+        if (report.get("decision") != "FUNCTIONAL_CAPABILITY_ADDITION_RESULT_ATTESTED"
+                or report.get("baseline", {}).get("all_passed") is not False
+                or report.get("candidate", {}).get("all_passed") is not True):
+            raise CapabilityPromotionError("Capability delta does not satisfy owner policy.")
+        if {path: _sha(data) for path, data in files.items()} != plan.get("files"):
+            raise CapabilityPromotionError("Staged implementation differs from the prepared plan.")
+        created: list[str] = []
+        try:
+            for relative, data in sorted(files.items()):
+                target = _target(relative)
+                path = _no_symlink(self.root, target, must_exist=False)
+                if path.exists() or path.is_symlink():
+                    raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path = _no_symlink(self.root, target, must_exist=False)
+                if path.exists() or path.is_symlink():
+                    raise CapabilityPromotionError(f"Refusing to overwrite live PIKA source: {relative}")
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+                identity = os.fstat(fd)
+                try:
+                    offset = 0
+                    while offset < len(data):
+                        count = os.write(fd, data[offset:])
+                        if count <= 0:
+                            raise OSError("Short autonomous capability write.")
+                        offset += count
+                    os.fsync(fd)
+                except Exception:
+                    try:
+                        current = path.lstat()
+                        if current.st_dev == identity.st_dev and current.st_ino == identity.st_ino and stat.S_ISREG(current.st_mode):
+                            path.unlink()
+                    except OSError:
+                        pass
+                    raise
+                finally:
+                    os.close(fd)
+                created.append(relative)
+                if _sha(path.read_bytes()) != plan["files"][relative]:
+                    raise CapabilityPromotionError(f"Autonomous capability hash mismatch: {relative}")
+
+            source_paths = sorted(set(plan["files"]) | set(plan["trusted_test_hashes"]))
+            post = result_runner.run_test(
+                list(plan["argv"]),
+                cwd=self.root,
+                source_paths=source_paths,
+                timeout=plan["timeout"],
+            )
+            if (post.get("verified") is not True
+                    or post.get("evidence_class") != "INDEPENDENT_OS_RESULT_ATTESTATION"
+                    or post.get("outcome") != "PASSED"
+                    or not isinstance(post.get("result_attestation"), dict)
+                    or not isinstance(post["result_attestation"].get("result_sha256"), str)
+                    or not _DIGEST.fullmatch(post["result_attestation"]["result_sha256"])):
+                raise CapabilityPromotionError("Autonomous post-promotion attestation did not pass.")
+        except Exception as exc:
+            removed = self._remove_created(created, plan["files"])
+            self._append("autonomous_promotion_rolled_back", {
+                "plan_id": plan["plan_id"],
+                "bundle_id": plan["bundle_id"],
+                "error_type": type(exc).__name__,
+                "removed_files": removed,
+                "policy_id": policy["policy_id"],
+                "policy_sha256": authorization["policy_sha256"],
+                "state": "ROLLED_BACK",
+            })
+            return {
+                "success": False,
+                "state": "ROLLED_BACK",
+                "bundle_id": plan["bundle_id"],
+                "removed_files": removed,
+                "policy_id": policy["policy_id"],
+                "live_source_modified": False,
+                "promotion": "AUTONOMOUS_ATTEMPT_REJECTED_AND_RESTORED",
+            }
+
+        event = self._append("capability_bundle_autonomously_promoted", {
+            "plan_id": plan["plan_id"],
+            "bundle_id": plan["bundle_id"],
+            "bundle_manifest_sha256": plan["bundle_manifest_sha256"],
+            "report_sha256": plan["report_sha256"],
+            "files": plan["files"],
+            "policy_id": policy["policy_id"],
+            "policy_sha256": authorization["policy_sha256"],
+            "policy_signer_id": authorization["signer_id"],
+            "post_promotion_result_sha256": post["result_attestation"]["result_sha256"],
+            "state": "PROMOTED_UNDER_OWNER_SIGNED_POLICY",
+        })
+        return {
+            "success": True,
+            "state": "PROMOTED",
+            "bundle_id": plan["bundle_id"],
+            "files": sorted(plan["files"]),
+            "policy_id": policy["policy_id"],
+            "policy_signer_id": authorization["signer_id"],
+            "promotion_event_hash": event["entry_hash"],
+            "post_promotion_attestation": post["result_attestation"]["result_sha256"],
+            "live_source_modified": True,
+            "promotion": "AUTONOMOUSLY_PROMOTED_UNDER_OWNER_SIGNED_POLICY",
         }
 
     def _remove_created(self, paths: list[str], expected_hashes: dict[str, str]) -> list[str]:
