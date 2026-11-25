@@ -123,6 +123,16 @@ class ExperimentQualityTests(unittest.TestCase):
         result = evaluate_experiment(value)
         self.assertEqual(result["decision"], "NO_DEMONSTRATED_GAIN")
 
+    def test_invalid_threshold_is_rejected_even_when_candidate_regresses(self):
+        value = report()
+        value["candidate"]["runs"][0]["outcome"] = "FAILED"
+        value["candidate"]["runs"][0]["tests_passed"] = 9
+        value["candidate"]["runs"][0]["tests_failed"] = 1
+        value["candidate"]["runs"][0]["exit_code"] = 1
+        value["performance_threshold"] = float("nan")
+        with self.assertRaises(ExperimentQualityError):
+            evaluate_experiment(value)
+
     def test_signal_termination_exit_code_is_preserved_as_failure(self):
         value = report()
         value["candidate"]["runs"][0]["outcome"] = "FAILED"
