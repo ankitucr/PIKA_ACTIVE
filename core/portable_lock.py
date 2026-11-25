@@ -22,6 +22,13 @@ def lock_fd(fd: int, *, exclusive: bool = True) -> None:
         fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
         return
     if msvcrt is not None:
+        if os.fstat(fd).st_size == 0:
+            try:
+                os.write(fd, b"\\0")
+                os.fsync(fd)
+            except OSError:
+                # Read-only data ledgers can still lock byte zero beyond EOF.
+                pass
         os.lseek(fd, 0, os.SEEK_SET)
         msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
         return
