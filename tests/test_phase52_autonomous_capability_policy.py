@@ -83,8 +83,8 @@ def test_rejects_tampered_policy_signature(tmp_path):
     {"allow_external_dependencies": True},
     {"require_independent_attestation": False},
     {"allowed_roots": ["../../outside"]},
-    {"max_files": 1001},
-    {"max_total_bytes": 25_000_001},
+    {"max_files": 101},
+    {"max_total_bytes": 5_000_001},
     {"required_repetitions": 4},
 ])
 def test_rejects_weak_or_out_of_bounds_signed_policy(tmp_path, overrides):
