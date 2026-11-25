@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import unittest
 
 from core.native_improvement_hypotheses import (
@@ -42,7 +41,7 @@ class NativeImprovementHypothesisTests(unittest.TestCase):
         two = engine.generate([finding(), finding()])
         self.assertEqual(one["hypotheses"][0]["hypothesis_id"], two["hypotheses"][0]["hypothesis_id"])
         self.assertEqual(two["hypothesis_count"], 1)
-        self.assertEqual(two["deduplicated_finding_count"], 0)
+        self.assertEqual(two["deduplicated_finding_count"], 1)
 
     def test_source_change_produces_a_different_hypothesis_identity(self):
         engine = NativeImprovementHypothesisEngine()
